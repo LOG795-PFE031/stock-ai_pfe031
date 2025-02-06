@@ -1,0 +1,1 @@
+ # Features techniques (RSI, MACD)

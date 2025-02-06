@@ -1,0 +1,1 @@
+# Classe principale d'entraînement
