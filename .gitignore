@@ -50,3 +50,13 @@ stock_data/
 
 # Ignore all files in the venv directory
 venv/
+
+# Ignore all files in the data directory
+sandbox/lstm-stock-price-prediction/data/interim/
+sandbox/lstm-stock-price-prediction/data/processed/
+sandbox/lstm-stock-price-prediction/data/raw/
+
+# Ignore all files in the models directory
+sandbox/lstm-stock-price-prediction/models/
+
+
