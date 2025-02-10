@@ -45,3 +45,8 @@ build/
 .Trashes
 ehthumbs.db
 Thumbs.db
+# Ignore all files in the stock_data directory
+stock_data/
+
+# Ignore all files in the venv directory
+venv/
