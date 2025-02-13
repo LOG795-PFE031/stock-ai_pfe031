@@ -42,21 +42,26 @@ def predict_next_day():
 def predict_next_week():
     """Returns predictions for the next 7 trading days"""
     predictions = []
-    sequence = get_latest_sequence().copy()
+    historical_data = get_latest_sequence().copy()[0]  # Get 2D array of shape (SEQ_SIZE, 6)
+    sequence = historical_data[-SEQ_SIZE:].reshape(1, SEQ_SIZE, len(FEATURES))
     
     for _ in range(7):
-        # Predict next day
         pred = MODEL.predict(sequence)
         
         # Fix inverse transformation
         future_predictions_padded = np.concatenate((pred, np.ones((1, 5))), axis=1)
         price = SCALER.inverse_transform(future_predictions_padded)[0][0]
         
-        # Store prediction
+        # Update sequence with proper historical context
+        new_point = create_synthetic_features(pred[0], sequence[0,-1,:], historical_data)
+        sequence = np.roll(sequence, -1, axis=1)
+        sequence[0,-1,:] = new_point
+        historical_data = np.vstack([historical_data, new_point])
+        
         predictions.append(price)
     
     return jsonify({
-        'predictions': predictions,
+        'predictions': price,
         'start_date': (datetime.now() + timedelta(days=1)).isoformat(),
         'end_date': (datetime.now() + timedelta(days=7)).isoformat()
     })
@@ -74,20 +79,25 @@ def get_latest_sequence():
     # Get last SEQ_SIZE samples from combined data
     df = full_df.tail(SEQ_SIZE)
     
-    scaled_data = SCALER.transform(df[FEATURES])
-    return scaled_data.reshape(1, SEQ_SIZE, len(FEATURES))
+    # Data is already scaled from preprocessing
+    return df[FEATURES].values.reshape(1, SEQ_SIZE, len(FEATURES))
 
-def create_synthetic_features(predicted_open, last_point):
-    """Creates synthetic features for next time step"""
+def create_synthetic_features(predicted_open, last_point, historical_data):
+    """Creates synthetic features using historical avg changes from training notebook"""
+    # Calculate average daily changes from recent history (matches notebook line 475)
+    avg_daily_changes = np.mean(np.abs(historical_data[1:] - historical_data[:-1]), axis=0)
+    
     new_point = last_point.copy()
     new_point[0] = predicted_open  # Open
-    # Simple synthetic features - adjust these based on your training logic
-    new_point[1] = predicted_open * 1.02  # High
-    new_point[2] = predicted_open * 0.98  # Low
-    new_point[3] = predicted_open * 1.01  # Close
-    new_point[4] = new_point[3]  # Adj Close
-    new_point[5] = last_point[5]  # Volume (keep previous)
+    # Use historical relationships from training data (matches notebook lines 485-489)
+    new_point[1] = predicted_open + avg_daily_changes[1]  # High
+    new_point[2] = predicted_open - avg_daily_changes[2]  # Low 
+    new_point[3] = predicted_open + avg_daily_changes[3]  # Close
+    new_point[4] = new_point[3]  # Adj Close (same as Close)
+    new_point[5] = np.mean(historical_data[-SEQ_SIZE:, 5])  # Volume (avg of last sequence)
+    
     return new_point
+
 if __name__ == '__main__':
     load_resources()
     app.run(host='0.0.0.0', port=8000, debug=False)

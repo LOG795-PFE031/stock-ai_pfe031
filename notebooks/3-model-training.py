@@ -23,6 +23,7 @@ from tensorflow.keras.layers import Input, LSTM, Dropout, Dense
 import joblib
 from keras.callbacks import ModelCheckpoint
 from keras.models import load_model
+import os
 
 
 # ### 2. LOADING DATASETS
@@ -31,16 +32,16 @@ from keras.models import load_model
 
 
 # Prepare data file location and name
-data_file_location = "..//data//processed//"
+data_file_location = os.path.join("..", "data", "processed", "")
 data_file_name_train = "2025_google_stock_price_processed_train"
 data_file_name_validate = "2025_google_stock_price_processed_validate"
 data_file_name_test = "2025_google_stock_price_processed_test"
 data_file_ext = "csv"
 
 # Load data files
-data_train_df = pd.read_csv(data_file_location + data_file_name_train + "." + data_file_ext)
-data_validate_df = pd.read_csv(data_file_location + data_file_name_validate + "." + data_file_ext)
-data_test_df = pd.read_csv(data_file_location + data_file_name_test + "." + data_file_ext)
+data_train_df = pd.read_csv(os.path.join(data_file_location, "2025_google_stock_price_processed_train.csv"))
+data_validate_df = pd.read_csv(os.path.join(data_file_location, "2025_google_stock_price_processed_validate.csv"))
+data_test_df = pd.read_csv(os.path.join(data_file_location, "2025_google_stock_price_processed_test.csv"))
 
 
 # In[4]:
