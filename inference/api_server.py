@@ -167,6 +167,22 @@ class HealthCheck(Resource):
                 'timestamp': datetime.now().isoformat()
             }, HTTPStatus.SERVICE_UNAVAILABLE
 
+def get_latest_sequence():
+    """Retrieves and prepares the most recent sequence from latest data"""
+    # Load all processed data (train + validate + test)
+    train_df = pd.read_csv("data/processed/2025_google_stock_price_processed_train.csv")
+    validate_df = pd.read_csv("data/processed/2025_google_stock_price_processed_validate.csv") 
+    test_df = pd.read_csv("data/processed/2025_google_stock_price_processed_test.csv")
+    
+    # Combine and sort all data
+    full_df = pd.concat([train_df, validate_df, test_df]).sort_values("Date")
+    
+    # Get last SEQ_SIZE samples from combined data
+    df = full_df.tail(SEQ_SIZE)
+    
+    # Data is already scaled from preprocessing
+    return df[FEATURES].values.reshape(1, SEQ_SIZE, len(FEATURES))
+
 @ns_predict.route('/next_day')
 class NextDayPrediction(Resource):
     @api.doc(
