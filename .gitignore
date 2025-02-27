@@ -59,4 +59,7 @@ sandbox/lstm-stock-price-prediction/data/raw/
 # Ignore all files in the models directory
 sandbox/lstm-stock-price-prediction/models/
 
-
+# Ignore generated files
+**.log
+**.csv
+**.gz
