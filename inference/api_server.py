@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request
 from flask_restx import Api, Resource, fields
 import joblib
 import numpy as np
@@ -7,6 +7,10 @@ from keras.models import load_model
 from datetime import datetime, timedelta
 from http import HTTPStatus
 from typing import Dict, List, Any
+import logging
+import os
+
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 api = Api(
@@ -196,11 +200,29 @@ class NextDayPrediction(Resource):
     def get(self) -> Dict[str, Any]:
         """Get detailed stock price prediction for the next trading day"""
         global REQUEST_COUNT
+        stock_symbol = request.args.get('symbol')  # Get the stock symbol from query parameters
+        
+        if not stock_symbol:
+            api.abort(HTTPStatus.BAD_REQUEST, "Stock symbol is required")
+        
         try:
             REQUEST_COUNT += 1
-            sequence = get_latest_sequence()
-            prediction = MODEL.predict(sequence)
             
+            # Fetch historical data for the specified stock
+            historical_data = self.get_historical_data(stock_symbol)
+            if historical_data is None:
+                api.abort(HTTPStatus.BAD_REQUEST, f"No historical data found for {stock_symbol}")
+            
+            logging.info(f"Fetched historical data for {stock_symbol}: {len(historical_data)} rows")
+            
+            if len(historical_data) < SEQ_SIZE:
+                api.abort(HTTPStatus.BAD_REQUEST, "Not enough historical data for the specified stock")
+            
+            # Prepare the input sequence
+            sequence = self.prepare_input_sequence(historical_data)
+            
+            # Make prediction
+            prediction = MODEL.predict(sequence)
             future_predictions_padded = np.concatenate((prediction, np.ones((1, 5))), axis=1)
             price = SCALER.inverse_transform(future_predictions_padded)[0][0]
             
@@ -214,17 +236,42 @@ class NextDayPrediction(Resource):
                 'model_version': MODEL_VERSION
             }
         except Exception as e:
+            logging.error(f"Prediction error: {str(e)}")
             api.abort(
                 HTTPStatus.INTERNAL_SERVER_ERROR, 
                 f"Prediction error: {str(e)}"
             )
 
+    def get_historical_data(self, symbol: str) -> pd.DataFrame:
+        """Fetch historical data for the specified stock symbol"""
+        # First, try to find the stock in the specific directory structure
+        for sector in os.listdir(os.path.join("data", "processed", "specific")):
+            sector_path = os.path.join("data", "processed", "specific", sector)
+            if os.path.isdir(sector_path):
+                stock_file = os.path.join(sector_path, f"{symbol}_processed.csv")
+                if os.path.exists(stock_file):
+                    logging.info(f"Found stock data for {symbol} in {sector} sector")
+                    return pd.read_csv(stock_file)
+        
+        # If not found in specific directories, try the general processed directory
+        general_file = os.path.join("data", "processed", f"{symbol}_processed.csv")
+        if os.path.exists(general_file):
+            logging.info(f"Found stock data for {symbol} in general processed directory")
+            return pd.read_csv(general_file)
+        
+        logging.error(f"Data file not found for {symbol}")
+        return None
+
+    def prepare_input_sequence(self, data: pd.DataFrame) -> np.ndarray:
+        """Prepare the input sequence for the model based on historical data"""
+        # Assuming the last SEQ_SIZE rows are needed for prediction
+        last_sequence = data.tail(SEQ_SIZE)[FEATURES].values
+        return last_sequence.reshape(1, SEQ_SIZE, len(FEATURES))
+    
 def calculate_confidence_score(sequence: np.ndarray, prediction: np.ndarray) -> float:
     """Calculate confidence score for the prediction"""
     # Example implementation - replace with your actual confidence calculation
     return 0.85
-
-# ... rest of your helper functions ...
 
 if __name__ == '__main__':
     load_resources()
