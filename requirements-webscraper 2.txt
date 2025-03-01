@@ -1,0 +1,15 @@
+# Web scraping dependencies
+requests>=2.32.0
+beautifulsoup4>=4.13.0
+yfinance>=0.2.52
+pandas>=2.0.0
+lxml>=4.9.0
+html5lib>=1.1
+
+# Sentiment analysis dependencies
+transformers>=4.30.0
+torch>=2.0.0
+
+# Other dependencies
+numpy>=1.24.0
+tqdm>=4.65.0

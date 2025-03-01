@@ -1,1 +1,0 @@
-# Classe abstraite pour tous les modèles
