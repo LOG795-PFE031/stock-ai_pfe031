@@ -66,11 +66,10 @@ def get_latest_stock_data(days=120):  # Make sure we get enough data, use a larg
             df['Date'] = pd.to_datetime(df['Date'])
             df.set_index('Date', inplace=True)
             return df.tail(days)
-    
+        
     except Exception as e:
         logger.error(f"Error fetching stock data: {e}")
         raise
-    
     raise ValueError("Could not retrieve stock data from any source")
 
 def preprocess_data(data):
