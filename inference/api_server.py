@@ -12,7 +12,9 @@ import os
 import tensorflow as tf
 import sys
 import platform
+from prophet import Prophet
 from .rabbitmq_publisher import rabbitmq_publisher
+import json
 
 # Enable unsafe deserialization for Lambda layers
 tf.keras.config.enable_unsafe_deserialization()
@@ -90,6 +92,7 @@ GENERAL_MODEL = None
 SPECIFIC_MODELS = {}
 SPECIFIC_SCALERS = {}
 GENERAL_SCALERS = {}
+PROPHET_MODELS = {}  # Store Prophet models for each symbol
 SEQ_SIZE = 60
 FEATURES = [
     "Open", "High", "Low", "Close", "Adj Close", "Volume",
@@ -102,6 +105,54 @@ REQUEST_COUNT = 0
 class ModelNotLoadedError(Exception):
     """Raised when the model is not properly loaded"""
     pass
+
+def load_prophet_model(symbol: str) -> Prophet:
+    """Load or create a Prophet model for a given symbol"""
+    try:
+        # Check if model already exists in memory
+        if symbol in PROPHET_MODELS:
+            return PROPHET_MODELS[symbol]
+            
+        # Try to load from disk
+        prophet_model_path = os.path.join("models", "prophet", f"{symbol}_prophet.json")
+        if os.path.exists(prophet_model_path):
+            with open(prophet_model_path, 'r') as fin:
+                model_data = json.load(fin)
+            
+            # Create model with saved parameters
+            model = Prophet(**model_data['params'])
+            
+            # Add regressors
+            for regressor in model_data['regressors']:
+                model.add_regressor(regressor)
+            
+            # Convert last data back to DataFrame
+            df = pd.DataFrame(model_data['last_data'])
+            df['ds'] = pd.to_datetime(df['ds'])
+            
+            # Fit the model on the last data
+            model.fit(df)
+            
+            PROPHET_MODELS[symbol] = model
+            logger.info(f"✅ Loaded Prophet model for {symbol}")
+            return model
+            
+        # Create new model if not found
+        model = Prophet(
+            changepoint_prior_scale=0.05,
+            seasonality_prior_scale=10,
+            seasonality_mode='multiplicative',
+            daily_seasonality=True,
+            weekly_seasonality=True,
+            yearly_seasonality=True
+        )
+        PROPHET_MODELS[symbol] = model
+        logger.info(f"✅ Created new Prophet model for {symbol}")
+        return model
+        
+    except Exception as e:
+        logger.error(f"❌ Error loading Prophet model for {symbol}: {str(e)}")
+        raise ModelNotLoadedError(f"Failed to load Prophet model for {symbol}") from e
 
 def load_resources() -> None:
     """Load ML models and scalers with proper error handling"""
@@ -274,6 +325,13 @@ class NextDayPrediction(Resource):
                 'description': 'Stock symbol (e.g., AAPL, GOOGL, MSFT)',
                 'type': 'string',
                 'required': True
+            },
+            'model_type': {
+                'in': 'query',
+                'description': 'Model type to use for prediction (lstm or prophet)',
+                'type': 'string',
+                'enum': ['lstm', 'prophet'],
+                'default': 'lstm'
             }
         },
         responses={
@@ -288,158 +346,125 @@ class NextDayPrediction(Resource):
         """Get detailed stock price prediction for the next trading day"""
         global REQUEST_COUNT
         
-        # Get stock symbol from query parameters or headers
+        # Get stock symbol and model type from query parameters
         stock_symbol = request.args.get('symbol') or request.headers.get('X-Fields')
+        model_type = request.args.get('model_type', 'lstm').lower()
         
         if not stock_symbol:
             api.abort(
                 HTTPStatus.BAD_REQUEST,
                 "Stock symbol is required. Provide it as a query parameter 'symbol' or header 'X-Fields'"
             )
+            
+        if model_type not in ['lstm', 'prophet']:
+            api.abort(
+                HTTPStatus.BAD_REQUEST,
+                "Invalid model_type. Must be either 'lstm' or 'prophet'"
+            )
         
         try:
             REQUEST_COUNT += 1
-            logger.info(f"Processing prediction request for {stock_symbol}")
+            logger.info(f"Processing {model_type} prediction request for {stock_symbol}")
             
-            # Get the latest sequence
-            sequence = get_latest_sequence(stock_symbol)
-            
-            # Try to use specific model first
-            if stock_symbol in SPECIFIC_MODELS:
-                model = SPECIFIC_MODELS[stock_symbol]
-                scaler = SPECIFIC_SCALERS[stock_symbol]
-                model_type = "specific"
-                logger.info(f"Using specific model for {stock_symbol}")
-            # Fall back to general model if available
-            elif GENERAL_MODEL:
-                model = GENERAL_MODEL
-                scaler = GENERAL_SCALERS['symbol']
-                model_type = "general"
-                logger.info(f"Using general model for {stock_symbol}")
+            if model_type == 'prophet':
+                return self._get_prophet_prediction(stock_symbol)
             else:
-                api.abort(
-                    HTTPStatus.NOT_FOUND,
-                    f"No model available for {stock_symbol}"
-                )
+                return self._get_lstm_prediction(stock_symbol)
+                
+        except Exception as e:
+            logger.error(f"Prediction error for {stock_symbol}: {str(e)}")
+            api.abort(
+                HTTPStatus.INTERNAL_SERVER_ERROR, 
+                f"Prediction error: {str(e)}"
+            )
             
-            # Make prediction
-            prediction = model.predict(sequence)
-            logger.info(f"Raw prediction shape: {prediction.shape}, values: {prediction}")
+    def _get_prophet_prediction(self, stock_symbol: str) -> Dict[str, Any]:
+        """Get prediction using Prophet model"""
+        try:
+            # Load or create Prophet model
+            model = load_prophet_model(stock_symbol)
             
-            # Get the last known values
-            last_sequence = sequence[0, -1, :]  # Get the last row of the sequence
+            # Get historical data for the stock
+            stock_file = None
             
-            # Get the index of the "Close" feature
-            close_index = FEATURES.index("Close")
+            # First check in Technology sector
+            tech_file = os.path.join("data", "raw", "Technology", f"{stock_symbol}_stock_price.csv")
+            if os.path.exists(tech_file):
+                stock_file = tech_file
             
-            # Get the last known close price (still normalized)
-            last_close = last_sequence[close_index]
-            logger.info(f"Last known price (normalized): {last_close}")
-            
-            # Find the original close price from the raw data
-            # Try to find the stock in the specific directory structure
-            original_price = None
-            try:
+            # Then check in processed/specific directories
+            if stock_file is None:
                 for sector in os.listdir(os.path.join("data", "processed", "specific")):
                     sector_path = os.path.join("data", "processed", "specific", sector)
                     if os.path.isdir(sector_path):
-                        stock_file = os.path.join(sector_path, f"{stock_symbol}_stock_price.csv")
-                        if os.path.exists(stock_file):
-                            df = pd.read_csv(stock_file)
-                            if not df.empty:
-                                original_price = df["Close"].iloc[-1]
-                                logger.info(f"Found original price from specific data: {original_price}")
-                                break
-                
-                # If not found, look in general data
-                if original_price is None:
-                    stock_file = os.path.join("data", "raw", f"{stock_symbol}_stock_price.csv")
-                    if os.path.exists(stock_file):
-                        df = pd.read_csv(stock_file)
-                        if not df.empty:
-                            original_price = df["Close"].iloc[-1]
-                            logger.info(f"Found original price from raw data: {original_price}")
-            except Exception as e:
-                logger.warning(f"Could not find original price data: {str(e)}")
+                        temp_file = os.path.join(sector_path, f"{stock_symbol}_processed.csv")
+                        if os.path.exists(temp_file):
+                            stock_file = temp_file
+                            break
             
-            # Calculate the correct price using appropriate inverse scaling methods
-            predicted_normalized = prediction[0, 0]
-            logger.info(f"Predicted price (normalized): {predicted_normalized}")
+            # Finally check in raw data root
+            if stock_file is None:
+                raw_file = os.path.join("data", "raw", f"{stock_symbol}_stock_price.csv")
+                if os.path.exists(raw_file):
+                    stock_file = raw_file
             
-            # Method 1: Use the scaler directly
-            try:
-                # Create a feature vector with the same shape as what the scaler expects
-                scaler_features = ["Open", "High", "Low", "Close", "Adj Close", "Volume",
-                                 "Returns", "MA_5", "MA_20", "Volatility"]
-                
-                # Get the last known values for all features
-                last_values = {feature: last_sequence[FEATURES.index(feature)] 
-                             for feature in scaler_features if feature in FEATURES}
-                
-                # Create the vector for inverse transform
-                scaler_ready = np.zeros((1, len(scaler_features)))
-                for i, feature in enumerate(scaler_features):
-                    if feature == "Close":
-                        scaler_ready[0, i] = predicted_normalized
-                    elif feature in last_values:
-                        scaler_ready[0, i] = last_values[feature]
-                
-                # Apply inverse transform
-                denormalized = scaler.inverse_transform(scaler_ready)
-                price = denormalized[0, scaler_features.index("Close")]
-                
-                # Verify the price is reasonable
-                if original_price is not None:
-                    percent_change = abs((price - original_price) / original_price)
-                    if percent_change > 0.1:  # More than 10% change
-                        logger.warning(f"Large price change detected: {percent_change*100:.2f}% from {original_price} to {price}")
-                        if percent_change > 0.2:  # More than 20% change
-                            # Fall back to original price with small adjustment
-                            price = original_price * (1 + (predicted_normalized - 1) * 0.1)
-                            logger.info(f"Adjusted to more reasonable price: {price}")
-                
-                logger.info(f"Price after inverse transform: {price}")
-            except Exception as e:
-                logger.warning(f"Error in direct inverse transform: {str(e)}")
-                price = None
+            if stock_file is None:
+                raise FileNotFoundError(f"No data found for symbol {stock_symbol}")
             
-            # Method 2: If Method 1 fails, use the original price with a small adjustment
-            if price is None or price < 0 or (original_price is not None and abs((price - original_price) / original_price) > 0.2):
-                if original_price is not None:
-                    # Use a more conservative approach: max 5% change
-                    adjustment = (predicted_normalized - 1) * 0.05  # Convert to max 5% change
-                    price = original_price * (1 + adjustment)
-                    logger.info(f"Using conservative adjustment: Original price = {original_price}, Adjustment = {adjustment*100:.2f}%, Final price = {price}")
-                else:
-                    # Fallback to reasonable defaults if we don't have the original price
-                    default_prices = {
-                        "AAPL": 175.0,
-                        "MSFT": 400.0,
-                        "GOOGL": 140.0,
-                        "AMZN": 175.0,
-                        "META": 500.0
-                    }
-                    base_price = default_prices.get(stock_symbol, 100.0)
-                    adjustment = (predicted_normalized - 1) * 0.05
-                    price = base_price * (1 + adjustment)
-                    logger.info(f"Using default price: Base = {base_price}, Adjustment = {adjustment*100:.2f}%, Final price = {price}")
+            logger.info(f"Using data file: {stock_file}")
             
-            # Calculate confidence score
-            confidence_score = calculate_confidence_score(sequence, prediction)
+            # Load and prepare data
+            df = pd.read_csv(stock_file)
+            df['ds'] = pd.to_datetime(df['Date'] if 'Date' in df.columns else df.index)
+            df['y'] = df['Close']
+            
+            # Prepare regressors
+            regressors = []
+            if 'Volume' in df.columns:
+                df['volume'] = df['Volume'].fillna(0)
+                regressors.append('volume')
+                
+            if 'RSI' in df.columns:
+                df['rsi'] = df['RSI'].fillna(df['RSI'].mean())
+                regressors.append('rsi')
+            
+            # Make prediction
+            future = model.make_future_dataframe(periods=1)
+            
+            # Add regressors to future dataframe
+            if 'volume' in regressors:
+                # Use the last known volume for prediction
+                future['volume'] = df['volume'].iloc[-1]
+                
+            if 'rsi' in regressors:
+                # Use the last known RSI for prediction
+                future['rsi'] = df['rsi'].iloc[-1]
+            
+            forecast = model.predict(future)
+            
+            # Get the prediction for tomorrow
+            prediction = forecast.iloc[-1]['yhat']
+            
+            # Calculate confidence score based on uncertainty intervals
+            lower = forecast.iloc[-1]['yhat_lower']
+            upper = forecast.iloc[-1]['yhat_upper']
+            interval_width = upper - lower
+            last_price = df['Close'].iloc[-1]
+            confidence_score = max(0, min(1, 1 - (interval_width / (4 * last_price))))
             
             result = {
-                'prediction': float(price),
+                'prediction': float(prediction),
                 'timestamp': datetime.now() + timedelta(days=1),
                 'confidence_score': confidence_score,
                 'model_version': MODEL_VERSION,
-                'model_type': model_type
+                'model_type': 'prophet'
             }
             
-            # Publish the prediction to RabbitMQ
+            # Publish to RabbitMQ
             try:
                 publish_success = rabbitmq_publisher.publish_stock_quote(stock_symbol, result)
                 if publish_success:
-                    logger.info(f"✅ Successfully published prediction for {stock_symbol} to RabbitMQ")
+                    logger.info(f"✅ Successfully published Prophet prediction for {stock_symbol} to RabbitMQ")
                     result['rabbitmq_status'] = 'delivered'
                 else:
                     logger.warning(f"⚠️ Failed to confirm RabbitMQ delivery for {stock_symbol}")
@@ -448,16 +473,164 @@ class NextDayPrediction(Resource):
                 logger.error(f"❌ Failed to publish to RabbitMQ: {str(e)}")
                 result['rabbitmq_status'] = 'failed'
             
-            logger.info(f"Successfully generated prediction for {stock_symbol}: {result}")
             return result
             
         except Exception as e:
-            logger.error(f"Prediction error for {stock_symbol}: {str(e)}")
+            logger.error(f"Prophet prediction error for {stock_symbol}: {str(e)}")
+            raise
+            
+    def _get_lstm_prediction(self, stock_symbol: str) -> Dict[str, Any]:
+        """Get prediction using LSTM model"""
+        # Get the latest sequence
+        sequence = get_latest_sequence(stock_symbol)
+        
+        # Try to use specific model first
+        if stock_symbol in SPECIFIC_MODELS:
+            model = SPECIFIC_MODELS[stock_symbol]
+            scaler = SPECIFIC_SCALERS[stock_symbol]
+            model_type = "specific"
+            logger.info(f"Using specific model for {stock_symbol}")
+        # Fall back to general model if available
+        elif GENERAL_MODEL:
+            model = GENERAL_MODEL
+            scaler = GENERAL_SCALERS['symbol']
+            model_type = "general"
+            logger.info(f"Using general model for {stock_symbol}")
+        else:
             api.abort(
-                HTTPStatus.INTERNAL_SERVER_ERROR, 
-                f"Prediction error: {str(e)}"
+                HTTPStatus.NOT_FOUND,
+                f"No model available for {stock_symbol}"
             )
-    
+        
+        # Make prediction
+        prediction = model.predict(sequence)
+        logger.info(f"Raw prediction shape: {prediction.shape}, values: {prediction}")
+        
+        # Get the last known values
+        last_sequence = sequence[0, -1, :]  # Get the last row of the sequence
+        
+        # Get the index of the "Close" feature
+        close_index = FEATURES.index("Close")
+        
+        # Get the last known close price (still normalized)
+        last_close = last_sequence[close_index]
+        logger.info(f"Last known price (normalized): {last_close}")
+        
+        # Find the original close price from the raw data
+        # Try to find the stock in the specific directory structure
+        original_price = None
+        try:
+            for sector in os.listdir(os.path.join("data", "processed", "specific")):
+                sector_path = os.path.join("data", "processed", "specific", sector)
+                if os.path.isdir(sector_path):
+                    stock_file = os.path.join(sector_path, f"{stock_symbol}_stock_price.csv")
+                    if os.path.exists(stock_file):
+                        df = pd.read_csv(stock_file)
+                        if not df.empty:
+                            original_price = df["Close"].iloc[-1]
+                            logger.info(f"Found original price from specific data: {original_price}")
+                            break
+            
+            # If not found, look in general data
+            if original_price is None:
+                stock_file = os.path.join("data", "raw", f"{stock_symbol}_stock_price.csv")
+                if os.path.exists(stock_file):
+                    df = pd.read_csv(stock_file)
+                    if not df.empty:
+                        original_price = df["Close"].iloc[-1]
+                        logger.info(f"Found original price from raw data: {original_price}")
+        except Exception as e:
+            logger.warning(f"Could not find original price data: {str(e)}")
+        
+        # Calculate the correct price using appropriate inverse scaling methods
+        predicted_normalized = prediction[0, 0]
+        logger.info(f"Predicted price (normalized): {predicted_normalized}")
+        
+        # Method 1: Use the scaler directly
+        try:
+            # Create a feature vector with the same shape as what the scaler expects
+            scaler_features = ["Open", "High", "Low", "Close", "Adj Close", "Volume",
+                             "Returns", "MA_5", "MA_20", "Volatility"]
+            
+            # Get the last known values for all features
+            last_values = {feature: last_sequence[FEATURES.index(feature)] 
+                         for feature in scaler_features if feature in FEATURES}
+            
+            # Create the vector for inverse transform
+            scaler_ready = np.zeros((1, len(scaler_features)))
+            for i, feature in enumerate(scaler_features):
+                if feature == "Close":
+                    scaler_ready[0, i] = predicted_normalized
+                elif feature in last_values:
+                    scaler_ready[0, i] = last_values[feature]
+            
+            # Apply inverse transform
+            denormalized = scaler.inverse_transform(scaler_ready)
+            price = denormalized[0, scaler_features.index("Close")]
+            
+            # Verify the price is reasonable
+            if original_price is not None:
+                percent_change = abs((price - original_price) / original_price)
+                if percent_change > 0.1:  # More than 10% change
+                    logger.warning(f"Large price change detected: {percent_change*100:.2f}% from {original_price} to {price}")
+                    if percent_change > 0.2:  # More than 20% change
+                        # Fall back to original price with small adjustment
+                        price = original_price * (1 + (predicted_normalized - 1) * 0.1)
+                        logger.info(f"Adjusted to more reasonable price: {price}")
+            
+            logger.info(f"Price after inverse transform: {price}")
+        except Exception as e:
+            logger.warning(f"Error in direct inverse transform: {str(e)}")
+            price = None
+        
+        # Method 2: If Method 1 fails, use the original price with a small adjustment
+        if price is None or price < 0 or (original_price is not None and abs((price - original_price) / original_price) > 0.2):
+            if original_price is not None:
+                # Use a more conservative approach: max 5% change
+                adjustment = (predicted_normalized - 1) * 0.05  # Convert to max 5% change
+                price = original_price * (1 + adjustment)
+                logger.info(f"Using conservative adjustment: Original price = {original_price}, Adjustment = {adjustment*100:.2f}%, Final price = {price}")
+            else:
+                # Fallback to reasonable defaults if we don't have the original price
+                default_prices = {
+                    "AAPL": 175.0,
+                    "MSFT": 400.0,
+                    "GOOGL": 140.0,
+                    "AMZN": 175.0,
+                    "META": 500.0
+                }
+                base_price = default_prices.get(stock_symbol, 100.0)
+                adjustment = (predicted_normalized - 1) * 0.05
+                price = base_price * (1 + adjustment)
+                logger.info(f"Using default price: Base = {base_price}, Adjustment = {adjustment*100:.2f}%, Final price = {price}")
+        
+        # Calculate confidence score
+        confidence_score = calculate_confidence_score(sequence, prediction)
+        
+        result = {
+            'prediction': float(price),
+            'timestamp': datetime.now() + timedelta(days=1),
+            'confidence_score': confidence_score,
+            'model_version': MODEL_VERSION,
+            'model_type': f'lstm_{model_type}'
+        }
+        
+        # Publish the prediction to RabbitMQ
+        try:
+            publish_success = rabbitmq_publisher.publish_stock_quote(stock_symbol, result)
+            if publish_success:
+                logger.info(f"✅ Successfully published prediction for {stock_symbol} to RabbitMQ")
+                result['rabbitmq_status'] = 'delivered'
+            else:
+                logger.warning(f"⚠️ Failed to confirm RabbitMQ delivery for {stock_symbol}")
+                result['rabbitmq_status'] = 'unconfirmed'
+        except Exception as e:
+            logger.error(f"❌ Failed to publish to RabbitMQ: {str(e)}")
+            result['rabbitmq_status'] = 'failed'
+        
+        logger.info(f"Successfully generated prediction for {stock_symbol}: {result}")
+        return result
+
 def calculate_confidence_score(sequence: np.ndarray, prediction: np.ndarray) -> float:
     """Calculate confidence score for the prediction"""
     # Example implementation - replace with your actual confidence calculation
