@@ -42,7 +42,7 @@ def main():
     try:
         if gpu_available:
             logger.info("\nUsing GPU-optimized trainer")
-            from gpu_optimized_trainer_nasdaq import GPUOptimizedTrainerNASDAQ
+            from training.GPUOptimizedTrainerNASDAQ import GPUOptimizedTrainerNASDAQ
             trainer = GPUOptimizedTrainerNASDAQ(
                 processed_dir="data/processed",
                 models_dir="models",
