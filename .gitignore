@@ -36,6 +36,7 @@ build/
 # Logs and databases
 *.log
 *.sqlite3
+logs/
 
 # OS generated files
 .DS_Store
@@ -45,6 +46,7 @@ build/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
 # Ignore all files in the stock_data directory
 stock_data/
 
@@ -59,4 +61,13 @@ sandbox/lstm-stock-price-prediction/data/raw/
 # Ignore all files in the models directory
 sandbox/lstm-stock-price-prediction/models/
 
+# Ignore generated files
+**.log
+**.csv
+**.gz
 
+data/interim/
+data/processed/
+data/raw/
+
+models/
