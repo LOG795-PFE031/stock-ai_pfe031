@@ -63,3 +63,9 @@ sandbox/lstm-stock-price-prediction/models/
 **.log
 **.csv
 **.gz
+
+data/interim/
+data/processed/
+data/raw/
+
+models/

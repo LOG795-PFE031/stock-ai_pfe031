@@ -1,1 +1,0 @@
- # Factory pour instancier des modèles
