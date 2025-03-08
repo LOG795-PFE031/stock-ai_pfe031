@@ -97,6 +97,7 @@ class NewsPublisher:
             for attempt in range(max_publish_retries):
                 try:
                     if not self.connection or self.connection.is_closed or not self.channel or self.channel.is_closed:
+                        logger.info(f"Connection closed, reconnecting...")
                         if not self.connect():
                             raise Exception("Failed to establish connection")
 
@@ -111,7 +112,7 @@ class NewsPublisher:
                             "Id": message_id,
                             "Title": title,
                             "Symbol": symbol,
-                            "Content": content,
+                            "Content": content[:1000] + "..." if len(content) > 1000 else content,  # Truncate long content for logging
                             "PublishedAt": (published_at.isoformat() if published_at 
                                            else datetime.utcnow().isoformat()),
                             "Opinion": opinion
@@ -122,6 +123,19 @@ class NewsPublisher:
                             "MT-Message-Type": "AddNews"
                         }
                     }
+
+                    # Log the message format before publishing (truncated for readability)
+                    log_message = {k: v for k, v in message.items() if k != "message"}
+                    log_message["message"] = {
+                        "Id": message["message"]["Id"],
+                        "Title": message["message"]["Title"],
+                        "Symbol": message["message"]["Symbol"],
+                        "PublishedAt": message["message"]["PublishedAt"],
+                        "Opinion": message["message"]["Opinion"],
+                        "Content": message["message"]["Content"][:100] + "..." if len(message["message"]["Content"]) > 100 else message["message"]["Content"]
+                    }
+                    logger.info(f"Publishing message: {json.dumps(log_message)}")
+                    logger.info(f"Publishing to exchange: {self.exchange}, type: {self.exchange_type}")
 
                     message_body = json.dumps(message).encode('utf-8')
                     properties = pika.BasicProperties(
@@ -138,6 +152,19 @@ class NewsPublisher:
                         }
                     )
 
+                    # Check if exchange exists and has bindings
+                    try:
+                        exchange_info = self.channel.exchange_declare(
+                            exchange=self.exchange,
+                            exchange_type=self.exchange_type,
+                            durable=True,
+                            passive=True  # Just check if it exists
+                        )
+                        logger.info(f"Exchange {self.exchange} exists")
+                    except Exception as e:
+                        logger.warning(f"Exchange check failed: {str(e)}")
+                    
+                    # Try to publish with confirmation
                     self.channel.basic_publish(
                         exchange=self.exchange,
                         routing_key='',  # Fanout exchange doesn't need routing key
@@ -149,7 +176,7 @@ class NewsPublisher:
                     logger.info(f"Published news for {symbol}: {title}")
                     return True
                 except pika.exceptions.UnroutableError:
-                    logger.error(f"Message for {symbol} returned: No queue bound to exchange")
+                    logger.error(f"Message for {symbol} returned: No queue bound to exchange {self.exchange}")
                     return False
                 except Exception as e:
                     if attempt == max_publish_retries - 1:
