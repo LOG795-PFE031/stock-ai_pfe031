@@ -32,5 +32,4 @@ beautifulsoup4==4.12.3
 aiohttp==3.9.5
 lxml==4.9.3
 asyncio==3.4.3
-uuid==1.30
-
+uuid==1.30 
