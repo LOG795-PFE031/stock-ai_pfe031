@@ -15,7 +15,7 @@ import tensorflow as tf
 import numpy as np
 import pandas as pd
 from tensorflow.keras.models import Sequential, load_model, Model
-from tensorflow.keras.layers import LSTM, Dense, Dropout, Input, Concatenate, Embedding
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Input, Concatenate, Embedding, BatchNormalization
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 import joblib
 from typing import Dict, List, Tuple, Optional, Union
@@ -38,12 +38,15 @@ class Config:
     """Global configuration settings"""
     FAST_MODE = True
     MAX_SYMBOLS = 10
-    BATCH_SIZE = 128
+    BATCH_SIZE = 1024  # Increased from 512 for better GPU memory utilization
     SEQUENCE_LENGTH = 60
     EPOCHS = 50
     SAMPLE_FRACTION = 1.0
-    FORCE_CPU_LSTM = True
+    FORCE_CPU_LSTM = False
     DEFAULT_NASDAQ_SYMBOLS = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'NVDA', 'ADBE', 'CSCO', 'INTC']
+    # Added memory configuration
+    GPU_MEMORY_LIMIT = 14336  # 14GB to leave some headroom
+    PREFETCH_BUFFER_SIZE = 8  # Increased from 4 for better data pipeline throughput
 
 class NASDAQModelTrainer:
     def __init__(self, processed_dir="data/processed", models_dir="models", 
@@ -114,16 +117,25 @@ class NASDAQModelTrainer:
         self.logger.info(f"Found {len(gpus)} GPU(s): {gpus}")
         
         try:
-            # Configure memory growth
+            # Enable memory growth to avoid allocating all memory at once
             for gpu in gpus:
                 tf.config.experimental.set_memory_growth(gpu, True)
             
-            # Enable mixed precision training
-            policy = tf.keras.mixed_precision.Policy('mixed_float16')
-            tf.keras.mixed_precision.set_global_policy(policy)
+            # Set TensorFlow memory allocation configuration
+            tf.config.set_logical_device_configuration(
+                gpus[0],
+                [tf.config.LogicalDeviceConfiguration(memory_limit=self.config.GPU_MEMORY_LIMIT)]
+            )
             
-            # Additional optimizations
+            # Enable mixed precision training for better performance
+            tf.keras.mixed_precision.set_global_policy('mixed_float16')
+            
+            # Enable XLA optimization
             tf.config.optimizer.set_jit(True)
+            
+            # Optimize thread settings
+            tf.config.threading.set_inter_op_parallelism_threads(4)
+            tf.config.threading.set_intra_op_parallelism_threads(8)
             
             # Print GPU info
             self.logger.info("\nGPU Information:")
@@ -266,58 +278,160 @@ class NASDAQModelTrainer:
         }, target_array
     
     def build_general_model(self, input_shape: Tuple, num_symbols: int, num_sectors: int) -> Model:
-        """Build the general model for all stocks"""
-        sequence_input = Input(shape=input_shape, name='sequence_input')
+        """Build the general model with optimized configuration and strong regularization"""
+        # Input layers with explicit dtype
+        sequence_input = Input(shape=input_shape, name='sequence_input', dtype=tf.float32)
         
-        symbol_input = Input(shape=(1,), name='symbol_input')
-        symbol_embedding = Embedding(num_symbols, 10)(symbol_input)
+        # Add BatchNormalization at input
+        x = BatchNormalization(dtype=tf.float32)(sequence_input)
+        
+        # First LSTM layer with reduced units and strong regularization
+        x = LSTM(64, return_sequences=True,  # Reduced from 100
+                kernel_regularizer=tf.keras.regularizers.l2(1e-3),
+                recurrent_regularizer=tf.keras.regularizers.l2(1e-3),
+                activity_regularizer=tf.keras.regularizers.l1(1e-4),
+                kernel_initializer='glorot_uniform',
+                recurrent_initializer='orthogonal',
+                dtype=tf.float32)(x)
+        x = BatchNormalization(dtype=tf.float32)(x)
+        x = Dropout(0.4)(x)  # Increased from 0.2
+        
+        # Second LSTM layer with reduced units and strong regularization
+        x = LSTM(32,  # Reduced from 50
+                kernel_regularizer=tf.keras.regularizers.l2(1e-3),
+                recurrent_regularizer=tf.keras.regularizers.l2(1e-3),
+                activity_regularizer=tf.keras.regularizers.l1(1e-4),
+                kernel_initializer='glorot_uniform',
+                recurrent_initializer='orthogonal',
+                dtype=tf.float32)(x)
+        x = BatchNormalization(dtype=tf.float32)(x)
+        x = Dropout(0.4)(x)  # Increased from 0.2
+        
+        # Symbol embedding with regularization
+        symbol_input = Input(shape=(1,), name='symbol_input', dtype=tf.int32)
+        symbol_embedding = Embedding(num_symbols, 8,  # Reduced embedding dim from 10 to 8
+                                  embeddings_regularizer=tf.keras.regularizers.l2(1e-3))(symbol_input)
         symbol_embedding = tf.keras.layers.Lambda(
             lambda x: tf.squeeze(x, axis=1),
-            output_shape=(10,)
+            output_shape=(8,)  # Updated to match new embedding dim
         )(symbol_embedding)
+        symbol_embedding = Dropout(0.3)(symbol_embedding)
         
-        sector_input = Input(shape=(1,), name='sector_input')
-        sector_embedding = Embedding(num_sectors, 5)(sector_input)
+        # Sector embedding with regularization
+        sector_input = Input(shape=(1,), name='sector_input', dtype=tf.int32)
+        sector_embedding = Embedding(num_sectors, 4,  # Reduced embedding dim from 5 to 4
+                                  embeddings_regularizer=tf.keras.regularizers.l2(1e-3))(sector_input)
         sector_embedding = tf.keras.layers.Lambda(
             lambda x: tf.squeeze(x, axis=1),
-            output_shape=(5,)
+            output_shape=(4,)  # Updated to match new embedding dim
         )(sector_embedding)
+        sector_embedding = Dropout(0.3)(sector_embedding)
         
-        lstm1 = LSTM(100, return_sequences=True)(sequence_input)
-        dropout1 = Dropout(0.2)(lstm1)
-        lstm2 = LSTM(50)(dropout1)
-        dropout2 = Dropout(0.2)(lstm2)
+        # Combine features with BatchNormalization
+        combined = Concatenate()([x, symbol_embedding, sector_embedding])
+        combined = BatchNormalization(dtype=tf.float32)(combined)
         
-        combined = Concatenate()([dropout2, symbol_embedding, sector_embedding])
+        # Dense layers with reduced capacity and strong regularization
+        x = Dense(32, activation='relu',  # Reduced from 50
+                kernel_regularizer=tf.keras.regularizers.l2(1e-3),
+                activity_regularizer=tf.keras.regularizers.l1(1e-4),
+                dtype=tf.float32)(combined)
+        x = BatchNormalization(dtype=tf.float32)(x)
+        x = Dropout(0.3)(x)
         
-        dense1 = Dense(50, activation='relu')(combined)
-        dense2 = Dense(25, activation='relu')(dense1)
-        output = Dense(1)(dense2)
+        x = Dense(16, activation='relu',  # Reduced from 25
+                kernel_regularizer=tf.keras.regularizers.l2(1e-3),
+                activity_regularizer=tf.keras.regularizers.l1(1e-4),
+                dtype=tf.float32)(x)
+        x = BatchNormalization(dtype=tf.float32)(x)
+        x = Dropout(0.2)(x)
+        
+        # Output layer
+        outputs = Dense(1, dtype=tf.float32)(x)
         
         model = Model(
             inputs=[sequence_input, symbol_input, sector_input],
-            outputs=output
+            outputs=outputs,
+            name='general_stock_model'
         )
         
-        model.compile(optimizer='adam', loss='mse')
+        # Use a lower initial learning rate
+        optimizer = tf.keras.optimizers.Adam(
+            learning_rate=0.0005,  # Reduced from 0.001
+            clipnorm=1.0  # Add gradient clipping
+        )
+        
+        # Use Huber loss instead of MSE for better robustness
+        model.compile(
+            optimizer=optimizer,
+            loss=tf.keras.losses.Huber(delta=1.0),
+            metrics=['mae', 'mape']
+        )
         
         return model
     
     def build_specific_model(self, input_shape: Tuple) -> Model:
-        """Build a stock-specific model using functional API for better shape handling"""
-        # Use Input layer to explicitly specify input shape
-        inputs = Input(shape=input_shape, name='sequence_input')
+        """Build a stock-specific model using functional API with enhanced regularization"""
+        # Ensure input data type is float32
+        inputs = Input(shape=input_shape, name='sequence_input', dtype=tf.float32)
         
-        x = LSTM(100, return_sequences=True)(inputs)
-        x = Dropout(0.2)(x)
-        x = LSTM(50)(x)
-        x = Dropout(0.2)(x)
-        x = Dense(50, activation='relu')(x)
-        x = Dense(25, activation='relu')(x)
-        outputs = Dense(1)(x)
+        # Add BatchNormalization at input with higher momentum
+        x = BatchNormalization(momentum=0.99, dtype=tf.float32)(inputs)
+        
+        # First LSTM layer with reduced complexity
+        x = LSTM(24, return_sequences=True,  # Reduced from 32
+                kernel_regularizer=tf.keras.regularizers.l2(1e-5),
+                recurrent_regularizer=tf.keras.regularizers.l2(1e-5),
+                kernel_initializer='glorot_uniform',
+                recurrent_initializer='orthogonal',
+                dtype=tf.float32)(x)
+        x = BatchNormalization(momentum=0.99, dtype=tf.float32)(x)
+        x = Dropout(0.2)(x)  # Reduced from 0.3
+        
+        # Second LSTM layer
+        x = LSTM(12,  # Reduced from 16
+                kernel_regularizer=tf.keras.regularizers.l2(1e-5),
+                recurrent_regularizer=tf.keras.regularizers.l2(1e-5),
+                kernel_initializer='glorot_uniform',
+                recurrent_initializer='orthogonal',
+                dtype=tf.float32)(x)
+        x = BatchNormalization(momentum=0.99, dtype=tf.float32)(x)
+        x = Dropout(0.2)(x)  # Reduced from 0.3
+        
+        # Dense layers with ELU activation for better gradient flow
+        x = Dense(12, activation='elu',  # Changed from selu to elu
+                kernel_regularizer=tf.keras.regularizers.l2(1e-5),
+                kernel_initializer='glorot_uniform',
+                dtype=tf.float32)(x)
+        x = BatchNormalization(momentum=0.99, dtype=tf.float32)(x)
+        x = Dropout(0.1)(x)  # Reduced from 0.2
+        
+        x = Dense(6, activation='elu',  # Changed from selu to elu
+                kernel_regularizer=tf.keras.regularizers.l2(1e-5),
+                kernel_initializer='glorot_uniform',
+                dtype=tf.float32)(x)
+        x = BatchNormalization(momentum=0.99, dtype=tf.float32)(x)
+        x = Dropout(0.1)(x)  # Reduced from 0.2
+        
+        outputs = Dense(1, activation='linear', dtype=tf.float32)(x)
         
         model = Model(inputs=inputs, outputs=outputs, name='specific_stock_model')
-        model.compile(optimizer='adam', loss='mse')
+        
+        # Use a higher initial learning rate with gradient clipping
+        optimizer = tf.keras.optimizers.Adam(
+            learning_rate=0.001,  # Increased from 0.0005
+            clipnorm=0.5,
+            beta_1=0.9,
+            beta_2=0.999,
+            epsilon=1e-07
+        )
+        
+        # Use MSE loss for better stability in early training
+        model.compile(
+            optimizer=optimizer,
+            loss='mse',  # Changed from Huber loss
+            metrics=['mae', tf.keras.metrics.RootMeanSquaredError()]
+        )
         
         self.logger.info(f"Built specific model with input shape {input_shape}")
         model.summary(print_fn=self.logger.info)
@@ -325,7 +439,7 @@ class NASDAQModelTrainer:
         return model
     
     def train_general_model(self, sample_fraction=1.0) -> Model:
-        """Train the general model on all stocks"""
+        """Train the general model with optimized settings"""
         self.logger.info(f"=== TRAINING NASDAQ GENERAL MODEL (using {sample_fraction*100}% of data) ===")
         
         # Load the unified dataset
@@ -362,26 +476,46 @@ class NASDAQModelTrainer:
         
         model = self.build_general_model(input_shape, num_symbols, num_sectors)
         
-        # Callbacks
+        # Add data prefetching for better GPU utilization
+        train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))\
+            .batch(self.batch_size)\
+            .prefetch(tf.data.AUTOTUNE)
+            
+        val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))\
+            .batch(self.batch_size)\
+            .prefetch(tf.data.AUTOTUNE)
+        
+        # Add callbacks for better training
         callbacks = [
             EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
             ModelCheckpoint(
-                os.path.join(self.models_dir, "general", "general_model.keras"),
+                os.path.join(self.models_dir, "general", "general_model.weights.h5"),  # Changed file extension
                 monitor='val_loss',
-                save_best_only=True
+                save_best_only=True,
+                save_weights_only=True
+            ),
+            tf.keras.callbacks.ReduceLROnPlateau(
+                monitor='val_loss',
+                factor=0.5,
+                patience=5,
+                min_lr=0.0001
             )
         ]
         
         if self.has_gpu:
             callbacks.append(self.gpu_monitor)
         
-        # Train model
+        # Recompile model without jit_compile
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+            loss='mse'
+        )
+        
+        # Train model with optimized settings
         history = model.fit(
-            X_train,
-            y_train,
-            validation_data=(X_val, y_val),
+            train_dataset,
+            validation_data=val_dataset,
             epochs=self.epochs,
-            batch_size=self.batch_size,
             callbacks=callbacks,
             verbose=1
         )
@@ -399,7 +533,7 @@ class NASDAQModelTrainer:
         return model
     
     def train_specific_model(self, symbol: str, use_transfer_learning: bool = True) -> Optional[Model]:
-        """Train a stock-specific model"""
+        """Train a stock-specific model with enhanced training configuration"""
         self.logger.info(f"=== TRAINING NASDAQ SPECIFIC MODEL FOR {symbol} ===")
         
         # Find the stock's data file
@@ -411,7 +545,7 @@ class NASDAQModelTrainer:
         # Load and prepare data
         data = pd.read_csv(stock_file)
         
-        # Split data
+        # Split data with validation split
         train_data = data[data['Split'] == 'train']
         val_data = data[data['Split'] == 'val']
         
@@ -419,65 +553,94 @@ class NASDAQModelTrainer:
         X_train, y_train = self.create_sequences(train_data, self.target)
         X_val, y_val = self.create_sequences(val_data, self.target)
         
+        # Convert data to float32
+        X_train = X_train.astype(np.float32)
+        y_train = y_train.astype(np.float32)
+        X_val = X_val.astype(np.float32)
+        y_val = y_val.astype(np.float32)
+        
         # Build or load model
         input_shape = (self.sequence_length, len(self.features))
+        model = self.build_specific_model(input_shape)
         
-        if use_transfer_learning:
-            general_model_path = os.path.join(self.models_dir, "general", "general_model.keras")
-            if os.path.exists(general_model_path):
-                try:
-                    general_model = load_model(general_model_path, safe_mode=False)
-                    model = self.build_specific_model(input_shape)
-                    
-                    # Copy weights from general model's LSTM layers
-                    for i, layer in enumerate(general_model.layers):
-                        if isinstance(layer, LSTM):
-                            if i < len(model.layers):
-                                if isinstance(model.layers[i], LSTM):
-                                    model.layers[i].set_weights(layer.get_weights())
-                except Exception as e:
-                    self.logger.error(f"Error in transfer learning: {e}")
-                    model = self.build_specific_model(input_shape)
-            else:
-                model = self.build_specific_model(input_shape)
-        else:
-            model = self.build_specific_model(input_shape)
+        # Create optimized tf.data.Dataset with larger shuffle buffer
+        train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))\
+            .shuffle(buffer_size=100000)\
+            .batch(self.batch_size)\
+            .prefetch(tf.data.AUTOTUNE)
         
-        # Callbacks
+        val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))\
+            .batch(self.batch_size)\
+            .prefetch(tf.data.AUTOTUNE)
+        
+        # Enhanced callbacks with modified configuration
         model_dir = os.path.join(self.models_dir, "specific", symbol)
         os.makedirs(model_dir, exist_ok=True)
         
         callbacks = [
-            EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
-            ModelCheckpoint(
-                os.path.join(model_dir, f"{symbol}_model.keras"),
+            EarlyStopping(
                 monitor='val_loss',
-                save_best_only=True
+                patience=5,
+                restore_best_weights=True,
+                min_delta=1e-4,
+                mode='min'
+            ),
+            ModelCheckpoint(
+                os.path.join(model_dir, f"{symbol}_model.weights.h5"),
+                monitor='val_loss',
+                save_best_only=True,
+                save_weights_only=True,
+                mode='min'
+            ),
+            tf.keras.callbacks.ReduceLROnPlateau(
+                monitor='val_loss',
+                factor=0.2,
+                patience=3,
+                min_lr=1e-6,
+                min_delta=1e-4,
+                mode='min',
+                verbose=1
+            ),
+            tf.keras.callbacks.LearningRateScheduler(
+                lambda epoch, lr: lr * 0.95 if epoch > 10 else lr,
+                verbose=1
             )
         ]
         
         if self.has_gpu:
             callbacks.append(self.gpu_monitor)
         
-        # Train model
+        # Train model with modified settings
         history = model.fit(
-            X_train,
-            y_train,
-            validation_data=(X_val, y_val),
+            train_dataset,
+            validation_data=val_dataset,
             epochs=self.epochs,
-            batch_size=self.batch_size,
             callbacks=callbacks,
             verbose=1
         )
         
-        # Plot training history
-        plt.figure(figsize=(12, 6))
+        # Plot enhanced training history
+        plt.figure(figsize=(15, 5))
+        
+        # Plot loss
+        plt.subplot(1, 2, 1)
         plt.plot(history.history['loss'], label='Training Loss')
         plt.plot(history.history['val_loss'], label='Validation Loss')
         plt.title(f'NASDAQ {symbol} Model Training History')
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
         plt.legend()
+        
+        # Plot metrics
+        plt.subplot(1, 2, 2)
+        plt.plot(history.history['mae'], label='Training MAE')
+        plt.plot(history.history['val_mae'], label='Validation MAE')
+        plt.title(f'NASDAQ {symbol} Model Metrics')
+        plt.xlabel('Epoch')
+        plt.ylabel('MAE')
+        plt.legend()
+        
+        plt.tight_layout()
         plt.savefig(os.path.join(model_dir, f"{symbol}_training_history.png"))
         
         return model
@@ -486,15 +649,16 @@ class NASDAQModelTrainer:
         """Train all models (general and specific) with better error handling"""
         start_time = datetime.now()
         
-        if symbols and len(symbols) == 1:
-            # If only one symbol is specified, skip general model training
-            self.logger.info(f"Training specific model for {symbols[0]}")
-            try:
-                self.train_specific_model(symbols[0], use_transfer_learning)
-            except Exception as e:
-                self.logger.error(f"Error training model for {symbols[0]}: {e}")
+        if symbols and len(symbols) > 0:
+            # If specific symbols are provided, only train those models
+            self.logger.info(f"Training specific models for symbols: {symbols}")
+            for symbol in symbols:
+                try:
+                    self.train_specific_model(symbol, use_transfer_learning)
+                except Exception as e:
+                    self.logger.error(f"Error training model for {symbol}: {e}")
         else:
-            # Train general model first if multiple symbols or none specified
+            # Train general model first if no specific symbols provided
             try:
                 self.train_general_model()
             except Exception as e:
@@ -546,16 +710,23 @@ def main():
         epochs=Config.EPOCHS
     )
     
-    if args.train_specific and args.symbols:
-        # If specific symbols are provided, only train those
+    if args.train_specific:
+        # Only train specific models
+        symbols = args.symbols if args.symbols else (
+            Config.DEFAULT_NASDAQ_SYMBOLS if Config.FAST_MODE 
+            else trainer.get_available_symbols()
+        )
         trainer.train_all_models(
-            symbols=args.symbols,
+            symbols=symbols,
             use_transfer_learning=not args.no_transfer
         )
+    elif args.train_general:
+        # Only train general model
+        trainer.train_general_model()
     else:
-        # Default behavior
+        # Default behavior - train both with all symbols
         trainer.train_all_models(
-            symbols=Config.DEFAULT_NASDAQ_SYMBOLS if Config.FAST_MODE else None,
+            symbols=None,
             use_transfer_learning=not args.no_transfer
         )
 

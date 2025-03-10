@@ -3,10 +3,10 @@ from flask_restx import Api, Resource, fields
 import joblib
 import numpy as np
 import pandas as pd
-from keras.models import load_model
+from keras.models import load_model, Model
 from datetime import datetime, timedelta
 from http import HTTPStatus
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
 import logging
 import os
 import tensorflow as tf
@@ -15,22 +15,30 @@ import platform
 from prophet import Prophet
 from .rabbitmq_publisher import rabbitmq_publisher
 import json
+from keras.layers import LSTM, Dropout, Dense, Input
 
 # Enable unsafe deserialization for Lambda layers
 tf.keras.config.enable_unsafe_deserialization()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
+
+# Reduce TensorFlow logging verbosity
+tf.get_logger().setLevel(logging.ERROR)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Show only errors
 
 # Version information
 PYTHON_VERSION = platform.python_version()
 TF_VERSION = tf.__version__
 KERAS_VERSION = tf.keras.__version__
 
-logger.info(f"Python version: {PYTHON_VERSION}")
-logger.info(f"TensorFlow version: {TF_VERSION}")
-logger.info(f"Keras version: {KERAS_VERSION}")
+logger.info(f"Starting Stock Price Prediction API Server")
+logger.info(f"Python {PYTHON_VERSION} | TensorFlow {TF_VERSION} | Keras {KERAS_VERSION}")
 
 app = Flask(__name__)
 api = Api(
@@ -159,45 +167,106 @@ def load_resources() -> None:
     global GENERAL_MODEL, SPECIFIC_MODELS, SPECIFIC_SCALERS, GENERAL_SCALERS
     
     try:
-        # Load general model and scalers
-        general_model_path = "models/general/general_model.keras"
-        if os.path.exists(general_model_path):
-            try:
-                GENERAL_MODEL = load_model(general_model_path, compile=False)
-                GENERAL_SCALERS['sector'] = joblib.load("models/general/sector_encoder.gz")
-                GENERAL_SCALERS['symbol'] = joblib.load("models/general/symbol_encoder.gz")
-                logger.info("✅ General model and scalers loaded successfully")
-            except Exception as e:
-                logger.error(f"❌ Error loading general model: {str(e)}")
-                logger.warning("Continuing with specific models only")
-        
         # Load specific models and scalers
         specific_dir = "models/specific"
-        if os.path.exists(specific_dir):
-            loaded_count = 0
-            for symbol_dir in os.listdir(specific_dir):
-                symbol_path = os.path.join(specific_dir, symbol_dir)
-                if os.path.isdir(symbol_path):
-                    model_path = os.path.join(symbol_path, f"{symbol_dir}_model.keras")
-                    scaler_path = os.path.join(symbol_path, f"{symbol_dir}_scaler.gz")
-                    
-                    if os.path.exists(model_path) and os.path.exists(scaler_path):
-                        try:
-                            SPECIFIC_MODELS[symbol_dir] = load_model(model_path, compile=False)
-                            SPECIFIC_SCALERS[symbol_dir] = joblib.load(scaler_path)
-                            loaded_count += 1
-                        except Exception as e:
-                            logger.error(f"❌ Error loading model for {symbol_dir}: {str(e)}")
-                            continue
+        if not os.path.exists(specific_dir):
+            raise ModelNotLoadedError(f"Specific models directory {specific_dir} not found")
             
-            logger.info(f"✅ Loaded {loaded_count} specific models and scalers")
+        loaded_count = 0
+        skipped_count = 0
+        error_count = 0
+        loaded_symbols = []
+        skipped_symbols = []
+        error_symbols = []
         
-        if not GENERAL_MODEL and not SPECIFIC_MODELS:
+        # Get all symbol directories
+        symbol_dirs = [
+            d for d in os.listdir(specific_dir) 
+            if os.path.isdir(os.path.join(specific_dir, d))
+        ]
+        
+        logger.info(f"Loading models for {len(symbol_dirs)} symbols...")
+        
+        for symbol in symbol_dirs:
+            try:
+                symbol_dir = os.path.join(specific_dir, symbol)
+                model_keras_path = os.path.join(symbol_dir, f"{symbol}_model.keras")
+                model_weights_path = os.path.join(symbol_dir, f"{symbol}_model.weights.h5")
+                scaler_path = os.path.join(symbol_dir, f"{symbol}_scaler.gz")
+                metadata_path = os.path.join(symbol_dir, f"{symbol}_scaler_metadata.json")
+                
+                # Skip if we don't have both scaler and metadata
+                if not (os.path.exists(scaler_path) and os.path.exists(metadata_path)):
+                    skipped_count += 1
+                    skipped_symbols.append(symbol)
+                    continue
+                
+                # Try to load the model
+                if os.path.exists(model_keras_path):
+                    model = load_model(model_keras_path)
+                elif os.path.exists(model_weights_path):
+                    input_shape = (SEQ_SIZE, len(FEATURES))
+                    model = build_specific_model(input_shape)
+                    model.load_weights(model_weights_path)
+                else:
+                    skipped_count += 1
+                    skipped_symbols.append(symbol)
+                    continue
+                
+                # Load scaler and metadata
+                scaler = joblib.load(scaler_path)
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                
+                SPECIFIC_MODELS[symbol] = model
+                SPECIFIC_SCALERS[symbol] = scaler
+                loaded_count += 1
+                loaded_symbols.append(symbol)
+                
+            except Exception as e:
+                error_count += 1
+                error_symbols.append(symbol)
+                logger.error(f"❌ Error loading model for {symbol}: {str(e)}")
+                continue
+        
+        # Print summary
+        logger.info(f"\n=== Model Loading Summary ===")
+        logger.info(f"✅ Successfully loaded {loaded_count} models")
+        if skipped_count > 0:
+            logger.info(f"⚠️ Skipped {skipped_count} models: {', '.join(skipped_symbols)}")
+        if error_count > 0:
+            logger.info(f"❌ Failed to load {error_count} models: {', '.join(error_symbols)}")
+        logger.info("===========================\n")
+        
+        if not SPECIFIC_MODELS:
             raise ModelNotLoadedError("No models were loaded")
             
     except Exception as e:
         logger.error(f"❌ Error loading resources: {str(e)}")
         raise ModelNotLoadedError("Failed to load model resources") from e
+
+def build_specific_model(input_shape: Tuple) -> Model:
+    """Build a stock-specific model using functional API"""
+    inputs = Input(shape=input_shape, name='sequence_input')
+    
+    x = LSTM(100, return_sequences=True,
+            kernel_initializer='glorot_uniform',
+            recurrent_initializer='orthogonal')(inputs)
+    x = Dropout(0.2)(x)
+    x = LSTM(50,
+            kernel_initializer='glorot_uniform',
+            recurrent_initializer='orthogonal')(x)
+    x = Dropout(0.2)(x)
+    x = Dense(50, activation='relu',
+            kernel_initializer='glorot_uniform')(x)
+    x = Dense(25, activation='relu',
+            kernel_initializer='glorot_uniform')(x)
+    outputs = Dense(1)(x)
+    
+    model = Model(inputs=inputs, outputs=outputs, name='specific_stock_model')
+    model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+    
+    return model
 
 def get_latest_sequence(symbol: str) -> np.ndarray:
     """Retrieves and prepares the most recent sequence for a specific stock"""
@@ -481,155 +550,359 @@ class NextDayPrediction(Resource):
             
     def _get_lstm_prediction(self, stock_symbol: str) -> Dict[str, Any]:
         """Get prediction using LSTM model"""
-        # Get the latest sequence
-        sequence = get_latest_sequence(stock_symbol)
-        
-        # Try to use specific model first
-        if stock_symbol in SPECIFIC_MODELS:
-            model = SPECIFIC_MODELS[stock_symbol]
-            scaler = SPECIFIC_SCALERS[stock_symbol]
-            model_type = "specific"
-            logger.info(f"Using specific model for {stock_symbol}")
-        # Fall back to general model if available
-        elif GENERAL_MODEL:
-            model = GENERAL_MODEL
-            scaler = GENERAL_SCALERS['symbol']
-            model_type = "general"
-            logger.info(f"Using general model for {stock_symbol}")
-        else:
-            api.abort(
-                HTTPStatus.NOT_FOUND,
-                f"No model available for {stock_symbol}"
-            )
-        
-        # Make prediction
-        prediction = model.predict(sequence)
-        logger.info(f"Raw prediction shape: {prediction.shape}, values: {prediction}")
-        
-        # Get the last known values
-        last_sequence = sequence[0, -1, :]  # Get the last row of the sequence
-        
-        # Get the index of the "Close" feature
-        close_index = FEATURES.index("Close")
-        
-        # Get the last known close price (still normalized)
-        last_close = last_sequence[close_index]
-        logger.info(f"Last known price (normalized): {last_close}")
-        
-        # Find the original close price from the raw data
-        # Try to find the stock in the specific directory structure
-        original_price = None
         try:
-            for sector in os.listdir(os.path.join("data", "processed", "specific")):
-                sector_path = os.path.join("data", "processed", "specific", sector)
-                if os.path.isdir(sector_path):
-                    stock_file = os.path.join(sector_path, f"{stock_symbol}_stock_price.csv")
-                    if os.path.exists(stock_file):
-                        df = pd.read_csv(stock_file)
-                        if not df.empty:
-                            original_price = df["Close"].iloc[-1]
-                            logger.info(f"Found original price from specific data: {original_price}")
-                            break
+            # Get the latest sequence
+            sequence = get_latest_sequence(stock_symbol)
             
-            # If not found, look in general data
-            if original_price is None:
-                stock_file = os.path.join("data", "raw", f"{stock_symbol}_stock_price.csv")
-                if os.path.exists(stock_file):
-                    df = pd.read_csv(stock_file)
-                    if not df.empty:
-                        original_price = df["Close"].iloc[-1]
-                        logger.info(f"Found original price from raw data: {original_price}")
+            # Try to use specific model first
+            if stock_symbol in SPECIFIC_MODELS:
+                model = SPECIFIC_MODELS[stock_symbol]
+                scaler = SPECIFIC_SCALERS[stock_symbol]
+                model_type = "specific"
+                
+                # Load scaling metadata if available
+                metadata_path = os.path.join("models", "specific", stock_symbol, f"{stock_symbol}_scaler_metadata.json")
+                scaling_metadata = None
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, 'r') as f:
+                        scaling_metadata = json.load(f)
+                logger.info(f"Using specific model for {stock_symbol}")
+            # Fall back to general model if available
+            elif GENERAL_MODEL:
+                model = GENERAL_MODEL
+                scaler = GENERAL_SCALERS['symbol']
+                model_type = "general"
+                logger.info(f"Using general model for {stock_symbol}")
+            else:
+                api.abort(
+                    HTTPStatus.NOT_FOUND,
+                    f"No model available for {stock_symbol}"
+                )
+            
+            # Make prediction
+            prediction = model.predict(sequence)
+            logger.info(f"Raw prediction shape: {prediction.shape}, values: {prediction}")
+            
+            # Get the last known values
+            last_sequence = sequence[0, -1, :]  # Get the last row of the sequence
+            
+            # Get the index of the "Close" feature
+            close_index = FEATURES.index("Close")
+            
+            # Get the last known close price (still normalized)
+            last_close = last_sequence[close_index]
+            logger.info(f"Last known price (normalized): {last_close}")
+            
+            # Find the original close price from the raw data
+            original_price = self._get_original_price(stock_symbol)
+            logger.info(f"Last known original price: {original_price}")
+            
+            # Initialize variables for prediction details
+            prediction_details = {
+                'original_price': original_price,
+                'raw_prediction': float(prediction[0, 0]),
+                'scaling_method': 'metadata' if scaling_metadata else 'simple'
+            }
+            
+            try:
+                # Method 1: Use scaler with correct feature ordering
+                if scaling_metadata:
+                    # Use the exact feature order from training
+                    features = scaling_metadata['feature_order']
+                    scaler_ready = np.zeros((1, len(features)))
+                    
+                    # Fill in known values from the last sequence
+                    for i, feature in enumerate(features):
+                        if feature == "Close":
+                            scaler_ready[0, i] = prediction[0, 0]
+                        elif feature in FEATURES:
+                            feat_idx = FEATURES.index(feature)
+                            scaler_ready[0, i] = last_sequence[feat_idx]
+                        else:
+                            # For derived features, use their last known values
+                            scaler_ready[0, i] = last_sequence[FEATURES.index(feature)] if feature in FEATURES else 0
+                    
+                    # Apply inverse transform
+                    denormalized = scaler.inverse_transform(scaler_ready)
+                    price = denormalized[0, features.index("Close")]
+                else:
+                    # Fallback to simpler scaling if metadata not available
+                    price = self._simple_inverse_scale(prediction[0, 0], original_price, last_close)
+                
+                logger.info(f"Initial denormalized price: {price}")
+                
+                # Calculate relative change
+                if original_price is not None:
+                    relative_change = (price - original_price) / original_price
+                    prediction_details['relative_change'] = float(relative_change)
+                    prediction_details['change_percentage'] = float(relative_change * 100)
+                    
+                    # Check if change is large
+                    if abs(relative_change) > 0.2:  # More than 20% change
+                        logger.warning(f"Large price change detected: {relative_change*100:.2f}%")
+                        # Calculate conservative estimate
+                        conservative_price = original_price * (1 + (prediction[0, 0] - 1) * 0.1)
+                        prediction_details['status'] = 'large_change_detected'
+                        prediction_details['original_prediction'] = float(price)
+                        prediction_details['conservative_estimate'] = float(conservative_price)
+                        # Use conservative estimate as final price
+                        price = conservative_price
+                    else:
+                        prediction_details['status'] = 'within_normal_range'
+                
+            except Exception as e:
+                logger.warning(f"Error in scaling inverse transform: {str(e)}")
+                price = self._simple_inverse_scale(prediction[0, 0], original_price, last_close)
+                prediction_details['status'] = 'fallback_to_simple'
+                prediction_details['error'] = str(e)
+            
+            # Calculate confidence score
+            confidence_score = calculate_confidence_score(sequence, prediction)
+            
+            # Adjust confidence score based on price change
+            if 'relative_change' in prediction_details:
+                change_factor = abs(prediction_details['relative_change'])
+                if change_factor > 0.2:
+                    confidence_score *= (1 - (change_factor - 0.2))  # Reduce confidence for large changes
+            
+            result = {
+                'prediction': float(price),
+                'timestamp': datetime.now() + timedelta(days=1),
+                'confidence_score': confidence_score,
+                'model_version': MODEL_VERSION,
+                'model_type': f'lstm_{model_type}',
+                'prediction_details': prediction_details
+            }
+            
+            # Publish to RabbitMQ
+            try:
+                publish_success = rabbitmq_publisher.publish_stock_quote(stock_symbol, result)
+                if publish_success:
+                    logger.info(f"✅ Successfully published prediction for {stock_symbol} to RabbitMQ")
+                    result['rabbitmq_status'] = 'delivered'
+                else:
+                    logger.warning(f"⚠️ Failed to confirm RabbitMQ delivery for {stock_symbol}")
+                    result['rabbitmq_status'] = 'unconfirmed'
+            except Exception as e:
+                logger.error(f"❌ Failed to publish to RabbitMQ: {str(e)}")
+                result['rabbitmq_status'] = 'failed'
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Prediction error for {stock_symbol}: {str(e)}")
+            raise
+
+    def _get_original_price(self, symbol: str) -> float:
+        """Get the last known original price for a symbol"""
+        try:
+            # First try raw data in Technology sector
+            raw_file = os.path.join("data", "raw", "Technology", f"{symbol}_stock_price.csv")
+            if os.path.exists(raw_file):
+                df = pd.read_csv(raw_file)
+                if not df.empty:
+                    logger.info(f"Found price in raw data: {df['Close'].iloc[-1]}")
+                    return float(df['Close'].iloc[-1])
+            
+            # Then try processed data
+            processed_file = os.path.join("data", "processed", "specific", "Technology", f"{symbol}_processed.csv")
+            if os.path.exists(processed_file):
+                df = pd.read_csv(processed_file)
+                if not df.empty:
+                    # Get the last non-normalized close price
+                    metadata_path = os.path.join("models", "specific", symbol, f"{symbol}_scaler_metadata.json")
+                    if os.path.exists(metadata_path):
+                        with open(metadata_path, 'r') as f:
+                            metadata = json.load(f)
+                            close_idx = metadata['feature_names'].index('Close')
+                            min_val = metadata['min_values'][close_idx]
+                            max_val = metadata['max_values'][close_idx]
+                            normalized_close = df['Close'].iloc[-1]
+                            original_close = normalized_close * (max_val - min_val) + min_val
+                            logger.info(f"Found price in processed data: {original_close}")
+                            return float(original_close)
+            
+            # Finally try unified data
+            unified_file = os.path.join("data", "raw", "unified", f"{symbol}_stock_price.csv")
+            if os.path.exists(unified_file):
+                df = pd.read_csv(unified_file)
+                if not df.empty:
+                    logger.info(f"Found price in unified data: {df['Close'].iloc[-1]}")
+                    return float(df['Close'].iloc[-1])
+                    
         except Exception as e:
             logger.warning(f"Could not find original price data: {str(e)}")
-        
-        # Calculate the correct price using appropriate inverse scaling methods
-        predicted_normalized = prediction[0, 0]
-        logger.info(f"Predicted price (normalized): {predicted_normalized}")
-        
-        # Method 1: Use the scaler directly
+            logger.exception(e)  # Log the full traceback
+        return None
+
+    def _simple_inverse_scale(self, predicted_normalized: float, original_price: float, last_close_normalized: float) -> float:
+        """Simple scaling based on relative change"""
         try:
-            # Create a feature vector with the same shape as what the scaler expects
-            scaler_features = ["Open", "High", "Low", "Close", "Adj Close", "Volume",
-                             "Returns", "MA_5", "MA_20", "Volatility"]
+            if original_price is None:
+                return predicted_normalized  # Return as is if no reference point
+                
+            # Calculate the relative change from the normalized values
+            relative_change = (predicted_normalized - last_close_normalized) / last_close_normalized
             
-            # Get the last known values for all features
-            last_values = {feature: last_sequence[FEATURES.index(feature)] 
-                         for feature in scaler_features if feature in FEATURES}
+            # Apply the same relative change to the original price
+            result = original_price * (1 + relative_change)
+            logger.info(f"Simple scaling: orig={original_price}, pred_norm={predicted_normalized}, last_norm={last_close_normalized}, change={relative_change}, result={result}")
+            return result
             
-            # Create the vector for inverse transform
-            scaler_ready = np.zeros((1, len(scaler_features)))
-            for i, feature in enumerate(scaler_features):
-                if feature == "Close":
-                    scaler_ready[0, i] = predicted_normalized
-                elif feature in last_values:
-                    scaler_ready[0, i] = last_values[feature]
-            
-            # Apply inverse transform
-            denormalized = scaler.inverse_transform(scaler_ready)
-            price = denormalized[0, scaler_features.index("Close")]
-            
-            # Verify the price is reasonable
-            if original_price is not None:
-                percent_change = abs((price - original_price) / original_price)
-                if percent_change > 0.1:  # More than 10% change
-                    logger.warning(f"Large price change detected: {percent_change*100:.2f}% from {original_price} to {price}")
-                    if percent_change > 0.2:  # More than 20% change
-                        # Fall back to original price with small adjustment
-                        price = original_price * (1 + (predicted_normalized - 1) * 0.1)
-                        logger.info(f"Adjusted to more reasonable price: {price}")
-            
-            logger.info(f"Price after inverse transform: {price}")
         except Exception as e:
-            logger.warning(f"Error in direct inverse transform: {str(e)}")
-            price = None
+            logger.error(f"Error in simple inverse scaling: {str(e)}")
+            return predicted_normalized
+
+    def _validate_price(self, price: float, original_price: float, predicted_normalized: float) -> float:
+        """Validate and adjust the predicted price if needed"""
+        percent_change = abs((price - original_price) / original_price)
         
-        # Method 2: If Method 1 fails, use the original price with a small adjustment
-        if price is None or price < 0 or (original_price is not None and abs((price - original_price) / original_price) > 0.2):
-            if original_price is not None:
-                # Use a more conservative approach: max 5% change
-                adjustment = (predicted_normalized - 1) * 0.05  # Convert to max 5% change
-                price = original_price * (1 + adjustment)
-                logger.info(f"Using conservative adjustment: Original price = {original_price}, Adjustment = {adjustment*100:.2f}%, Final price = {price}")
-            else:
-                # Fallback to reasonable defaults if we don't have the original price
-                default_prices = {
-                    "AAPL": 175.0,
-                    "MSFT": 400.0,
-                    "GOOGL": 140.0,
-                    "AMZN": 175.0,
-                    "META": 500.0
-                }
-                base_price = default_prices.get(stock_symbol, 100.0)
-                adjustment = (predicted_normalized - 1) * 0.05
-                price = base_price * (1 + adjustment)
-                logger.info(f"Using default price: Base = {base_price}, Adjustment = {adjustment*100:.2f}%, Final price = {price}")
+        if percent_change > 0.1:  # More than 10% change
+            logger.warning(f"Large price change detected: {percent_change*100:.2f}%")
+            if percent_change > 0.2:  # More than 20% change
+                # Fall back to more conservative estimate
+                return original_price * (1 + (predicted_normalized - 1) * 0.1)
         
-        # Calculate confidence score
-        confidence_score = calculate_confidence_score(sequence, prediction)
-        
-        result = {
-            'prediction': float(price),
-            'timestamp': datetime.now() + timedelta(days=1),
-            'confidence_score': confidence_score,
-            'model_version': MODEL_VERSION,
-            'model_type': f'lstm_{model_type}'
-        }
-        
-        # Publish the prediction to RabbitMQ
+        return price
+
+@ns_predict.route('/debug_scaling/<string:symbol>')
+class ScalingDebug(Resource):
+    def get(self, symbol: str) -> Dict[str, Any]:
+        """Get detailed information about scaling operations for debugging"""
         try:
-            publish_success = rabbitmq_publisher.publish_stock_quote(stock_symbol, result)
-            if publish_success:
-                logger.info(f"✅ Successfully published prediction for {stock_symbol} to RabbitMQ")
-                result['rabbitmq_status'] = 'delivered'
+            # Get the latest sequence
+            sequence = get_latest_sequence(symbol)
+            
+            # Try to load scaling metadata
+            metadata_path = os.path.join("models", "specific", symbol, f"{symbol}_scaler_metadata.json")
+            scaling_info = {}
+            
+            if os.path.exists(metadata_path):
+                with open(metadata_path, 'r') as f:
+                    scaling_metadata = json.load(f)
+                scaling_info['metadata'] = scaling_metadata
+            
+            # Get scaler
+            if symbol in SPECIFIC_MODELS:
+                scaler = SPECIFIC_SCALERS[symbol]
+                model_type = "specific"
+            elif GENERAL_MODEL:
+                scaler = GENERAL_SCALERS['symbol']
+                model_type = "general"
             else:
-                logger.warning(f"⚠️ Failed to confirm RabbitMQ delivery for {stock_symbol}")
-                result['rabbitmq_status'] = 'unconfirmed'
+                return {'error': 'No model available'}, HTTPStatus.NOT_FOUND
+            
+            # Get last known values
+            last_sequence = sequence[0, -1, :]
+            close_index = FEATURES.index("Close")
+            last_close = last_sequence[close_index]
+            
+            # Make a test prediction
+            model = SPECIFIC_MODELS[symbol] if symbol in SPECIFIC_MODELS else GENERAL_MODEL
+            prediction = model.predict(sequence)
+            
+            # Get original price
+            original_price = self._get_original_price(symbol)
+            
+            # Try both scaling methods
+            scaling_info['debug'] = {
+                'model_type': model_type,
+                'sequence_shape': sequence.shape,
+                'last_known_normalized_close': float(last_close),
+                'original_price': float(original_price) if original_price else None,
+                'raw_prediction': float(prediction[0, 0]),
+                'features_available': FEATURES,
+                'scaler_feature_names': scaling_metadata['feature_names'] if 'metadata' in scaling_info else None
+            }
+            
+            # Try metadata-based scaling
+            try:
+                if 'metadata' in scaling_info:
+                    features = scaling_metadata['feature_order']
+                    scaler_ready = np.zeros((1, len(features)))
+                    
+                    for i, feature in enumerate(features):
+                        if feature == "Close":
+                            scaler_ready[0, i] = prediction[0, 0]
+                        elif feature in FEATURES:
+                            feat_idx = FEATURES.index(feature)
+                            scaler_ready[0, i] = last_sequence[feat_idx]
+                        else:
+                            scaler_ready[0, i] = last_sequence[FEATURES.index(feature)] if feature in FEATURES else 0
+                    
+                    denormalized = scaler.inverse_transform(scaler_ready)
+                    metadata_price = denormalized[0, features.index("Close")]
+                    scaling_info['debug']['metadata_based_price'] = float(metadata_price)
+            except Exception as e:
+                scaling_info['debug']['metadata_scaling_error'] = str(e)
+            
+            # Try simple scaling
+            try:
+                simple_price = self._simple_inverse_scale(
+                    prediction[0, 0],
+                    original_price,
+                    last_close
+                )
+                scaling_info['debug']['simple_scaling_price'] = float(simple_price)
+            except Exception as e:
+                scaling_info['debug']['simple_scaling_error'] = str(e)
+            
+            # Add validation info
+            if original_price:
+                # Calculate relative changes
+                metadata_change = None
+                simple_change = None
+                
+                if 'metadata_based_price' in scaling_info['debug']:
+                    metadata_price = scaling_info['debug']['metadata_based_price']
+                    metadata_change = (metadata_price - original_price) / original_price
+                    scaling_info['debug']['metadata_relative_change'] = float(metadata_change)
+                    
+                    # Add validation info for metadata scaling
+                    if abs(metadata_change) > 0.2:
+                        conservative_price = original_price * (1 + (prediction[0, 0] - 1) * 0.1)
+                        scaling_info['debug']['metadata_validation'] = {
+                            'status': 'large_change_detected',
+                            'change_percentage': float(metadata_change * 100),
+                            'conservative_estimate': float(conservative_price)
+                        }
+                    else:
+                        scaling_info['debug']['metadata_validation'] = {
+                            'status': 'within_normal_range',
+                            'change_percentage': float(metadata_change * 100)
+                        }
+                
+                if 'simple_scaling_price' in scaling_info['debug']:
+                    simple_price = scaling_info['debug']['simple_scaling_price']
+                    simple_change = (simple_price - original_price) / original_price
+                    scaling_info['debug']['simple_relative_change'] = float(simple_change)
+                    
+                    # Add validation info for simple scaling
+                    if abs(simple_change) > 0.2:
+                        conservative_price = original_price * (1 + (prediction[0, 0] - 1) * 0.1)
+                        scaling_info['debug']['simple_validation'] = {
+                            'status': 'large_change_detected',
+                            'change_percentage': float(simple_change * 100),
+                            'conservative_estimate': float(conservative_price)
+                        }
+                    else:
+                        scaling_info['debug']['simple_validation'] = {
+                            'status': 'within_normal_range',
+                            'change_percentage': float(simple_change * 100)
+                        }
+                
+                # Add consensus information if both methods available
+                if metadata_change is not None and simple_change is not None:
+                    scaling_info['debug']['consensus'] = {
+                        'methods_agree': abs(metadata_change - simple_change) < 0.01,
+                        'average_change': float((metadata_change + simple_change) / 2 * 100),
+                        'difference': float(abs(metadata_price - simple_price))
+                    }
+            
+            return scaling_info
+            
         except Exception as e:
-            logger.error(f"❌ Failed to publish to RabbitMQ: {str(e)}")
-            result['rabbitmq_status'] = 'failed'
-        
-        logger.info(f"Successfully generated prediction for {stock_symbol}: {result}")
-        return result
+            return {'error': str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
 
 def calculate_confidence_score(sequence: np.ndarray, prediction: np.ndarray) -> float:
     """Calculate confidence score for the prediction"""
