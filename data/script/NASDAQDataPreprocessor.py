@@ -7,6 +7,7 @@ from sklearn.preprocessing import MinMaxScaler
 import joblib
 from typing import Dict, List, Tuple
 import glob
+import json
 
 class NASDAQDataPreprocessor:
     def __init__(self, raw_dir="data/raw", processed_dir="data/processed", models_dir="models/specific"):
@@ -96,20 +97,39 @@ class NASDAQDataPreprocessor:
             # Drop any rows with NaN after conversion
             df = df.dropna(subset=self.features)
 
-            # Calculate technical indicators
-            df['Returns'] = df['Close'].pct_change()
-            df['MA_5'] = df['Close'].rolling(window=5).mean()
-            df['MA_20'] = df['Close'].rolling(window=20).mean()
-            df['Volatility'] = df['Returns'].rolling(window=20).std()
+            # Handle outliers using IQR method for each feature
+            for col in self.features:
+                Q1 = df[col].quantile(0.25)
+                Q3 = df[col].quantile(0.75)
+                IQR = Q3 - Q1
+                lower_bound = Q1 - 3 * IQR  # Using 3 instead of 1.5 for less aggressive filtering
+                upper_bound = Q3 + 3 * IQR
+                df[col] = df[col].clip(lower=lower_bound, upper=upper_bound)
 
-            # Add momentum indicators
+            # Calculate returns with winsorization
+            df['Returns'] = df['Close'].pct_change()
+            df['Returns'] = df['Returns'].clip(
+                lower=df['Returns'].quantile(0.01),
+                upper=df['Returns'].quantile(0.99)
+            )
+
+            # Calculate technical indicators with smoothing
+            df['MA_5'] = df['Close'].rolling(window=5, min_periods=1).mean()
+            df['MA_20'] = df['Close'].rolling(window=20, min_periods=1).mean()
+            df['Volatility'] = df['Returns'].rolling(window=20, min_periods=1).std()
+
+            # Add momentum indicators with smoothing
             df['RSI'] = self.calculate_rsi(df['Close'])
             df['MACD'], df['MACD_Signal'] = self.calculate_macd(df['Close'])
+
+            # Normalize returns and volatility separately
+            df['Returns'] = (df['Returns'] - df['Returns'].mean()) / df['Returns'].std()
+            df['Volatility'] = (df['Volatility'] - df['Volatility'].mean()) / df['Volatility'].std()
 
             # Drop rows with NaN from the new calculations
             df = df.dropna()
 
-            # Create train/validation/test splits
+            # Create train/validation/test splits with proper chronological order
             train_end = int(len(df) * 0.8)
             val_end = int(len(df) * 0.9)
 
@@ -123,31 +143,59 @@ class NASDAQDataPreprocessor:
             # Select features for scaling
             scale_features = self.features + ['Returns', 'MA_5', 'MA_20', 'Volatility', 'RSI', 'MACD', 'MACD_Signal']
 
-            # Fit scaler on training data
-            scaler.fit(train_df[scale_features])
+            # Prepare data for scaling with proper feature names
+            train_features = train_df[scale_features].copy()
+            val_features = val_df[scale_features].copy()
+            test_features = test_df[scale_features].copy()
 
-            # Save the scaler
-            os.makedirs(os.path.join(self.models_dir, symbol), exist_ok=True)
-            scaler_path = os.path.join(self.models_dir, symbol, f"{symbol}_scaler.gz")
-            joblib.dump(scaler, scaler_path)
-            self.scalers[symbol] = scaler
-
-            # Transform all datasets
+            # Fit scaler on training data and transform
             train_scaled = pd.DataFrame(
-                scaler.transform(train_df[scale_features]),
+                scaler.fit_transform(train_features),
                 columns=scale_features,
-                index=train_df.index
+                index=train_features.index
             )
+            
+            # Transform validation and test data
             val_scaled = pd.DataFrame(
-                scaler.transform(val_df[scale_features]),
+                scaler.transform(val_features),
                 columns=scale_features,
-                index=val_df.index
+                index=val_features.index
             )
             test_scaled = pd.DataFrame(
-                scaler.transform(test_df[scale_features]),
+                scaler.transform(test_features),
                 columns=scale_features,
-                index=test_df.index
+                index=test_features.index
             )
+
+            # Create directory for the symbol first
+            symbol_dir = os.path.join(self.models_dir, symbol)
+            os.makedirs(symbol_dir, exist_ok=True)
+
+            try:
+                # Save scaling metadata for debugging
+                scaling_metadata = {
+                    'feature_order': scale_features,
+                    'min_values': scaler.data_min_.tolist(),
+                    'max_values': scaler.data_max_.tolist(),
+                    'feature_names': scale_features,
+                    'sample_original': train_features.iloc[0].to_dict(),  # Changed to dict for better readability
+                    'sample_scaled': train_scaled.iloc[0].to_dict()  # Changed to dict for better readability
+                }
+                
+                # Save the metadata alongside the scaler
+                metadata_path = os.path.join(symbol_dir, f"{symbol}_scaler_metadata.json")
+                with open(metadata_path, 'w') as f:
+                    json.dump(scaling_metadata, f, indent=4)
+
+                # Save the scaler
+                scaler_path = os.path.join(symbol_dir, f"{symbol}_scaler.gz")
+                joblib.dump(scaler, scaler_path)
+                self.scalers[symbol] = scaler
+                
+                self.logger.info(f"Successfully saved scaler and metadata for {symbol}")
+            except Exception as e:
+                self.logger.error(f"Error saving scaler data for {symbol}: {str(e)}")
+                raise
 
             # Add date and metadata back
             for split_df in [train_scaled, val_scaled, test_scaled]:
