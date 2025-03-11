@@ -1,10 +1,16 @@
+# Import base requirements
+-r requirements-base.txt
+
+# ML specific requirements
+tensorflow==2.16.2
+prophet==1.1.5
+torch==2.0.1
+
 # Core dependencies
 numpy==1.26.4
 pandas==2.2.3
 scikit-learn==1.6.1
-tensorflow==2.16.2
 matplotlib==3.7.5
-prophet==1.1.5
 
 # API and web server
 Flask==3.1.0
@@ -27,7 +33,6 @@ yfinance==0.2.52
 newspaper3k==0.2.8
 nltk==3.8.1
 transformers==4.41.2
-torch==2.0.1
 beautifulsoup4==4.12.3
 aiohttp==3.9.5
 lxml==4.9.3

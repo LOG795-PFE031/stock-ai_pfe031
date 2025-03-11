@@ -352,7 +352,7 @@ class MetaInfo(Resource):
         except Exception as e:
             api.abort(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
 
-@ns_health.route('/health')
+@ns_health.route('/')
 class HealthCheck(Resource):
     @api.doc(
         description='Check API health status',
