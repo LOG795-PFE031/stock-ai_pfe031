@@ -22,7 +22,7 @@ import torch
 import nltk
 from flask import Flask, request, jsonify
 from flask_restx import Api, Resource, fields
-from group_crawler import crawl_and_extract
+from np3k_group_crawler import crawl_and_extract
 from deepcrawler import get_todays_news_urls
 from news_publisher import NewsPublisher
 
@@ -105,32 +105,57 @@ class FinBERTSentimentAnalyzer:
     def batch_analyze(self, texts):
         """Analyze sentiment for a batch of texts."""
         try:
-            # Truncate texts to maximum sequence length
+            # BERT models have a maximum token limit of 512 tokens
             max_length = 512
-            processed_texts = []
-            for text in texts:
-                # Process each text to ensure it's not too long
-                # First, try to use the tokenizer to truncate
-                encoded = self.tokenizer(text, truncation=True, max_length=max_length, return_tensors="pt")
-                # Then decode back to text if needed
-                processed_texts.append(text[:2000])  # Simple approach: just take first 2000 chars which should tokenize to under 512 tokens
             
-            results = self.pipeline(processed_texts)
-            processed_results = []
-            for i, result in enumerate(results):
-                sentiment = result['label'].lower()
-                inputs = self.tokenizer(texts[i], return_tensors="pt", truncation=True, max_length=512).to(self.device)
-                outputs = self.model(**inputs)
+            # Tokenize and truncate texts to the maximum sequence length
+            encoded_texts = []
+            for text in texts:
+                # Tokenize with truncation
+                encoded = self.tokenizer.encode_plus(
+                    text,
+                    max_length=max_length,
+                    truncation=True,
+                    padding='max_length',
+                    return_tensors='pt'
+                )
+                encoded_texts.append(encoded)
+            
+            # Process with the model
+            results = []
+            for i, encoded in enumerate(encoded_texts):
+                # Send to device
+                input_ids = encoded['input_ids'].to(self.device)
+                attention_mask = encoded['attention_mask'].to(self.device)
+                
+                # Get model outputs
+                with torch.no_grad():
+                    outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
+                
+                # Get probabilities and sentiment
                 probs = torch.nn.functional.softmax(outputs.logits, dim=-1)[0]
-                processed_results.append({
+                
+                # Map indices to sentiments
+                sentiment_map = {0: 'neutral', 1: 'positive', 2: 'negative'}
+                sentiment_idx = torch.argmax(probs).item()
+                sentiment = sentiment_map[sentiment_idx]
+                confidence = probs[sentiment_idx].item()
+                
+                results.append({
                     "sentiment": sentiment,
-                    "confidence": result['score'],
-                    "scores": {"positive": probs[1].item(), "negative": probs[2].item(), "neutral": probs[0].item()}
+                    "confidence": confidence,
+                    "scores": {
+                        "positive": probs[1].item(),
+                        "negative": probs[2].item(),
+                        "neutral": probs[0].item()
+                    }
                 })
-            return processed_results
+            
+            return results
         except Exception as e:
             logger.error(f"Sentiment analysis failed: {e}")
-            return []
+            # Return neutral sentiment for all texts in case of failure
+            return [{"sentiment": "neutral", "confidence": 1.0, "scores": {"positive": 0.0, "negative": 0.0, "neutral": 1.0}} for _ in texts]
 
 # Stock News Scraper class
 class StockNewsScraper:
@@ -141,8 +166,8 @@ class StockNewsScraper:
         self.company_name = "Unknown Company"  # Placeholder; could fetch from yfinance if needed
 
     async def get_news(self):
-        """Fetch and analyze news articles using deepcrawler and group_crawler."""
-        # Create a list of tasks for each URL with both url and ticker arguments
+        """Fetch and analyze news articles using deepcrawler and np3k_group_crawler."""
+        # Create a list of tasks for each URL with url and ticker arguments
         tasks = [crawl_and_extract(url, self.ticker) for url in self.urls]
         # Run all tasks concurrently
         articles_json = await asyncio.gather(*tasks, return_exceptions=True)
@@ -154,7 +179,15 @@ class StockNewsScraper:
             return []
 
         # Extract text content for sentiment analysis
-        texts = [article.get('text', '') for article in articles_json]
+        texts = []
+        for article in articles_json:
+            # Make sure text isn't too long for BERT model (which has 512 token limit)
+            # Truncate to around 2000 chars which should be well under the token limit
+            text = article.get('content', '')
+            if len(text) > 2000:
+                text = text[:2000]
+            texts.append(text)
+            
         analyzer = FinBERTSentimentAnalyzer()
         sentiments = analyzer.batch_analyze(texts)
 
@@ -171,8 +204,8 @@ class StockNewsScraper:
                 "url": a.get("url", ""),
                 "title": a.get("title", "Untitled"),
                 "ticker": self.ticker,
-                "content": a.get("text", ""),
-                "date": a.get("publish_date").strftime("%a, %B %d, %Y at %I:%M %p %Z") if a.get("publish_date") else "Unknown",
+                "content": a.get("content", ""),
+                "date": a.get("date", "Unknown"),
                 "opinion": self.label_to_score(a.get("sentiment_analysis", {}).get("sentiment", "neutral"))
             } for a in articles
         ]

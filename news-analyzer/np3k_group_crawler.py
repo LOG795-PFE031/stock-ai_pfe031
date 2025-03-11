@@ -10,7 +10,7 @@ from deepcrawler import get_todays_news_urls
 
 async def crawl_and_extract(url: str, ticker: str) -> Dict:
     """
-    Crawl a single URL and extract title, date, and content.
+    Crawl a single URL and extract title, date, and content using newspaper3k.
     
     Args:
         url (str): The URL to crawl.
@@ -36,13 +36,19 @@ async def crawl_and_extract(url: str, ticker: str) -> Dict:
         # If newspaper couldn't extract a date, use current date
         if not publish_date:
             publish_date = datetime.now()
+            
+        # Format date as string if available
+        if publish_date:
+            date_str = publish_date.strftime("%a, %B %d, %Y at %I:%M %p")
+        else:
+            date_str = "Unknown Date"
         
         return {
             "url": url,
             "title": article.title,
             "ticker": ticker,
-            "text": article.text,
-            "publish_date": publish_date
+            "content": article.text,
+            "date": date_str
         }
     except Exception as e:
         print(f"Error crawling {url}: {e}")
