@@ -22,8 +22,8 @@ import torch
 import nltk
 from flask import Flask, request, jsonify
 from flask_restx import Api, Resource, fields
-
-sys.path.append(os.path.dirname(__file__))
+from np3k_group_crawler import crawl_and_extract
+from deepcrawler import get_todays_news_urls
 from news_publisher import NewsPublisher
 
 # Logging setup
@@ -55,35 +55,17 @@ api = Api(app, version='1.0',
 
 ns = api.namespace('api', description='Stock News Analysis Operations')
 
-# API models
-stock_model = api.model('StockModel', {
-    'ticker': fields.String(required=True, description='Stock ticker (e.g., AAPL)'),
-    'articles': fields.Integer(default=5, description='Number of articles to analyze')
-})
-
-sentiment_model = api.model('SentimentModel', {
-    'sentiment': fields.String(description='Sentiment (positive, negative, neutral)'),
-    'confidence': fields.Float(description='Confidence score'),
-    'scores': fields.Raw(description='Detailed sentiment scores')
-})
-
-article_model = api.model('ArticleModel', {
-    'title': fields.String(description='Article title'),
-    'source': fields.String(description='News source'),
+# Define output model for articles
+article_model = ns.model('ArticleModel', {
     'url': fields.String(description='Article URL'),
-    'text': fields.String(description='Article text'),
-    'sentiment_analysis': fields.Nested(sentiment_model, description='Sentiment results'),
-    'published_at': fields.String(description='Publication date')
-})
-
-response_model = api.model('ResponseModel', {
+    'title': fields.String(description='Article title'),
     'ticker': fields.String(description='Stock ticker'),
-    'company': fields.String(description='Company name'),
-    'timestamp': fields.String(description='Analysis timestamp'),
-    'total_articles': fields.Integer(description='Number of articles analyzed'),
-    'articles': fields.List(fields.Nested(article_model), description='Analyzed articles')
+    'content': fields.String(description='Article content'),
+    'date': fields.String(description='Publication date'),
+    'opinion': fields.Integer(description='Sentiment score (-1: negative, 0: neutral, 1: positive)')
 })
 
+# FinBERT Sentiment Analyzer class
 class FinBERTSentimentAnalyzer:
     """Handles sentiment analysis using FinBERT-tone with GPU support."""
     _instance = None
@@ -123,283 +105,152 @@ class FinBERTSentimentAnalyzer:
     def batch_analyze(self, texts):
         """Analyze sentiment for a batch of texts."""
         try:
-            results = self.pipeline(texts)
-            processed_results = []
-            for i, result in enumerate(results):
-                sentiment = result['label'].lower()
-                inputs = self.tokenizer(texts[i], return_tensors="pt", truncation=True, max_length=512).to(self.device)
-                outputs = self.model(**inputs)
+            # BERT models have a maximum token limit of 512 tokens
+            max_length = 512
+            
+            # Tokenize and truncate texts to the maximum sequence length
+            encoded_texts = []
+            for text in texts:
+                # Tokenize with truncation
+                encoded = self.tokenizer.encode_plus(
+                    text,
+                    max_length=max_length,
+                    truncation=True,
+                    padding='max_length',
+                    return_tensors='pt'
+                )
+                encoded_texts.append(encoded)
+            
+            # Process with the model
+            results = []
+            for i, encoded in enumerate(encoded_texts):
+                # Send to device
+                input_ids = encoded['input_ids'].to(self.device)
+                attention_mask = encoded['attention_mask'].to(self.device)
+                
+                # Get model outputs
+                with torch.no_grad():
+                    outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
+                
+                # Get probabilities and sentiment
                 probs = torch.nn.functional.softmax(outputs.logits, dim=-1)[0]
-                processed_results.append({
+                
+                # Map indices to sentiments
+                sentiment_map = {0: 'neutral', 1: 'positive', 2: 'negative'}
+                sentiment_idx = torch.argmax(probs).item()
+                sentiment = sentiment_map[sentiment_idx]
+                confidence = probs[sentiment_idx].item()
+                
+                results.append({
                     "sentiment": sentiment,
-                    "confidence": result['score'],
-                    "scores": {"positive": probs[1].item(), "negative": probs[2].item(), "neutral": probs[0].item()}
+                    "confidence": confidence,
+                    "scores": {
+                        "positive": probs[1].item(),
+                        "negative": probs[2].item(),
+                        "neutral": probs[0].item()
+                    }
                 })
-            return processed_results
+            
+            return results
         except Exception as e:
             logger.error(f"Sentiment analysis failed: {e}")
-            return []
+            # Return neutral sentiment for all texts in case of failure
+            return [{"sentiment": "neutral", "confidence": 1.0, "scores": {"positive": 0.0, "negative": 0.0, "neutral": 1.0}} for _ in texts]
 
+# Stock News Scraper class
 class StockNewsScraper:
-    """Scrapes news articles and analyzes sentiment."""
-    def __init__(self, ticker, max_articles=5, publish_to_rabbitmq=True):
-        self.ticker = ticker.upper()
-        self.company_name = self._get_company_name()
-        self.max_articles = max_articles
+    def __init__(self, ticker, urls, publish_to_rabbitmq=False):
+        self.ticker = ticker
+        self.urls = urls
         self.publish_to_rabbitmq = publish_to_rabbitmq
-        self.sources = [
-            self._get_google_news,
-            self._get_yahoo_finance,
-            self._get_seeking_alpha,
-            self._get_market_watch,
-            self._get_business_insider,
-        ]
-        self.user_agents = [
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/94.0.4606.81 Safari/537.36",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/15.0 Safari/605.1.15",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:93.0) Gecko/20100101 Firefox/93.0",
-        ]
-        self.analyzer = FinBERTSentimentAnalyzer()
-        if self.publish_to_rabbitmq:
-            self.publisher = NewsPublisher()
-
-    def _get_company_name(self):
-        """Simple ticker-to-company mapping."""
-        common_tickers = {
-            'AAPL': 'Apple', 'MSFT': 'Microsoft', 'GOOGL': 'Google', 'GOOG': 'Google',
-            'AMZN': 'Amazon', 'META': 'Meta', 'TSLA': 'Tesla', 'NVDA': 'NVIDIA'
-        }
-        return common_tickers.get(self.ticker, self.ticker)
-
-    def _get_random_user_agent(self):
-        """Return a random user agent."""
-        return random.choice(self.user_agents)
-
-    async def _fetch_url(self, session, url, retries=3):
-        """Fetch URL content with retries."""
-        headers = {"User-Agent": self._get_random_user_agent()}
-        for attempt in range(retries):
-            try:
-                async with session.get(url, headers=headers, timeout=15) as response:
-                    if response.status == 200:
-                        return await response.text()
-                    logger.warning(f"Fetch failed for {url}: status {response.status}")
-            except Exception as e:
-                logger.error(f"Fetch error for {url}: {e}")
-            await asyncio.sleep(2 ** attempt)
-        return None
-
-    async def _get_google_news(self):
-        url = f"https://news.google.com/search?q={self.ticker}+{self.company_name}+stock+news&hl=en-US"
-        async with aiohttp.ClientSession() as session:
-            html = await self._fetch_url(session, url)
-            if not html:
-                return []
-            soup = BeautifulSoup(html, "html.parser")
-            urls = [f"https://news.google.com{link['href'][1:]}" for link in soup.select("a[href^='./']")][:self.max_articles]
-            return urls
-
-    async def _get_yahoo_finance(self):
-        url = f"https://finance.yahoo.com/quote/{self.ticker}/news"
-        async with aiohttp.ClientSession() as session:
-            html = await self._fetch_url(session, url)
-            if not html:
-                return []
-            soup = BeautifulSoup(html, "html.parser")
-            urls = [f"https://finance.yahoo.com{a['href']}" if a['href'].startswith("/") else a['href']
-                    for a in soup.select('li[data-test="stream-item"] a')][:self.max_articles]
-            return urls
-
-    async def _get_seeking_alpha(self):
-        url = f"https://seekingalpha.com/symbol/{self.ticker}"
-        async with aiohttp.ClientSession() as session:
-            html = await self._fetch_url(session, url)
-            if not html:
-                return []
-            soup = BeautifulSoup(html, "html.parser")
-            urls = [f"https://seekingalpha.com{link['href']}" if link['href'].startswith("/") else link['href']
-                    for link in soup.select('a[data-test-id="post-list-item-title"]')][:self.max_articles]
-            return urls
-
-    async def _get_market_watch(self):
-        url = f"https://www.marketwatch.com/investing/stock/{self.ticker.lower()}"
-        async with aiohttp.ClientSession() as session:
-            html = await self._fetch_url(session, url)
-            if not html:
-                return []
-            soup = BeautifulSoup(html, "html.parser")
-            urls = [link['href'] if link['href'].startswith("http") else f"https://www.marketwatch.com{link['href']}"
-                    for link in soup.select('.article__content a.link')][:self.max_articles]
-            return urls
-
-    async def _get_business_insider(self):
-        url = f"https://www.businessinsider.com/s?q={self.ticker}+{self.company_name}+stock"
-        async with aiohttp.ClientSession() as session:
-            html = await self._fetch_url(session, url)
-            if not html:
-                return []
-            soup = BeautifulSoup(html, "html.parser")
-            urls = [link['href'] if link['href'].startswith("http") else f"https://www.businessinsider.com{link['href']}"
-                    for link in soup.select('h2.tout-title a')][:self.max_articles]
-            return urls
-
-    async def _follow_redirect(self, url):
-        """Follow redirects to get the final URL."""
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.head(url, allow_redirects=True) as response:
-                    return str(response.url) if response.url else url
-        except Exception as e:
-            logger.error(f"Redirect error for {url}: {e}")
-            return url
-
-    async def _process_article(self, url):
-        """Process an article and extract relevant data."""
-        if "news.google.com" in url:
-            url = await self._follow_redirect(url)
-        if not url or url.startswith("data:"):
-            return None
-
-        config = Config()
-        config.browser_user_agent = self._get_random_user_agent()
-        config.request_timeout = 20
-        config.memoize_articles = False
-        config.fetch_images = False
-
-        article = Article(url, config=config)
-        try:
-            article.download()
-            if not article.html:
-                logger.warning(f"Empty content for {url}")
-                return None
-            article.parse()
-            article.nlp()
-        except Exception as e:
-            logger.error(f"Article processing error for {url}: {e}")
-            return None
-
-        title, text, publish_date = article.title, article.text, article.publish_date
-        if not title or not text or len(text) < 150:
-            logger.warning(f"Insufficient content for {url}")
-            return None
-
-        domain = urlparse(url).netloc.replace('www.', '')
-        source = {
-            'yahoo': 'Yahoo Finance', 'marketwatch': 'MarketWatch',
-            'seekingalpha': 'Seeking Alpha', 'businessinsider': 'Business Insider'
-        }.get(domain.split('.')[0], domain)
-
-        relevance_score = (text.lower().count(self.ticker.lower()) +
-                           text.lower().count(self.company_name.lower()) +
-                           (5 if self.ticker.lower() in title.lower() else 0) +
-                           (5 if self.company_name.lower() in title.lower() else 0))
-        if relevance_score < 1:
-            logger.warning(f"Low relevance for {url}")
-            return None
-
-        return {
-            "url": url,
-            "title": title,
-            "text": text,
-            "source": source,
-            "relevance_score": relevance_score,
-            "publish_date": publish_date
-        }
+        self.company_name = "Unknown Company"  # Placeholder; could fetch from yfinance if needed
 
     async def get_news(self):
-        """Fetch and process news articles."""
-        logger.info(f"Searching news for {self.ticker} ({self.company_name})...")
-        tasks = [source() for source in self.sources]
-        results = await asyncio.gather(*tasks)
-        all_urls = list(set(url for sublist in results if sublist for url in sublist))
-
-        if not all_urls:
-            logger.info("No articles found.")
+        """Fetch and analyze news articles using deepcrawler and np3k_group_crawler."""
+        # Create a list of tasks for each URL with url and ticker arguments
+        tasks = [crawl_and_extract(url, self.ticker) for url in self.urls]
+        # Run all tasks concurrently
+        articles_json = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Filter out any failed crawls or exceptions
+        articles_json = [article for article in articles_json if isinstance(article, dict) and article]
+        if not articles_json:
+            logger.warning("No articles extracted.")
             return []
 
-        logger.info(f"Found {len(all_urls)} unique URLs")
-        articles = []
-        for url in all_urls:
-            article = await self._process_article(url)
-            if article:
-                articles.append(article)
-            if len(articles) >= self.max_articles * 1.5:
-                break
-            await asyncio.sleep(0.5)
+        # Extract text content for sentiment analysis
+        texts = []
+        for article in articles_json:
+            # Make sure text isn't too long for BERT model (which has 512 token limit)
+            # Truncate to around 2000 chars which should be well under the token limit
+            text = article.get('content', '')
+            if len(text) > 2000:
+                text = text[:2000]
+            texts.append(text)
+            
+        analyzer = FinBERTSentimentAnalyzer()
+        sentiments = analyzer.batch_analyze(texts)
 
-        articles.sort(key=lambda x: x['relevance_score'], reverse=True)
-        articles = articles[:self.max_articles]
-        logger.info(f"Selected {len(articles)} most relevant articles")
-
-        if articles:
-            texts = [a['text'] for a in articles]
-            sentiments = self.analyzer.batch_analyze(texts)
-            for article, sentiment in zip(articles, sentiments):
-                article['sentiment_analysis'] = sentiment
-                sentiment_label = sentiment['sentiment']
-                opinion = 1 if sentiment_label == 'positive' else -1 if sentiment_label == 'negative' else 0
-                if self.publish_to_rabbitmq:
-                    try:
-                        published_at = (article['publish_date'] if article['publish_date']
-                                        else datetime.utcnow())
-                        result = self.publisher.publish_news(
-                            title=article['title'],
-                            symbol=self.ticker,
-                            content=article['text'],
-                            published_at=published_at,
-                            opinion=opinion
-                        )
-                        if result:
-                            logger.info(f"Published to RabbitMQ: {article['title']}")
-                        else:
-                            logger.error(f"Failed to publish: {article['title']}")
-                    except Exception as e:
-                        logger.error(f"Error publishing to RabbitMQ: {e}")
-        return articles
+        # Combine articles with sentiment results
+        for article, sentiment in zip(articles_json, sentiments):
+            article['sentiment_analysis'] = sentiment
+        return articles_json
 
     async def scrape_to_json(self):
-        """Scrape news and return results as JSON."""
+        """Scrape news and return a list of articles in the desired format."""
         articles = await self.get_news()
-        result = {
-            "ticker": self.ticker,
-            "company": self.company_name,
-            "timestamp": datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
-            "total_articles": len(articles),
-            "articles": [
-                {
-                    "title": a["title"],
-                    "source": a["source"],
-                    "url": a["url"],
-                    "text": a["text"],
-                    "sentiment_analysis": a["sentiment_analysis"],
-                    "published_at": (a["publish_date"].isoformat() if a["publish_date"]
-                                    else datetime.utcnow().isoformat())
-                } for a in articles
-            ]
-        }
-        return result
+        articles_list = [
+            {
+                "url": a.get("url", ""),
+                "title": a.get("title", "Untitled"),
+                "ticker": self.ticker,
+                "content": a.get("content", ""),
+                "date": a.get("date", "Unknown"),
+                "opinion": self.label_to_score(a.get("sentiment_analysis", {}).get("sentiment", "neutral"))
+            } for a in articles
+        ]
+        return articles_list
+
+    def label_to_score(self, label):
+        """Map sentiment label to a score (-1, 0, 1)."""
+        mapping = {"positive": 1, "neutral": 0, "negative": -1}
+        return mapping.get(label.lower(), 0)  # Default to 0 if label is unknown
 
 @ns.route('/analyze')
 class NewsAnalyzer(Resource):
-    @ns.expect(stock_model)
-    @ns.marshal_with(response_model, code=200, description='News analysis with sentiment')
+    @ns.expect(api.model('InputModel', {
+        'ticker': fields.String(required=True, example='AAPL')
+    }), validate=True)  # Add input validation
+    @ns.marshal_list_with(article_model)
     def post(self):
         """Analyze news for a stock ticker."""
-        data = request.json
-        ticker = data.get('ticker', 'AAPL').upper()
-        max_articles = data.get('articles', 5)
-
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
-            scraper = StockNewsScraper(ticker, max_articles, publish_to_rabbitmq=True)
-            result = loop.run_until_complete(scraper.scrape_to_json())
-            return result
+            data = request.get_json(force=True)
+            ticker = data.get('ticker', 'AAPL').upper()
+            
+            if not ticker:
+                ns.abort(400, "Missing required 'ticker' field")
+
+            urls, ticker = get_todays_news_urls(ticker)
+        
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+            try:
+                scraper = StockNewsScraper(ticker, urls, publish_to_rabbitmq=True)
+                result = loop.run_until_complete(scraper.scrape_to_json())
+                return result
+            except Exception as e:
+                logger.exception(f"Error analyzing news for {ticker}: {e}")
+                ns.abort(500, f"Error analyzing news: {str(e)}")
+            finally:
+                loop.close()
         except Exception as e:
-            logger.exception(f"Error analyzing news for {ticker}: {e}")
-            ns.abort(500, f"Error analyzing news: {str(e)}")
-        finally:
-            loop.close()
+            logger.error(f"Request data: {request.data}")  # Log raw request data
+            logger.exception(f"Bad request error: {str(e)}")
+            ns.abort(400, f"Invalid request: {str(e)}")
+
 
 @ns.route('/health')
 class HealthCheck(Resource):
@@ -407,7 +258,6 @@ class HealthCheck(Resource):
         """Health check endpoint."""
         return {"status": "healthy", "timestamp": datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}
 
-# Replace @app.before_first_request with a better approach
 # Initialize models at startup
 def initialize_models():
     """Initialize models on startup."""
@@ -416,9 +266,8 @@ def initialize_models():
     logger.info("Sentiment analyzer initialized.")
 
 if __name__ == "__main__":
-    # Call initialize_models directly before running the app
     initialize_models()
-    port = int(os.environ.get('PORT', 8001))
+    port = int(os.environ.get('PORT', 8092))
     host = os.environ.get('HOST', '0.0.0.0')
     logger.info(f"Starting News Analyzer API on {host}:{port}")
     app.run(host=host, port=port, debug=False)
