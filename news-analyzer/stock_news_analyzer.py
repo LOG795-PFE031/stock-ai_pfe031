@@ -25,6 +25,10 @@ from flask_restx import Api, Resource, fields
 from np3k_group_crawler import crawl_and_extract
 from deepcrawler import get_todays_news_urls
 from news_publisher import NewsPublisher
+import time
+from functools import wraps
+import threading
+from yfinance.exceptions import YFRateLimitError
 
 # Logging setup
 log_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -64,6 +68,29 @@ article_model = ns.model('ArticleModel', {
     'date': fields.String(description='Publication date'),
     'opinion': fields.Integer(description='Sentiment score (-1: negative, 0: neutral, 1: positive)')
 })
+
+# Rate limiting setup
+RATE_LIMIT = 2  # requests per second
+RATE_LIMIT_PERIOD = 1  # seconds
+request_times = []
+rate_limit_lock = threading.Lock()
+
+def rate_limited(max_per_second):
+    """Rate limiting decorator"""
+    min_interval = 1.0 / float(max_per_second)
+    def decorator(func):
+        last_time_called = [0.0]
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            elapsed = time.time() - last_time_called[0]
+            left_to_wait = min_interval - elapsed
+            if left_to_wait > 0:
+                time.sleep(left_to_wait)
+            ret = func(*args, **kwargs)
+            last_time_called[0] = time.time()
+            return ret
+        return wrapper
+    return decorator
 
 # FinBERT Sentiment Analyzer class
 class FinBERTSentimentAnalyzer:
@@ -220,19 +247,31 @@ class StockNewsScraper:
 class NewsAnalyzer(Resource):
     @ns.expect(api.model('InputModel', {
         'ticker': fields.String(required=True, example='AAPL')
-    }), validate=True)  # Add input validation
+    }), validate=True)
     @ns.marshal_list_with(article_model)
+    @ns.response(429, 'Too Many Requests')
+    @ns.response(503, 'Service Temporarily Unavailable')
+    @rate_limited(RATE_LIMIT)
     def post(self):
         """Analyze news for a stock ticker."""
         try:
             data = request.get_json(force=True)
-            ticker = data.get('ticker', 'AAPL').upper()
+            ticker = data.get('ticker', '').upper()
             
             if not ticker:
                 ns.abort(400, "Missing required 'ticker' field")
 
-            urls, ticker = get_todays_news_urls(ticker)
-        
+            try:
+                urls, ticker = get_todays_news_urls(ticker)
+            except YFRateLimitError:
+                logger.warning(f"Rate limited by Yahoo Finance for ticker {ticker}")
+                return ns.abort(429, "Rate limited by data provider. Please try again in a few minutes.")
+            except Exception as e:
+                logger.error(f"Error fetching news URLs for {ticker}: {e}")
+                return ns.abort(503, f"Unable to fetch news data: {str(e)}")
+
+            if not urls:
+                return []  # Return empty list if no news found
 
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -240,14 +279,20 @@ class NewsAnalyzer(Resource):
             try:
                 scraper = StockNewsScraper(ticker, urls, publish_to_rabbitmq=True)
                 result = loop.run_until_complete(scraper.scrape_to_json())
+                
+                if not result:
+                    logger.warning(f"No news articles found for {ticker}")
+                    return []
+                    
                 return result
+                
             except Exception as e:
                 logger.exception(f"Error analyzing news for {ticker}: {e}")
                 ns.abort(500, f"Error analyzing news: {str(e)}")
             finally:
                 loop.close()
         except Exception as e:
-            logger.error(f"Request data: {request.data}")  # Log raw request data
+            logger.error(f"Request data: {request.data}")
             logger.exception(f"Bad request error: {str(e)}")
             ns.abort(400, f"Invalid request: {str(e)}")
 

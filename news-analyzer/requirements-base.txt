@@ -18,4 +18,4 @@ python-dateutil==2.9.0.post0
 tqdm==4.67.1
 
 # Financial data
-yfinance==0.2.52 
+yfinance==0.2.54

@@ -30,7 +30,7 @@ services:
       dockerfile: Dockerfile
     container_name: news-analyzer
     ports:
-      - "8001:8001"
+      - "8092:8092"
     volumes:
       - ./news-analyzer:/app
       - ./logs:/app/logs
@@ -39,11 +39,13 @@ services:
       - RABBITMQ_PORT=5672
       - RABBITMQ_USER=guest
       - RABBITMQ_PASS=guest
+      - PORT=8092
+      - HOST=0.0.0.0
     networks:
       - auth
     restart: on-failure:3
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8092/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
