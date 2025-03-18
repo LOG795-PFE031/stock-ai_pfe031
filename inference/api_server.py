@@ -16,6 +16,7 @@ from prophet import Prophet
 from .rabbitmq_publisher import rabbitmq_publisher
 import json
 from keras.layers import LSTM, Dropout, Dense, Input
+from functools import wraps
 
 # Enable unsafe deserialization for Lambda layers
 tf.keras.config.enable_unsafe_deserialization()
@@ -162,6 +163,41 @@ def load_prophet_model(symbol: str) -> Prophet:
         logger.error(f"❌ Error loading Prophet model for {symbol}: {str(e)}")
         raise ModelNotLoadedError(f"Failed to load Prophet model for {symbol}") from e
 
+def load_model_safely(model_path: str, symbol: str) -> Model:
+    """Load a Keras model with additional safety measures for compatibility"""
+    try:
+        # First try normal loading
+        logger.info(f"Attempting to load model for {symbol} with standard method")
+        return load_model(model_path)
+    except Exception as e:
+        logger.warning(f"Standard loading failed for {symbol}: {str(e)}")
+        
+        # Try with unsafe deserialization explicitly enabled
+        try:
+            logger.info(f"Attempting to load model for {symbol} with unsafe deserialization")
+            # Ensure unsafe deserialization is enabled
+            tf.keras.config.enable_unsafe_deserialization()
+            return load_model(model_path)
+        except Exception as unsafe_error:
+            logger.warning(f"Unsafe loading failed for {symbol}: {str(unsafe_error)}")
+            
+            # Try with custom objects
+            try:
+                logger.info(f"Attempting to load model for {symbol} with custom objects")
+                
+                # Define common custom objects that might be needed
+                custom_objects = {
+                    'LSTM': tf.keras.layers.LSTM,
+                    'Dropout': tf.keras.layers.Dropout,
+                    'Dense': tf.keras.layers.Dense,
+                    'Input': tf.keras.layers.Input
+                }
+                
+                return load_model(model_path, custom_objects=custom_objects)
+            except Exception as custom_error:
+                logger.error(f"All loading methods failed for {symbol}")
+                raise Exception(f"Could not load model: {str(custom_error)}") from custom_error
+
 def load_resources() -> None:
     """Load ML models and scalers with proper error handling"""
     global GENERAL_MODEL, SPECIFIC_MODELS, SPECIFIC_SCALERS, GENERAL_SCALERS
@@ -178,6 +214,9 @@ def load_resources() -> None:
         loaded_symbols = []
         skipped_symbols = []
         error_symbols = []
+        missing_metadata_count = 0
+        missing_scaler_count = 0
+        tf_compatibility_errors = 0
         
         # Get all symbol directories
         symbol_dirs = [
@@ -186,6 +225,7 @@ def load_resources() -> None:
         ]
         
         logger.info(f"Loading models for {len(symbol_dirs)} symbols...")
+        logger.info(f"TensorFlow version: {tf.__version__}, Keras version: {tf.keras.__version__}")
         
         for symbol in symbol_dirs:
             try:
@@ -195,33 +235,91 @@ def load_resources() -> None:
                 scaler_path = os.path.join(symbol_dir, f"{symbol}_scaler.gz")
                 metadata_path = os.path.join(symbol_dir, f"{symbol}_scaler_metadata.json")
                 
+                # Add detailed logging
+                file_status = {
+                    "model_keras": os.path.exists(model_keras_path),
+                    "model_weights": os.path.exists(model_weights_path),
+                    "scaler": os.path.exists(scaler_path),
+                    "metadata": os.path.exists(metadata_path)
+                }
+                
+                logger.info(f"Files for {symbol}: {file_status}")
+                
                 # Skip if we don't have both scaler and metadata
                 if not (os.path.exists(scaler_path) and os.path.exists(metadata_path)):
-                    skipped_count += 1
-                    skipped_symbols.append(symbol)
-                    continue
+                    # Track what's missing
+                    if not os.path.exists(scaler_path):
+                        missing_scaler_count += 1
+                        skipped_count += 1
+                        skipped_symbols.append(symbol)
+                        continue
+                    elif not os.path.exists(metadata_path):
+                        missing_metadata_count += 1
+                        # Try to create metadata on the fly if scaler exists
+                        logger.info(f"Attempting to create missing metadata for {symbol}")
+                        if create_metadata_for_symbol(symbol):
+                            logger.info(f"Successfully created metadata for {symbol}")
+                            # Now the metadata exists, so we can proceed
+                        else:
+                            skipped_count += 1
+                            skipped_symbols.append(symbol)
+                            continue
                 
                 # Try to load the model
                 if os.path.exists(model_keras_path):
-                    model = load_model(model_keras_path)
+                    try:
+                        logger.info(f"Loading .keras model for {symbol} from {model_keras_path}")
+                        # Check if model was saved with a different TF/Keras version
+                        try:
+                            with open(model_keras_path, 'rb') as f:
+                                # Just try to read first few bytes to see if file is accessible
+                                f.read(10)
+                            logger.info(f"Model file for {symbol} is readable")
+                        except Exception as file_error:
+                            logger.error(f"Cannot read model file for {symbol}: {str(file_error)}")
+                        
+                        model = load_model_safely(model_keras_path, symbol)
+                    except Exception as e:
+                        logger.error(f"❌ Error loading model for {symbol}: {str(e)}")
+                        tf_compatibility_errors += 1
+                        error_count += 1
+                        error_symbols.append(symbol)
+                        continue
                 elif os.path.exists(model_weights_path):
-                    input_shape = (SEQ_SIZE, len(FEATURES))
-                    model = build_specific_model(input_shape)
-                    model.load_weights(model_weights_path)
+                    logger.info(f"Loading model weights for {symbol} from {model_weights_path}")
+                    try:
+                        input_shape = (SEQ_SIZE, len(FEATURES))
+                        model = build_specific_model(input_shape)
+                        model.load_weights(model_weights_path)
+                    except Exception as e:
+                        logger.error(f"❌ Error loading model weights for {symbol}: {str(e)}")
+                        tf_compatibility_errors += 1
+                        error_count += 1
+                        error_symbols.append(symbol)
+                        continue
                 else:
+                    logger.info(f"No model file found for {symbol}, skipping")
                     skipped_count += 1
                     skipped_symbols.append(symbol)
                     continue
                 
                 # Load scaler and metadata
-                scaler = joblib.load(scaler_path)
-                with open(metadata_path, 'r') as f:
-                    metadata = json.load(f)
+                try:
+                    scaler = joblib.load(scaler_path)
+                    with open(metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                        logger.info(f"Successfully loaded metadata for {symbol}")
+                except Exception as e:
+                    logger.error(f"❌ Error loading scaler or metadata for {symbol}: {str(e)}")
+                    error_count += 1
+                    error_symbols.append(symbol)
+                    continue
                 
                 SPECIFIC_MODELS[symbol] = model
                 SPECIFIC_SCALERS[symbol] = scaler
                 loaded_count += 1
                 loaded_symbols.append(symbol)
+                logger.info(f"✅ Successfully loaded model, scaler and metadata for {symbol}")
                 
             except Exception as e:
                 error_count += 1
@@ -236,6 +334,11 @@ def load_resources() -> None:
             logger.info(f"⚠️ Skipped {skipped_count} models: {', '.join(skipped_symbols)}")
         if error_count > 0:
             logger.info(f"❌ Failed to load {error_count} models: {', '.join(error_symbols)}")
+        
+        # Print detailed statistics
+        logger.info(f"Missing metadata files: {missing_metadata_count}")
+        logger.info(f"Missing scaler files: {missing_scaler_count}")
+        logger.info(f"TensorFlow/Keras compatibility errors: {tf_compatibility_errors}")
         logger.info("===========================\n")
         
         if not SPECIFIC_MODELS:
@@ -244,6 +347,57 @@ def load_resources() -> None:
     except Exception as e:
         logger.error(f"❌ Error loading resources: {str(e)}")
         raise ModelNotLoadedError("Failed to load model resources") from e
+
+def create_metadata_for_symbol(symbol: str) -> bool:
+    """Create metadata file for a specific symbol if scaler exists but metadata doesn't"""
+    specific_dir = "models/specific"
+    symbol_dir = os.path.join(specific_dir, symbol)
+    
+    if not os.path.isdir(symbol_dir):
+        logger.warning(f"No directory found for symbol {symbol}")
+        return False
+        
+    scaler_path = os.path.join(symbol_dir, f"{symbol}_scaler.gz")
+    metadata_path = os.path.join(symbol_dir, f"{symbol}_scaler_metadata.json")
+    
+    # Skip if metadata exists or scaler doesn't exist
+    if os.path.exists(metadata_path):
+        logger.info(f"Metadata already exists for {symbol}")
+        return False
+        
+    if not os.path.exists(scaler_path):
+        logger.warning(f"No scaler found for {symbol}")
+        return False
+        
+    try:
+        # Load the scaler
+        scaler = joblib.load(scaler_path)
+        
+        # Create basic metadata with default values if actual values can't be extracted
+        try:
+            min_values = scaler.data_min_.tolist() if hasattr(scaler, 'data_min_') else [0.0] * len(FEATURES)
+            max_values = scaler.data_max_.tolist() if hasattr(scaler, 'data_max_') else [1.0] * len(FEATURES)
+        except Exception as e:
+            logger.warning(f"Could not extract min/max values from scaler for {symbol}: {str(e)}")
+            min_values = [0.0] * len(FEATURES)
+            max_values = [1.0] * len(FEATURES)
+        
+        scaling_metadata = {
+            'feature_order': FEATURES,
+            'min_values': min_values,
+            'max_values': max_values,
+            'feature_names': FEATURES
+        }
+        
+        # Save metadata
+        with open(metadata_path, 'w') as f:
+            json.dump(scaling_metadata, f, indent=4)
+            
+        logger.info(f"Created metadata file for {symbol}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to create metadata for {symbol}: {str(e)}")
+        return False
 
 def build_specific_model(input_shape: Tuple) -> Model:
     """Build a stock-specific model using functional API"""
@@ -272,26 +426,42 @@ def get_latest_sequence(symbol: str) -> np.ndarray:
     """Retrieves and prepares the most recent sequence for a specific stock"""
     try:
         # Try to find the stock in the specific directory structure
-        for sector in os.listdir(os.path.join("data", "processed", "specific")):
-            sector_path = os.path.join("data", "processed", "specific", sector)
-            if os.path.isdir(sector_path):
-                stock_file = os.path.join(sector_path, f"{symbol}_processed.csv")
-                if os.path.exists(stock_file):
-                    df = pd.read_csv(stock_file)
-                    break
-        else:
+        found_file = False
+        try:
+            for sector in os.listdir(os.path.join("data", "processed", "specific")):
+                sector_path = os.path.join("data", "processed", "specific", sector)
+                if os.path.isdir(sector_path):
+                    stock_file = os.path.join(sector_path, f"{symbol}_processed.csv")
+                    if os.path.exists(stock_file):
+                        df = pd.read_csv(stock_file)
+                        found_file = True
+                        logger.info(f"Found data file for {symbol} in {sector_path}")
+                        break
+        except Exception as e:
+            logger.error(f"Error searching for {symbol} in specific sectors: {str(e)}")
+                    
+        if not found_file:
             # If not found in specific directories, try the general processed directory
             stock_file = os.path.join("data", "processed", f"{symbol}_processed.csv")
             if not os.path.exists(stock_file):
                 raise FileNotFoundError(f"No data found for symbol {symbol}")
             df = pd.read_csv(stock_file)
+            logger.info(f"Found data file for {symbol} in general processed directory")
         
         # Get last SEQ_SIZE samples
+        if len(df) < SEQ_SIZE:
+            logger.warning(f"Not enough data for {symbol}. Need {SEQ_SIZE} samples, but only have {len(df)}.")
+            # Pad the data by repeating the first row
+            padding = pd.concat([df.iloc[[0]]] * (SEQ_SIZE - len(df)), ignore_index=True)
+            df = pd.concat([padding, df], ignore_index=True)
+            
         df = df.tail(SEQ_SIZE)
         
         # Check if all required features are present
         missing_features = [f for f in FEATURES if f not in df.columns]
         if missing_features:
+            logger.error(f"Missing required features for {symbol}: {missing_features}")
+            logger.error(f"Available features: {list(df.columns)}")
             raise ValueError(f"Missing required features for {symbol}: {missing_features}")
         
         # Prepare sequence with all required features
@@ -299,9 +469,39 @@ def get_latest_sequence(symbol: str) -> np.ndarray:
         logger.info(f"Successfully prepared sequence for {symbol} with shape {sequence.shape}")
         return sequence
         
+    except FileNotFoundError as e:
+        logger.error(f"File not found error for {symbol}: {str(e)}")
+        raise
     except Exception as e:
         logger.error(f"Error getting latest sequence for {symbol}: {str(e)}")
+        logger.exception("Full traceback:")
         raise
+
+@app.errorhandler(Exception)
+def handle_error(e):
+    logger.error(f"Global error handler caught: {str(e)}")
+    logger.exception("Unhandled error:")
+    return {
+        'error': str(e),
+        'status': 'error',
+        'timestamp': datetime.now().isoformat()
+    }, HTTPStatus.INTERNAL_SERVER_ERROR
+
+# Route protection wrapper
+def handle_route_errors(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        try:
+            return f(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Route error: {str(e)}")
+            logger.exception("Full traceback:")
+            return {
+                'error': str(e),
+                'status': 'error',
+                'timestamp': datetime.now().isoformat()
+            }, HTTPStatus.INTERNAL_SERVER_ERROR
+    return decorated
 
 @ns_home.route('/')
 class Home(Resource):
@@ -310,6 +510,7 @@ class Home(Resource):
             200: 'Welcome message',
         }
     )
+    @handle_route_errors
     def get(self):
         """Get welcome message and basic API information"""
         return {
@@ -333,6 +534,7 @@ class MetaInfo(Resource):
         }
     )
     @api.marshal_with(meta_model)
+    @handle_route_errors
     def get(self) -> Dict[str, Any]:
         """Get API and model metadata including version, uptime, and statistics"""
         global REQUEST_COUNT
@@ -361,6 +563,7 @@ class HealthCheck(Resource):
             HTTPStatus.SERVICE_UNAVAILABLE: 'API is unhealthy'
         }
     )
+    @handle_route_errors
     def get(self) -> Dict[str, Any]:
         """Comprehensive health check of the API and its dependencies"""
         try:
@@ -368,21 +571,67 @@ class HealthCheck(Resource):
             if not GENERAL_MODEL and not SPECIFIC_MODELS:
                 raise ModelNotLoadedError("No models loaded")
             
-            return {
+            # Check data directories
+            data_dir_status = {}
+            
+            try:
+                if os.path.exists("data"):
+                    data_dir_status["data_root"] = "exists"
+                    
+                    if os.path.exists("data/processed"):
+                        data_dir_status["processed"] = "exists"
+                        
+                        if os.path.exists("data/processed/specific"):
+                            data_dir_status["processed/specific"] = "exists"
+                            specific_dirs = os.listdir("data/processed/specific")
+                            data_dir_status["sectors"] = specific_dirs
+            except Exception as e:
+                logger.error(f"Error checking data directories: {str(e)}")
+                data_dir_status["error"] = str(e)
+            
+            # Check specific models availability
+            model_status = {}
+            try:
+                model_status["total_models"] = len(SPECIFIC_MODELS)
+                model_status["model_keys"] = list(SPECIFIC_MODELS.keys())[:5]  # First 5 models
+                model_status["total_scalers"] = len(SPECIFIC_SCALERS)
+                model_status["scaler_keys"] = list(SPECIFIC_SCALERS.keys())[:5]  # First 5 scalers
+            except Exception as e:
+                logger.error(f"Error checking model status: {str(e)}")
+                model_status["error"] = str(e)
+            
+            # Create the health status response
+            result = {
                 'status': 'healthy',
                 'timestamp': datetime.now().isoformat(),
                 'components': {
                     'general_model': 'healthy' if GENERAL_MODEL else 'not loaded',
-                    'specific_models': f'loaded {len(SPECIFIC_MODELS)} models',
-                    'database': 'healthy'
+                    'specific_models': model_status,
+                    'data_directories': data_dir_status,
+                    'system_info': {
+                        'python_version': PYTHON_VERSION,
+                        'tensorflow_version': TF_VERSION,
+                        'keras_version': KERAS_VERSION
+                    }
                 }
-            }, HTTPStatus.OK
+            }
+            logger.info("Health check successful")
+            return result, HTTPStatus.OK
+            
         except Exception as e:
-            return {
+            logger.error(f"Health check failed: {str(e)}")
+            logger.exception("Full error traceback:")
+            error_result = {
                 'status': 'unhealthy',
                 'error': str(e),
-                'timestamp': datetime.now().isoformat()
-            }, HTTPStatus.SERVICE_UNAVAILABLE
+                'timestamp': datetime.now().isoformat(),
+                'system_info': {
+                    'python_version': PYTHON_VERSION,
+                    'tensorflow_version': TF_VERSION,
+                    'keras_version': KERAS_VERSION
+                }
+            }
+            return error_result, HTTPStatus.SERVICE_UNAVAILABLE
 
 @ns_predict.route('/next_day')
 class NextDayPrediction(Resource):
@@ -411,6 +660,7 @@ class NextDayPrediction(Resource):
         }
     )
     @api.marshal_with(prediction_model)
+    @handle_route_errors
     def get(self) -> Dict[str, Any]:
         """Get detailed stock price prediction for the next trading day"""
         global REQUEST_COUNT
@@ -910,6 +1160,24 @@ def calculate_confidence_score(sequence: np.ndarray, prediction: np.ndarray) -> 
     return 0.85
 
 if __name__ == '__main__':
+    # Check if we need to create metadata files before loading resources
+    missing_metadata_count = 0
+    for symbol in os.listdir("models/specific"):
+        symbol_dir = os.path.join("models/specific", symbol)
+        if not os.path.isdir(symbol_dir):
+            continue
+            
+        scaler_path = os.path.join(symbol_dir, f"{symbol}_scaler.gz")
+        metadata_path = os.path.join(symbol_dir, f"{symbol}_scaler_metadata.json")
+        if not os.path.exists(metadata_path) and os.path.exists(scaler_path):
+            missing_metadata_count += 1
+            # Try to create metadata on the fly
+            logger.info(f"Creating metadata for {symbol}")
+            create_metadata_for_symbol(symbol)
+    
+    if missing_metadata_count > 0:
+        logger.warning(f"Created {missing_metadata_count} missing metadata files on startup")
+    
     load_resources()
     try:
         app.run(host='0.0.0.0', port=8000, debug=False)
