@@ -1,347 +1,237 @@
-# Stock-AI: Stock Price Prediction System
 
-A comprehensive system for predicting stock prices using deep learning models (TensorFlow and PyTorch LSTM models), with message queuing for distributed processing via RabbitMQ and Celery.
+# Stock-AI: Advanced Stock Prediction and Analysis System
+
+A comprehensive platform for stock price prediction and sentiment analysis using deep learning models (TensorFlow and PyTorch LSTM), distributed processing with RabbitMQ, and an AI-powered chatbot interface.
 
 ## Table of Contents
 
 1. [Overview](#overview)
 2. [System Architecture](#system-architecture)
 3. [Installation](#installation)
-4. [Data Collection and Processing](#data-collection-and-processing)
-5. [Model Training](#model-training)
-6. [Model Comparison](#model-comparison)
-7. [Prediction Service](#prediction-service)
-8. [Message Queue System](#message-queue-system)
-9. [Task Processing](#task-processing)
-10. [Monitoring Tools](#monitoring-tools)
-11. [Usage](#usage)
-12. [Troubleshooting](#troubleshooting)
+4. [Running the System](#running-the-system)
+5. [Testing the Services](#testing-the-services)
+6. [Troubleshooting](#troubleshooting)
+7. [Features](#features)
+8. [Project Structure](#project-structure)
 
 ## Overview
 
-This project implements a complete stock price prediction system that:
+The Stock-AI system is an integrated platform that:
 
-- Collects and processes historical stock data (Google/Alphabet)
-- Trains both TensorFlow and PyTorch LSTM models
-- Compares model performance with metrics (MAE, RMSE, R², MAPE)
-- Makes predictions for future stock prices
-- Distributes predictions through a message queue for parallel processing
-- Implements monitoring and management tools
+- Performs stock price predictions using deep learning models
+- Analyzes news sentiment to provide investment insights
+- Processes data through distributed message queues
+- Provides an interactive chatbot interface for user queries
+- Offers microservice architecture for scalability and resilience
 
-The system uses a microservice architecture with loosely coupled components that communicate via RabbitMQ message queues.
+The system combines multiple technologies including PyTorch, TensorFlow, RabbitMQ, and Docker to create a comprehensive stock analysis platform.
 
 ## System Architecture
 
 The system consists of the following components:
 
-1. **Data Collection & Processing Pipeline**: Fetches and preprocesses stock data
-2. **Model Training System**: Trains and evaluates LSTM models
-3. **Prediction Service**: Makes predictions using trained models
-4. **Message Queue System**: RabbitMQ for message distribution
-5. **Task Processors**: Celery workers for different types of prediction processing
-6. **Monitoring Tools**: Utilities to monitor message flow and system health
+1. **Stock Prediction Service**: Predicts future stock prices using LSTM models
+2. **News Analyzer Service**: Performs sentiment analysis on financial news
+3. **RabbitMQ Message Queue**: Handles distributed message processing
+4. **Chatbot Interface**: Provides natural language interaction with the system
+5. **StockAI Backend**: C# service that manages authentication and API coordination
+
+All components are containerized using Docker for easy deployment and scaling.
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.11+
-- RabbitMQ 4.0+
-- Erlang
+- Docker and Docker Compose
+- Python 3.11+ (for local development)
+- Git
 
-### Dependencies
+### Step 1: Download Required Models
 
-```bash
-pip install -r requirements.txt
-```
+1. Download the NASDAQ100 models from:
+   [https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EfknD8y0hDZFgWjIaiHWCdwBpK3YJvs8PIAC8RLRdMTfgw?e=QrtXJh](https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EfknD8y0hDZFgWjIaiHWCdwBpK3YJvs8PIAC8RLRdMTfgw?e=QrtXJh)
 
-### RabbitMQ Setup
+2. Unzip the downloaded file
+3. Move the contents to the `stock-prediction` folder in your project directory
 
-Install and run RabbitMQ:
+### Step 2: Set Up the StockAI Backend
 
-```bash
-# macOS
-brew install rabbitmq
-CONF_ENV_FILE="/opt/homebrew/etc/rabbitmq/rabbitmq-env.conf" /opt/homebrew/opt/rabbitmq/sbin/rabbitmq-server -detached
+1. Clone the stockai-backend repository (C# service with RabbitMQ)
+2. Follow the README steps in that repository to get it up and running
+3. Ensure the RabbitMQ container is running properly
 
-# Check status (note the node name)
-rabbitmqctl -n rabbitmq@localhost status
-```
+### Step 3: Create and Configure Docker Network
 
-Enable the management plugin:
+Create a Docker network to connect all services:
 
 ```bash
-rabbitmq-plugins -n rabbitmq@localhost enable rabbitmq_management
+docker network create auth
 ```
 
-Access the management interface at: http://localhost:15672 (user: guest, pass: guest)
-
-## Data Collection and Processing
-
-The system collects Google/Alphabet stock data using multiple sources with fallback mechanisms:
-
-1. Primary: yfinance API
-2. Secondary: pandas-datareader with Stooq
-3. Fallback: Local historical data files
-
-### Data Features
-
-- Open, High, Low, Close prices
-- Volume
-- Additional derived features
-
-### Preprocessing Steps
-
-1. Handling missing data
-2. Feature scaling using scikit-learn's StandardScaler
-3. Sequence creation for time series modeling (sliding window approach)
-4. Train/validate/test splits
-
-## Model Training
-
-### LSTM Model Architecture
-
-Both TensorFlow and PyTorch implementations use similar LSTM architectures:
-
-```
-Input (sequence_length=60, features) → 
-LSTM Layer (100 units) → 
-Dropout (0.2) → 
-Dense/Linear Output Layer (1)
-```
-
-### Training Process
-
-1. Load and preprocess data
-2. Create sequences with sliding window
-3. Train LSTM models with Adam optimizer (learning_rate=0.001)
-4. Monitor validation loss for early stopping
-5. Save trained models and scalers
-
-## Model Comparison
-
-`torch_lstm_main.py` compares the performance of TensorFlow and PyTorch LSTM models:
-
-### Metrics
-
-- Mean Absolute Error (MAE)
-- Root Mean Square Error (RMSE)
-- R² Score
-- Mean Absolute Percentage Error (MAPE)
-
-### Visualizations
-
-- Full time series predictions
-- Close-up of most recent 50 days
-- Predicted vs Actual scatter plot
-
-## Prediction Service
-
-`prediction_service.py` implements the stock price prediction service:
-
-1. Fetches the latest available stock data
-2. Applies preprocessing
-3. Makes a prediction using the PyTorch LSTM model
-4. Distributes the prediction to processing queues via Celery tasks
-
-### Features
-
-- Robust data fetching with multiple fallbacks
-- Error handling for missing data
-- Next business day calculation
-- Resilient message publishing
-
-## Message Queue System
-
-The system uses RabbitMQ as the message broker with Celery for task processing:
-
-### Components
-
-- **Exchange**: stock_predictions (topic exchange)
-- **Routing Key**: google.stock.prediction
-- **Queues**:
-  - prediction_queue_1: Basic processing
-  - prediction_queue_2: Advanced analysis
-
-### Message Format
-
-```json
-{
-  "ticker": "GOOGL",
-  "prediction_date": "2025-03-03",
-  "prediction_time": "00:00:00",
-  "predicted_open": 170.56,
-  "model": "pytorch_lstm"
-}
-```
-
-## Task Processing
-
-`celery_tasks.py` defines the Celery tasks for processing predictions:
-
-### Processor 1: Basic Processing
-
-- Records the prediction
-- Formats the output
-- Could be extended to store in database, send notifications, etc.
-
-### Processor 2: Advanced Analysis
-
-- Calculates a price range (±5%)
-- Determines confidence score
-- More sophisticated analysis of prediction implications
-
-### Celery Configuration
-
-```python
-app = Celery('stock_predictions',
-            broker='amqp://guest:guest@localhost:5672//',
-            backend='rpc://')
-
-app.conf.update(
-    task_serializer='json',
-    accept_content=['json'],
-    result_serializer='json',
-    timezone='UTC',
-    enable_utc=True,
-    task_routes={
-        'celery_tasks.process_prediction': {'queue': 'prediction_queue_1'},
-        'celery_tasks.analyze_prediction': {'queue': 'prediction_queue_2'}
-    }
-)
-```
-
-## Monitoring Tools
-
-### RabbitMQ Monitor
-
-`monitor_rabbitmq.py` provides a real-time visualization of the RabbitMQ system:
-
-- Shows exchanges and their bindings
-- Displays queue message counts
-- Identifies queues with messages waiting for processing
-
-### Task Status Checker
-
-`check_task_status.py` allows checking the status of Celery tasks:
+Connect all required services to the network:
 
 ```bash
-python check_task_status.py <task_id>
+docker network connect auth rabbitmq && docker network connect auth stock-predictor && docker network connect auth news-analyzer && docker network connect auth monolith
 ```
 
-### System Runner
+### Step 4: Configure the Chatbot
 
-`run_prediction_system.py` provides an integrated way to run the complete system:
+Create a `.env` file in the `chatbot` folder with your OpenAI API key:
 
-1. Starts a Celery worker
-2. Runs the prediction service
-3. Allows time for processing
-4. Shows the results
+```
+OPENAI_API_KEY=your_api_key_here
+```
 
-## Usage
+## Running the System
 
-### Running the Complete System
+### Build and Start the Services
+
+Build and run all services with Docker Compose:
 
 ```bash
-python run_prediction_system.py
+docker compose up --build
 ```
 
-### Individual Components
+**Note**: Initial build may take 10-30 minutes as PyTorch and other dependencies are installed.
 
-**Model Comparison**:
+### Starting Individual Components
+
+If you need to start components separately:
+
+**Stock Prediction Service**:
 ```bash
-python torch_lstm_main.py
+docker compose up stock-predictor
 ```
 
-**Prediction Service Only**:
+**News Analyzer Service**:
 ```bash
-python prediction_service.py
+docker compose up news-analyzer
 ```
 
-**Workers Only**:
+**Chatbot (locally)**:
 ```bash
-celery -A celery_tasks worker -l info
+cd chatbot
+python chatbot.py
 ```
 
-**Monitor RabbitMQ**:
-```bash
-python monitor_rabbitmq.py
+## Testing the Services
+
+### Stock Prediction Service
+
+Access the Swagger UI documentation and test interface:
 ```
+http://localhost:8000/docs
+```
+
+Example API calls:
+```bash
+curl -X GET "http://localhost:8000/predict/AAPL"
+```
+
+### News Sentiment Analysis Service
+
+Access the sentiment analysis service:
+```
+http://localhost:8092/
+```
+
+Example API calls:
+```bash
+curl -X GET "http://localhost:8092/api/sentiment/AAPL"
+```
+
+### Chatbot Interface
+
+Test the chatbot with a curl command:
+
+```bash
+curl -X POST http://localhost:5004/chat -H "Content-Type: application/json" -d '{"user_id": "test_user", "query": "Should I invest into MSFT?"}'
+```
+
+Example queries for the chatbot:
+- "What's the price prediction for AAPL?"
+- "Show me the sentiment analysis for Tesla"
+- "Should I invest in Google right now?"
+- "What's the news sentiment for NVDA?"
 
 ## Troubleshooting
 
-### RabbitMQ Issues
+### Docker Networking Issues
 
-If RabbitMQ fails to start or connect:
+If services cannot communicate:
+1. Check if all containers are on the same network:
+   ```bash
+   docker network inspect auth
+   ```
+2. Restart the network connection if needed:
+   ```bash
+   docker network disconnect auth container_name && docker network connect auth container_name
+   ```
 
-1. Check the node name: `rabbitmqctl status` may show a different node name
-2. Use the correct node name: `rabbitmqctl -n rabbitmq@localhost status`
-3. Run with full path: `CONF_ENV_FILE="/opt/homebrew/etc/rabbitmq/rabbitmq-env.conf" /opt/homebrew/opt/rabbitmq/sbin/rabbitmq-server`
+### RabbitMQ Connection Problems
 
-### Celery Worker Issues
+If services can't connect to RabbitMQ:
+1. Check RabbitMQ status:
+   ```bash
+   docker exec -it rabbitmq rabbitmqctl status
+   ```
+2. Ensure the RabbitMQ management interface is accessible:
+   ```
+   http://localhost:15672 (user: guest, pass: guest)
+   ```
 
-Celery workers may fail to start due to subprocess issues. Try:
+### Model Loading Errors
 
-```bash
-celery -A celery_tasks worker -l info --pool=solo
-```
+If the prediction service fails to load models:
+1. Verify the models were correctly placed in the `stock-prediction` folder
+2. Check container logs:
+   ```bash
+   docker logs stock-predictor
+   ```
 
-### Data Fetching Issues
+### Chatbot API Key Issues
 
-If data sources fail:
+If the chatbot fails to connect to OpenAI:
+1. Verify your API key in the `.env` file
+2. Check for OpenAI rate limits or API changes
 
-1. Check your internet connection
-2. The system will automatically try alternative sources
-3. Ensure you have the historical data files in the data directory
+## Features
 
----
+* **Multi-model Stock Prediction**: TensorFlow and PyTorch LSTM models
+* **News Sentiment Analysis**: NLP-based analysis of financial news
+* **AI-Powered Chatbot**: Natural language interface using OpenAI
+* **Real-time Data Pipeline**: RabbitMQ for distributed processing
+* **Docker Containerization**: Easy deployment and scaling
+* **Microservice Architecture**: Independent, loosely-coupled services
 
 ## Project Structure
 
 ```
 stock-ai/
-├── data/
-│   ├── interim/              # Intermediate data
-│   ├── processed/            # Processed and ready data
-│   ├── raw/                  # Original data
-│   └── script/               # Data collection scripts
-├── model/                    # Model definitions
-│   ├── ltsm_model.py         # PyTorch LSTM model
-│   ├── dataset.py
-│   ├── helpers.py
-│   └── preprocessing.py
-├── models/                   # Trained model files
-│   ├── google_stock_price_lstm.model.keras
-│   ├── google_stock_price_scaler.gz
-│   ├── torch_lstm_model.pth
-│   └── model_factory.py
-├── notebooks/                # Jupyter notebooks
-│   ├── 1-data-explanatory-analysis.ipynb
-│   ├── 2-data-preprocessing.ipynb
-│   └── 3-model-training.ipynb
-├── reports/                  # Generated analysis
-│   └── figures/              # Generated graphics
-├── celery_tasks.py           # Celery task definitions
-├── check_task_status.py      # Task status checker
-├── monitor_rabbitmq.py       # RabbitMQ monitoring tool
-├── prediction_consumer.py    # RabbitMQ consumer
-├── prediction_service.py     # Prediction service
-├── run_prediction_system.py  # Integrated system runner
-├── torch_lstm_main.py        # Model comparison
-└── train_torch_lstm.py       # PyTorch model training
+├── stock-prediction/         # Stock prediction service
+│   ├── models/               # Trained ML models
+│   ├── data/                 # Stock data
+│   └── logs/                 # Service logs
+├── news-analyzer/            # News sentiment analysis service
+│   ├── Dockerfile
+│   └── ...
+├── chatbot/                  # AI chatbot interface
+│   ├── chatbot.py            # Main chatbot code
+│   └── .env                  # Environment variables (API keys)
+├── docker-compose.yml        # Docker compose configuration
+└── README.md                 # This file
 ```
-
-## Features
-
-* **Multi-horizon predictions** (next day, week)
-* **Models with attention mechanisms** and long-term memory
-* **Real-time data pipeline** with RabbitMQ
-* Low-latency prediction serving
-* **Robust message processing** with Celery
-* Concept drift detection through monitoring tools
 
 ## Acknowledgments
 
+- OpenAI for the chatbot capabilities
 - yfinance and Stooq for providing stock data
 - TensorFlow and PyTorch for deep learning frameworks
-- RabbitMQ and Celery for message queue and task processing
+- RabbitMQ for message queue processing
+- The open-source community for various libraries and tools
+
+---
+
+## License
+
+[MIT License](LICENSE)
