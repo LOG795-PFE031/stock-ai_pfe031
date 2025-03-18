@@ -7,10 +7,9 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./inference:/app/inference
-      - ./models:/app/models
-      - ./data:/app/data
-      - ./logs:/app/logs
+      - ./stock-prediction/models:/app/stock-prediction/models
+      - ./stock-prediction/data:/app/stock-prediction/data
+      - ./stock-prediction/logs:/app/stock-prediction/logs
     environment:
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
@@ -34,7 +33,7 @@ services:
       - "8092:8092"
     volumes:
       - ./news-analyzer:/app
-      - ./logs:/app/logs
+      - ./stock-prediction/logs:/app/logs
     environment:
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672

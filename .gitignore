@@ -9,6 +9,8 @@ ENV/
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
 
 # Distribution / packaging
 dist/
@@ -37,6 +39,8 @@ build/
 *.log
 *.sqlite3
 logs/
+stock-prediction/logs/
+stock-prediction/*.log
 
 # OS generated files
 .DS_Store
@@ -71,3 +75,5 @@ data/processed/
 data/raw/
 
 models/
+stock-prediction/models/
+stock-prediction/data/
