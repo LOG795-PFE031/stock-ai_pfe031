@@ -18,7 +18,7 @@ def predict():
         'current_price': round(current_price, 2),
         'prediction': round(prediction, 2),
         'confidence_score': round(random.uniform(0.70, 0.95), 2),
-        'model_type': 'RandomForest',
+        'model_type': 'lstm',
         'model_version': '1.0.0',
         'timestamp': datetime.datetime.now().isoformat()
     }
