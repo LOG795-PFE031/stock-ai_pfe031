@@ -28,18 +28,15 @@ COPY --from=builder /build/requirements*.txt ./
 RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt \
     && rm -rf /wheels
 
-# Copy only the application code and essential configuration files
-COPY inference /app/inference
-
-# Create necessary directories
-RUN mkdir -p /app/models /app/data /app/logs
+# Copy the entire stock-prediction directory
+COPY stock-prediction /app/stock-prediction
 
 # Set environment variables
 ENV PYTHONPATH=/app \
-    MODELS_DIR=/app/models \
-    GENERAL_MODEL_PATH=/app/models/general/general_model.keras \
-    SYMBOL_ENCODER_PATH=/app/models/general/symbol_encoder.gz \
-    SECTOR_ENCODER_PATH=/app/models/general/sector_encoder.gz \
+    MODELS_DIR=/app/stock-prediction/models \
+    GENERAL_MODEL_PATH=/app/stock-prediction/models/general/general_model.keras \
+    SYMBOL_ENCODER_PATH=/app/stock-prediction/models/general/symbol_encoder.gz \
+    SECTOR_ENCODER_PATH=/app/stock-prediction/models/general/sector_encoder.gz \
     # RabbitMQ configuration
     RABBITMQ_HOST=rabbitmq \
     RABBITMQ_PORT=5672 \
@@ -57,4 +54,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
-CMD ["python", "-m", "inference.api_server"]
+CMD ["python", "-m", "stock-prediction.inference.api_server"]
