@@ -77,4 +77,5 @@ data/raw/
 stock-prediction/models/general
 stock-prediction/models/prophet
 stock-prediction/models/specific
-stock-prediction/data/
+stock-prediction/data/processed/
+stock-prediction/data/raw/
