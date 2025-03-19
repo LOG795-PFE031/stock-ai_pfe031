@@ -74,6 +74,7 @@ data/interim/
 data/processed/
 data/raw/
 
-models/
-stock-prediction/models/
+stock-prediction/models/general
+stock-prediction/models/prophet
+stock-prediction/models/specific
 stock-prediction/data/
