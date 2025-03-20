@@ -48,11 +48,44 @@ All components are containerized using Docker for easy deployment and scaling.
 
 ### Step 1: Download Required Models
 
-1. Download the NASDAQ100 models from:
-   [https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EfknD8y0hDZFgWjIaiHWCdwBpK3YJvs8PIAC8RLRdMTfgw?e=QrtXJh](https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EfknD8y0hDZFgWjIaiHWCdwBpK3YJvs8PIAC8RLRdMTfgw?e=QrtXJh)
+1. Download the model files:
+   ```bash
+   # Create models directory
+   mkdir -p stock-prediction/models
+   
+   # Download models.zip from SharePoint
+   curl -L "https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EfknD8y0hDZFgWjIaiHWCdwBpK3YJvs8PIAC8RLRdMTfgw?e=UuDRZc" -o models.zip
+   
+   # Extract the contents to stock-prediction/models/
+   unzip models.zip -d stock-prediction/models/
+   
+   # Clean up the zip file
+   rm models.zip
+   
+   # This will create:
+   # - stock-prediction/models/general/
+   # - stock-prediction/models/prophet/
+   # - stock-prediction/models/specific/
+   ```
 
-2. Unzip the downloaded file
-3. Move the contents to the `stock-prediction` folder in your project directory
+2. Download the data files:
+   ```bash
+   # Create data directory
+   mkdir -p stock-prediction/data
+   
+   # Download data.zip from SharePoint
+   curl -L "https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EVr2YJqRv1lMlVSdDw_ZssIBQHkblF5_4tano1Fb9_9pBQ?e=Wvc8Gw" -o data.zip
+   
+   # Extract the contents to stock-prediction/data/
+   unzip data.zip -d stock-prediction/data/
+   
+   # Clean up the zip file
+   rm data.zip
+   
+   # This will create:
+   # - stock-prediction/data/processed/
+   # - stock-prediction/data/raw/
+   ```
 
 ### Step 2: Set Up the StockAI Backend
 
