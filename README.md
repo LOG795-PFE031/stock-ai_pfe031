@@ -1,4 +1,3 @@
-
 # Stock-AI: Advanced Stock Prediction and Analysis System
 
 A comprehensive platform for stock price prediction and sentiment analysis using deep learning models (TensorFlow and PyTorch LSTM), distributed processing with RabbitMQ, and an AI-powered chatbot interface.
@@ -34,7 +33,7 @@ The system consists of the following components:
 2. **News Analyzer Service**: Performs sentiment analysis on financial news
 3. **RabbitMQ Message Queue**: Handles distributed message processing
 4. **Chatbot Interface**: Provides natural language interaction with the system
-5. **StockAI Backend**: C# service that manages authentication and API coordination
+5. **Backend**: C# service that manages authentication and API coordination
 
 All components are containerized using Docker for easy deployment and scaling.
 
@@ -87,25 +86,43 @@ All components are containerized using Docker for easy deployment and scaling.
    # - stock-prediction/data/raw/
    ```
 
-### Step 2: Set Up the StockAI Backend
+### Step 2: Set Up the Backend
 
-1. Clone the stockai-backend repository (C# service with RabbitMQ)
+1. Clone the backend repository (C# service with RabbitMQ)
 2. Follow the README steps in that repository to get it up and running
 3. Ensure the RabbitMQ container is running properly
 
 ### Step 3: Create and Configure Docker Network
 
-Create a Docker network to connect all services:
+The system uses the "backend_auth" network created by the Backend. No manual network creation is needed, but you need to ensure your services are configured to use this network.
 
+1. First, verify the network exists after starting the backend services:
 ```bash
-docker network create auth
+docker network ls | grep backend_auth
 ```
 
-Connect all required services to the network:
+2. Update your docker-compose.yml to use the existing network:
+```yaml
+services:
+  # Your services configuration...
+  networks:
+    - backend_auth
 
-```bash
-docker network connect auth rabbitmq && docker network connect auth stock-predictor && docker network connect auth news-analyzer && docker network connect auth monolith
+networks:
+  backend_auth:
+    external: true
 ```
+
+3. To verify network connectivity, you can test the connection (after starting the services):
+```bash
+# Install netcat in the container
+docker exec -it stock-predictor apt-get update && docker exec -it stock-predictor apt-get install -y netcat-openbsd
+
+# Test connection to RabbitMQ
+docker exec stock-predictor nc -zv rabbitmq 5672
+```
+
+A successful connection will show: "Connection to rabbitmq port [tcp/amqp] succeeded!"
 
 ### Step 4: Configure the Chatbot
 

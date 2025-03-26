@@ -22,4 +22,5 @@ tenacity>=8.2.0
 yfinance>=0.2.54
 redis>=5.0.0
 cachetools>=5.3.0
-ratelimit>=2.2.1 
+ratelimit>=2.2.1
+pydantic-settings>=2.0.0 

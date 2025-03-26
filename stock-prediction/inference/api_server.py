@@ -9,15 +9,16 @@ import platform
 import sys
 from datetime import datetime, timedelta
 from http import HTTPStatus
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 
 # Third-party imports
 import joblib
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from flask import Flask, request
-from flask_restx import Api, Resource, fields
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, Field
 from prophet import Prophet
 
 # TensorFlow/Keras imports
@@ -27,7 +28,7 @@ from tensorflow.keras.layers import LSTM, Dropout, Dense, Input
 
 # Local imports
 from .rabbitmq_publisher import rabbitmq_publisher
-from .training_api import ns as training_ns
+from .training_api import router as training_router
 from .prediction_service import PredictionService
 from ..core.config import Config
 
@@ -54,77 +55,132 @@ KERAS_VERSION = tf.keras.__version__
 logger.info(f"Starting Stock Price Prediction API Server")
 logger.info(f"Python {PYTHON_VERSION} | TensorFlow {TF_VERSION} | Keras {KERAS_VERSION}")
 
-app = Flask(__name__)
-api = Api(
-    app, 
-    title='Stock Price Prediction API',
-    version='1.0',
-    description='A production-ready API for predicting stock prices using LSTM and Prophet',
-    doc='/docs',
-    default='Stock Prediction API',
-    default_label='ML-powered stock price prediction endpoints'
+# Initialize FastAPI app
+app = FastAPI(
+    title="Stock Prediction API",
+    version="1.0",
+    description="API for stock price predictions using LSTM and Prophet models",
+    docs_url="/docs"
 )
 
-# Create namespaces for better organization
-ns_home = api.namespace('', description='Home page')
-ns_predict = api.namespace('predict', description='Stock price prediction operations')
-ns_health = api.namespace('health', description='Health and monitoring operations')
-ns_meta = api.namespace('meta', description='API metadata and information')
+# Pydantic models for request/response
+class PredictionResponse(BaseModel):
+    prediction: float = Field(..., description="Predicted stock price in USD")
+    timestamp: datetime = Field(..., description="Prediction timestamp")
+    confidence_score: float = Field(..., description="Model confidence score")
+    model_version: str = Field(..., description="Model version")
+    model_type: str = Field(..., description="Model type used")
 
-# Add training namespace
-api.add_namespace(training_ns)
+class PredictionsResponse(BaseModel):
+    predictions: List[PredictionResponse] = Field(..., description="List of predictions")
+    start_date: datetime = Field(..., description="Start date of predictions")
+    end_date: datetime = Field(..., description="End date of predictions")
+    average_confidence: float = Field(..., description="Average confidence score")
 
-# Response Models
-error_model = api.model('Error', {
-    'error': fields.String(required=True, description='Error message'),
-    'status_code': fields.Integer(required=True, description='HTTP status code'),
-    'timestamp': fields.DateTime(required=True, description='Error timestamp')
-})
+class MetaInfo(BaseModel):
+    model_info: Dict[str, Any] = Field(..., description="Model information")
+    api_info: Dict[str, Any] = Field(..., description="API information")
 
-prediction_model = api.model('Prediction', {
-    'prediction': fields.Float(required=True, description='Predicted stock price in USD'),
-    'timestamp': fields.DateTime(required=True, description='Prediction timestamp'),
-    'confidence_score': fields.Float(required=True, description='Model confidence score'),
-    'model_version': fields.String(required=True, description='Model version'),
-    'model_type': fields.String(required=True, description='Model type used')
-})
-
-predictions_model = api.model('Predictions', {
-    'predictions': fields.List(
-        fields.Nested(prediction_model), 
-        description='List of predictions'
-    ),
-    'start_date': fields.DateTime(description='Start date of predictions'),
-    'end_date': fields.DateTime(description='End date of predictions'),
-    'average_confidence': fields.Float(description='Average confidence score')
-})
-
-meta_model = api.model('MetaInfo', {
-    'model_info': fields.Nested(api.model('ModelInfo', {
-        'version': fields.String(description='Model version'),
-        'last_trained': fields.DateTime(description='Last training timestamp'),
-        'accuracy_score': fields.Float(description='Model accuracy score')
-    })),
-    'api_info': fields.Nested(api.model('ApiInfo', {
-        'version': fields.String(description='API version'),
-        'uptime': fields.String(description='API uptime'),
-        'requests_served': fields.Integer(description='Total requests served')
-    }))
-})
+class HealthResponse(BaseModel):
+    status: str = Field(..., description="Health status")
+    timestamp: str = Field(..., description="Health check timestamp")
+    components: Dict[str, str] = Field(..., description="Component statuses")
 
 # Global variables
 GENERAL_MODEL = None
 SPECIFIC_MODELS = {}
 SPECIFIC_SCALERS = {}
 GENERAL_SCALERS = {}
-MODEL_VERSION = "1.0.0"
+MODEL_VERSION = "0.1.0"
 START_TIME = datetime.now()
 REQUEST_COUNT = 0
 PREDICTION_SERVICE = None
 
-class ModelNotLoadedError(Exception):
-    """Raised when the model is not properly loaded"""
-    pass
+# Root endpoint
+@app.get("/")
+async def root():
+    """Redirect to API documentation"""
+    return RedirectResponse(url="/docs")
+
+# Welcome message
+@app.get("/api")
+async def home():
+    """Get welcome message and basic API information"""
+    return {
+        'message': 'Welcome to the Stock Price Prediction API',
+        'version': '1.0',
+        'documentation': '/docs',
+        'endpoints': {
+            'health_check': '/api/health',
+            'next_day_prediction': '/api/predict/next_day',
+            'next_week_prediction': '/api/predict/next_week'
+        }
+    }
+
+@app.get("/api/health", response_model=HealthResponse)
+async def health_check():
+    """Comprehensive health check of the API and its dependencies"""
+    try:
+        if not GENERAL_MODEL and not SPECIFIC_MODELS:
+            raise HTTPException(status_code=503, detail="No models loaded")
+        
+        return {
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'components': {
+                'general_model': 'healthy' if GENERAL_MODEL else 'not loaded',
+                'specific_models': f'loaded {len(SPECIFIC_MODELS)} models',
+                'database': 'healthy'
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+@app.get("/api/predict/next_day", response_model=PredictionResponse)
+async def next_day_prediction(
+    symbol: str = Query(..., description="Stock symbol (e.g., AAPL, GOOGL, MSFT)"),
+    model_type: str = Query("lstm", description="Model type to use (lstm or prophet)")
+):
+    """Get stock price prediction for the next trading day"""
+    global REQUEST_COUNT
+    
+    if model_type not in ['lstm', 'prophet']:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid model_type. Must be either 'lstm' or 'prophet'"
+        )
+    
+    try:
+        REQUEST_COUNT += 1
+        logger.info(f"Processing {model_type} prediction request for {symbol}")
+        
+        return PREDICTION_SERVICE.get_prediction(symbol, model_type)
+            
+    except Exception as e:
+        logger.error(f"Prediction error for {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/meta/info", response_model=MetaInfo)
+async def meta_info():
+    """Get API and model metadata including version, uptime, and statistics"""
+    try:
+        return {
+            'model_info': {
+                'version': MODEL_VERSION,
+                'last_trained': datetime(2024, 3, 1),
+                'accuracy_score': 0.95
+            },
+            'api_info': {
+                'version': '1.0',
+                'uptime': str(datetime.now() - START_TIME),
+                'requests_served': REQUEST_COUNT
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Include training router
+app.include_router(training_router, prefix="/api/training")
 
 def load_resources() -> None:
     """Load ML models and scalers with proper error handling"""
@@ -134,7 +190,7 @@ def load_resources() -> None:
         # Load specific models and scalers
         specific_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models", "specific")
         if not os.path.exists(specific_dir):
-            raise ModelNotLoadedError(f"Specific models directory {specific_dir} not found")
+            raise HTTPException(status_code=500, detail=f"Specific models directory {specific_dir} not found")
             
         loaded_count = 0
         skipped_count = 0
@@ -203,7 +259,7 @@ def load_resources() -> None:
         logger.info("===========================\n")
         
         if not SPECIFIC_MODELS:
-            raise ModelNotLoadedError("No models were loaded")
+            raise HTTPException(status_code=500, detail="No models were loaded")
             
         # Initialize prediction service
         PREDICTION_SERVICE = PredictionService(
@@ -215,7 +271,7 @@ def load_resources() -> None:
             
     except Exception as e:
         logger.error(f"❌ Error loading resources: {str(e)}")
-        raise ModelNotLoadedError("Failed to load model resources") from e
+        raise HTTPException(status_code=500, detail="Failed to load model resources")
 
 def build_specific_model(input_shape: Tuple) -> Model:
     """Build a stock-specific model using functional API"""
@@ -240,203 +296,9 @@ def build_specific_model(input_shape: Tuple) -> Model:
     
     return model
 
-@ns_home.route('/')
-class Home(Resource):
-    @api.doc(
-        responses={
-            200: 'Welcome message',
-        }
-    )
-    def get(self):
-        """Get welcome message and basic API information"""
-        return {
-            'message': 'Welcome to the Stock Price Prediction API',
-            'version': '1.0',
-            'documentation': '/docs',
-            'endpoints': {
-                'health_check': '/health',
-                'next_day_prediction': '/predict/next_day',
-                'next_week_prediction': '/predict/next_week'
-            }
-        }
-
-@ns_meta.route('/info')
-class MetaInfo(Resource):
-    @api.doc(
-        description='Get API and model metadata',
-        responses={
-            HTTPStatus.OK: ('Success', meta_model),
-            HTTPStatus.INTERNAL_SERVER_ERROR: ('Server Error', error_model)
-        }
-    )
-    @api.marshal_with(meta_model)
-    def get(self) -> Dict[str, Any]:
-        """Get API and model metadata including version, uptime, and statistics"""
-        global REQUEST_COUNT
-        try:
-            return {
-                'model_info': {
-                    'version': MODEL_VERSION,
-                    'last_trained': datetime(2024, 3, 1),  # Example date
-                    'accuracy_score': 0.95  # Example score
-                },
-                'api_info': {
-                    'version': '1.0',
-                    'uptime': str(datetime.now() - START_TIME),
-                    'requests_served': REQUEST_COUNT
-                }
-            }
-        except Exception as e:
-            api.abort(HTTPStatus.INTERNAL_SERVER_ERROR, str(e))
-
-@ns_health.route('/')
-class HealthCheck(Resource):
-    @api.doc(
-        description='Check API health status',
-        responses={
-            HTTPStatus.OK: 'API is healthy',
-            HTTPStatus.SERVICE_UNAVAILABLE: 'API is unhealthy'
-        }
-    )
-    def get(self) -> Dict[str, Any]:
-        """Comprehensive health check of the API and its dependencies"""
-        try:
-            # Verify models are loaded
-            if not GENERAL_MODEL and not SPECIFIC_MODELS:
-                raise ModelNotLoadedError("No models loaded")
-            
-            return {
-                'status': 'healthy',
-                'timestamp': datetime.now().isoformat(),
-                'components': {
-                    'general_model': 'healthy' if GENERAL_MODEL else 'not loaded',
-                    'specific_models': f'loaded {len(SPECIFIC_MODELS)} models',
-                    'database': 'healthy'
-                }
-            }, HTTPStatus.OK
-        except Exception as e:
-            return {
-                'status': 'unhealthy',
-                'error': str(e),
-                'timestamp': datetime.now().isoformat()
-            }, HTTPStatus.SERVICE_UNAVAILABLE
-
-@ns_predict.route('/next_day')
-class NextDayPrediction(Resource):
-    @api.doc(
-        description='Get stock price prediction for the next trading day',
-        params={
-            'symbol': {
-                'in': 'query',
-                'description': 'Stock symbol (e.g., AAPL, GOOGL, MSFT)',
-                'type': 'string',
-                'required': True
-            },
-            'model_type': {
-                'in': 'query',
-                'description': 'Model type to use for prediction (lstm or prophet)',
-                'type': 'string',
-                'enum': ['lstm', 'prophet'],
-                'default': 'lstm'
-            }
-        },
-        responses={
-            HTTPStatus.OK: ('Successful prediction', prediction_model),
-            HTTPStatus.BAD_REQUEST: ('Invalid request', error_model),
-            HTTPStatus.NOT_FOUND: ('Model not found', error_model),
-            HTTPStatus.INTERNAL_SERVER_ERROR: ('Prediction error', error_model)
-        }
-    )
-    @api.marshal_with(prediction_model)
-    def get(self) -> Dict[str, Any]:
-        """Get detailed stock price prediction for the next trading day"""
-        global REQUEST_COUNT
-        
-        # Get stock symbol and model type from query parameters
-        stock_symbol = request.args.get('symbol') or request.headers.get('X-Fields')
-        model_type = request.args.get('model_type', 'lstm').lower()
-        
-        if not stock_symbol:
-            api.abort(
-                HTTPStatus.BAD_REQUEST,
-                "Stock symbol is required. Provide it as a query parameter 'symbol' or header 'X-Fields'"
-            )
-            
-        if model_type not in ['lstm', 'prophet']:
-            api.abort(
-                HTTPStatus.BAD_REQUEST,
-                "Invalid model_type. Must be either 'lstm' or 'prophet'"
-            )
-        
-        try:
-            REQUEST_COUNT += 1
-            logger.info(f"Processing {model_type} prediction request for {stock_symbol}")
-            
-            return PREDICTION_SERVICE.get_prediction(stock_symbol, model_type)
-                
-        except Exception as e:
-            logger.error(f"Prediction error for {stock_symbol}: {str(e)}")
-            api.abort(
-                HTTPStatus.INTERNAL_SERVER_ERROR, 
-                f"Prediction error: {str(e)}"
-            )
-
-@ns_predict.route('/debug_scaling/<string:symbol>')
-class ScalingDebug(Resource):
-    def get(self, symbol: str) -> Dict[str, Any]:
-        """Get detailed information about scaling operations for debugging"""
-        try:
-            # Get the latest sequence
-            sequence = PREDICTION_SERVICE._get_latest_sequence(symbol)
-            
-            # Try to load scaling metadata
-            metadata_path = os.path.join("models", "specific", symbol, f"{symbol}_scaler_metadata.json")
-            scaling_info = {}
-            
-            if os.path.exists(metadata_path):
-                with open(metadata_path, 'r') as f:
-                    scaling_metadata = json.load(f)
-                scaling_info['metadata'] = scaling_metadata
-            
-            # Get scaler
-            if symbol in SPECIFIC_MODELS:
-                scaler = SPECIFIC_SCALERS[symbol]
-                model_type = "specific"
-            elif GENERAL_MODEL:
-                scaler = GENERAL_SCALERS['symbol']
-                model_type = "general"
-            else:
-                return {'error': 'No model available'}, HTTPStatus.NOT_FOUND
-            
-            # Get last known values
-            last_sequence = sequence[0, -1, :]
-            close_index = PREDICTION_SERVICE.features.index("Close")
-            last_close = last_sequence[close_index]
-            
-            # Make a test prediction
-            model = SPECIFIC_MODELS[symbol] if symbol in SPECIFIC_MODELS else GENERAL_MODEL
-            prediction = model.predict(sequence)
-            
-            # Get original price
-            original_price = PREDICTION_SERVICE._get_original_price(symbol)
-            
-            # Try both scaling methods
-            scaling_info['debug'] = {
-                'model_type': model_type,
-                'sequence_shape': sequence.shape,
-                'last_known_normalized_close': float(last_close),
-                'original_price': float(original_price) if original_price else None,
-                'raw_prediction': float(prediction[0, 0]),
-                'features_available': PREDICTION_SERVICE.features,
-                'scaler_feature_names': scaling_metadata['feature_names'] if 'metadata' in scaling_info else None
-            }
-            
-            return scaling_info
-            
-        except Exception as e:
-            return {'error': str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR
-
-if __name__ == '__main__':
+if __name__ == "__main__":
+    import uvicorn
+    
     # Create necessary directories
     os.makedirs(Config().data.LOGS_DIR, exist_ok=True)
     
@@ -444,4 +306,6 @@ if __name__ == '__main__':
     load_resources()
     
     # Start the server
-    app.run(host='0.0.0.0', port=8000) 
+    port = int(os.environ.get("API_PORT", 8000))
+    host = os.environ.get("API_HOST", "0.0.0.0")
+    uvicorn.run(app, host=host, port=port) 

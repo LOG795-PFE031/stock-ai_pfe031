@@ -7,21 +7,15 @@ import time
 import uuid
 import threading
 import atexit
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 class NewsPublisher:
-    def __init__(self, host='rabbitmq', exchange='news-exchange', exchange_type='fanout',
-                 max_retries=5, retry_delay=5):
-        """Initialize the RabbitMQ connection for news publishing.
-
-        Args:
-            host (str): RabbitMQ host (default from env or 'rabbitmq').
-            exchange (str): Exchange name ('news-exchange').
-            exchange_type (str): Exchange type ('fanout').
-            max_retries (int): Maximum connection retry attempts.
-            retry_delay (int): Delay between retry attempts in seconds.
-        """
+    def __init__(self, host: str = 'rabbitmq', exchange: str = 'news-exchange', 
+                 exchange_type: str = 'fanout', max_retries: int = 5, 
+                 retry_delay: int = 5):
+        """Initialize the RabbitMQ connection for news publishing."""
         self.host = os.environ.get('RABBITMQ_HOST', host)
         self.exchange = exchange
         self.exchange_type = exchange_type
@@ -34,7 +28,7 @@ class NewsPublisher:
         atexit.register(self._cleanup_on_exit)
         self.connect()
 
-    def connect(self):
+    def connect(self) -> bool:
         """Establish connection to RabbitMQ server with retries."""
         if self._is_shutting_down:
             return False
@@ -44,8 +38,8 @@ class NewsPublisher:
                 try:
                     logger.info(f"Connecting to RabbitMQ (attempt {attempt + 1}/{self.max_retries})")
                     credentials = pika.PlainCredentials(
-                        os.environ.get('RABBITMQ_USERNAME', 'guest'),
-                        os.environ.get('RABBITMQ_PASSWORD', 'guest')
+                        os.environ.get('RABBITMQ_USER', 'guest'),
+                        os.environ.get('RABBITMQ_PASS', 'guest')
                     )
                     parameters = pika.ConnectionParameters(
                         host=self.host,
@@ -75,19 +69,10 @@ class NewsPublisher:
                     time.sleep(self.retry_delay)
             return False
 
-    def publish_news(self, title, symbol, content, published_at=None, opinion=0):
-        """Publish news article to RabbitMQ in the expected format.
-
-        Args:
-            title (str): Article title.
-            symbol (str): Stock ticker.
-            content (str): Article text.
-            published_at (datetime, optional): Article publication date.
-            opinion (int, optional): Sentiment score (-1, 0, 1).
-
-        Returns:
-            bool: True if published successfully, False otherwise.
-        """
+    async def publish_news(self, title: str, symbol: str, content: str, 
+                          published_at: Optional[datetime] = None, 
+                          opinion: int = 0) -> bool:
+        """Publish news article to RabbitMQ."""
         if self._is_shutting_down:
             logger.warning("Cannot publish during shutdown")
             return False
@@ -97,7 +82,7 @@ class NewsPublisher:
             for attempt in range(max_publish_retries):
                 try:
                     if not self.connection or self.connection.is_closed or not self.channel or self.channel.is_closed:
-                        logger.info(f"Connection closed, reconnecting...")
+                        logger.info("Connection closed, reconnecting...")
                         if not self.connect():
                             raise Exception("Failed to establish connection")
 
@@ -112,9 +97,9 @@ class NewsPublisher:
                             "Id": message_id,
                             "Title": title,
                             "Symbol": symbol,
-                            "Content": content[:1000] + "..." if len(content) > 1000 else content,  # Truncate long content for logging
+                            "Content": content[:1000] + "..." if len(content) > 1000 else content,
                             "PublishedAt": (published_at.isoformat() if published_at 
-                                           else datetime.utcnow().isoformat()),
+                                          else datetime.utcnow().isoformat()),
                             "Opinion": opinion
                         },
                         "sentTime": timestamp,
@@ -123,19 +108,6 @@ class NewsPublisher:
                             "MT-Message-Type": "AddNews"
                         }
                     }
-
-                    # Log the message format before publishing (truncated for readability)
-                    log_message = {k: v for k, v in message.items() if k != "message"}
-                    log_message["message"] = {
-                        "Id": message["message"]["Id"],
-                        "Title": message["message"]["Title"],
-                        "Symbol": message["message"]["Symbol"],
-                        "PublishedAt": message["message"]["PublishedAt"],
-                        "Opinion": message["message"]["Opinion"],
-                        "Content": message["message"]["Content"][:100] + "..." if len(message["message"]["Content"]) > 100 else message["message"]["Content"]
-                    }
-                    logger.info(f"Publishing message: {json.dumps(log_message)}")
-                    logger.info(f"Publishing to exchange: {self.exchange}, type: {self.exchange_type}")
 
                     message_body = json.dumps(message).encode('utf-8')
                     properties = pika.BasicProperties(
@@ -152,19 +124,6 @@ class NewsPublisher:
                         }
                     )
 
-                    # Check if exchange exists and has bindings
-                    try:
-                        exchange_info = self.channel.exchange_declare(
-                            exchange=self.exchange,
-                            exchange_type=self.exchange_type,
-                            durable=True,
-                            passive=True  # Just check if it exists
-                        )
-                        logger.info(f"Exchange {self.exchange} exists")
-                    except Exception as e:
-                        logger.warning(f"Exchange check failed: {str(e)}")
-                    
-                    # Try to publish with confirmation
                     self.channel.basic_publish(
                         exchange=self.exchange,
                         routing_key='',  # Fanout exchange doesn't need routing key
@@ -175,9 +134,6 @@ class NewsPublisher:
 
                     logger.info(f"Published news for {symbol}: {title}")
                     return True
-                except pika.exceptions.UnroutableError:
-                    logger.error(f"Message for {symbol} returned: No queue bound to exchange {self.exchange}")
-                    return False
                 except Exception as e:
                     if attempt == max_publish_retries - 1:
                         logger.error(f"Failed to publish {symbol} after {max_publish_retries} attempts: {str(e)}")
@@ -187,7 +143,7 @@ class NewsPublisher:
                     time.sleep(self.retry_delay)
             return False
 
-    def _cleanup(self, force=False):
+    def _cleanup(self, force: bool = False):
         """Clean up connection and channel."""
         with self._lock:
             if self.channel and (force or not self.channel.is_closed):
@@ -213,4 +169,4 @@ class NewsPublisher:
         """Close the connection."""
         self._is_shutting_down = True
         self._cleanup()
-        logger.info("Closed RabbitMQ connection")
+        logger.info("Closed RabbitMQ connection") 

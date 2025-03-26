@@ -36,7 +36,7 @@ COPY . .
 RUN chown -R app_user:app_user /app
 
 # Set environment variables
-ENV PYTHONPATH=/app \
+ENV PYTHONPATH=/app:/app/src \
     PATH=/opt/conda/bin:$PATH \
     # RabbitMQ configuration
     RABBITMQ_HOST=rabbitmq \
@@ -60,4 +60,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8092/api/health || exit 1
 
 # Start Redis and the application
-CMD service redis-server start && su - app_user -c "cd /app && export PATH=/opt/conda/bin:$PATH && python stock_news_analyzer.py"
+CMD service redis-server start && su - app_user -c "cd /app && export PATH=/opt/conda/bin:$PATH && PYTHONPATH=/app:/app/src python -m src.main" 

@@ -79,3 +79,4 @@ stock-prediction/models/prophet
 stock-prediction/models/specific
 stock-prediction/data/processed/
 stock-prediction/data/raw/
+stock-ai.code-workspace

@@ -1,0 +1,31 @@
+news-analyzer/
+├── src/
+│   ├── __init__.py
+│   ├── main.py                 # Application entry point
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── routes.py          # API endpoints
+│   │   └── schemas.py         # Pydantic models/schemas
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── config.py          # Configuration management
+│   │   └── logging.py         # Logging setup
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── news_service.py    # News fetching service
+│   │   ├── sentiment_service.py # Sentiment analysis service
+│   │   └── rabbitmq_service.py # Message queue service
+│   ├── models/
+│   │   ├── __init__.py
+│   │   └── sentiment_model.py  # ML model wrapper
+│   └── utils/
+│       ├── __init__.py
+│       └── helpers.py          # Utility functions
+├── tests/
+│   ├── __init__.py
+│   ├── test_news_service.py
+│   ├── test_sentiment_service.py
+│   └── test_api.py
+├── Dockerfile
+├── requirements.txt
+└── README.md
