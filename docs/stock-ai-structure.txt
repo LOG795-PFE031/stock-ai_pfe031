@@ -1,0 +1,20 @@
+stock-ai/
+├── core/                    # Shared core functionality
+│   ├── config.py           # Unified configuration
+│   ├── logging.py          # Shared logging setup
+│   └── utils.py            # Common utilities
+├── data/                   # Data management
+│   ├── stock_data/        # Stock price data
+│   └── news_data/         # News articles data
+├── models/                 # ML models
+│   ├── prediction/        # Stock prediction models
+│   └── sentiment/         # News sentiment models
+├── services/              # Business logic services
+│   ├── prediction_service.py
+│   └── news_service.py
+├── api/                   # API endpoints
+│   ├── routes/
+│   └── schemas/
+└── inference/            # Inference logic
+    ├── prediction/
+    └── sentiment/

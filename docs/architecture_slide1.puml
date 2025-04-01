@@ -1,0 +1,40 @@
+@startuml Stock AI - Core and API Layer
+
+' Style settings
+skinparam componentStyle uml2
+skinparam component {
+    BackgroundColor LightBlue
+    BorderColor DarkBlue
+}
+skinparam linetype polyline
+skinparam package {
+    BorderColor DarkGrey
+    BackgroundColor White
+}
+skinparam arrow {
+    Color DarkBlue
+    FontColor DarkGrey
+}
+
+' Main Layout
+left to right direction
+
+' Core Infrastructure (Base Layer)
+package "Core Infrastructure" as core {
+    [Configuration + Utils] as core_utils
+    [Logging + Progress] as core_logging
+}
+
+' Frontend Layer
+package "API Layer" {
+    [FastAPI Routes] as routes
+    [Pydantic Schemas] as schemas
+}
+
+' Basic Flow
+routes --> schemas : validate
+
+title "Stock AI Architecture - Foundation Layer"
+footer "Slide 1/4: Core Infrastructure and API Layer"
+
+@enduml 

@@ -45,45 +45,42 @@ All components are containerized using Docker for easy deployment and scaling.
 - Python 3.11+ (for local development)
 - Git
 
-### Step 1: Download Required Models
+### Step 1: Set Up Data and Models
 
-1. Download the model files:
+1. Create the required directories:
    ```bash
-   # Create models directory
-   mkdir -p stock-prediction/models
-   
-   # Download models.zip from SharePoint
-   curl -L "https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EfknD8y0hDZFgWjIaiHWCdwBpK3YJvs8PIAC8RLRdMTfgw?e=UuDRZc" -o models.zip
-   
-   # Extract the contents to stock-prediction/models/
-   unzip models.zip -d stock-prediction/models/
-   
-   # Clean up the zip file
-   rm models.zip
-   
-   # This will create:
-   # - stock-prediction/models/general/
-   # - stock-prediction/models/prophet/
-   # - stock-prediction/models/specific/
+   mkdir -p data/{stock,news,processed,raw}
+   mkdir -p models/{general,prophet,specific}
+   mkdir -p logs
    ```
 
-2. Download the data files:
+2. Download the required data and models:
+   - Option 1: Manual Download
+     1. Visit the SharePoint links in your browser:
+        - Data: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EVr2YJqRv1lMlVSdDw_ZssIBQHkblF5_4tano1Fb9_9pBQ?e=Wvc8Gw
+        - Models: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EfknD8y0hDZFgWjIaiHWCdwBpK3YJvs8PIAC8RLRdMTfgw?e=UuDRZc
+     2. Download the files
+     3. Extract the contents to the appropriate directories:
+        - Extract data.zip to `data/`
+        - Extract models.zip to `models/`
+
+   - Option 2: Using the Setup Script
+     ```bash
+     cd scripts
+     pip install -r requirements.txt
+     python setup_data.py
+     ```
+
+3. Verify the data structure:
    ```bash
-   # Create data directory
-   mkdir -p stock-prediction/data
+   # Check data directories
+   ls -la data/stock
+   ls -la data/news
    
-   # Download data.zip from SharePoint
-   curl -L "https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EVr2YJqRv1lMlVSdDw_ZssIBQHkblF5_4tano1Fb9_9pBQ?e=Wvc8Gw" -o data.zip
-   
-   # Extract the contents to stock-prediction/data/
-   unzip data.zip -d stock-prediction/data/
-   
-   # Clean up the zip file
-   rm data.zip
-   
-   # This will create:
-   # - stock-prediction/data/processed/
-   # - stock-prediction/data/raw/
+   # Check model directories
+   ls -la models/general
+   ls -la models/prophet
+   ls -la models/specific
    ```
 
 ### Step 2: Set Up the Backend
@@ -175,7 +172,7 @@ http://localhost:8000/docs
 
 Example API calls:
 ```bash
-curl -X GET "http://localhost:8000/predict/AAPL"
+curl -X GET "http://localhost:8000/api/predict/AAPL"
 ```
 
 ### News Sentiment Analysis Service
@@ -205,6 +202,28 @@ Example queries for the chatbot:
 - "What's the news sentiment for NVDA?"
 
 ## Troubleshooting
+
+### Data and Model Issues
+
+If you encounter issues with data or models:
+
+1. Verify the data structure:
+   ```bash
+   # Check if directories exist and have content
+   ls -la data/stock
+   ls -la data/news
+   ls -la models/general
+   ```
+
+2. If directories are empty:
+   - Try downloading the data manually from SharePoint
+   - Make sure you're logged into your ETS account
+   - Check if the SharePoint links are still valid
+
+3. If you get HTML instead of zip files:
+   - Make sure you're logged into your ETS account
+   - Try opening the links in a new browser window
+   - Use the "Download" button in SharePoint instead of direct links
 
 ### Docker Networking Issues
 

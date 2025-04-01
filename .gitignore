@@ -74,9 +74,9 @@ data/interim/
 data/processed/
 data/raw/
 
-stock-prediction/models/general
-stock-prediction/models/prophet
-stock-prediction/models/specific
-stock-prediction/data/processed/
-stock-prediction/data/raw/
+models/general
+models/prophet
+models/specific
+data/processed/
+data/raw/
 stock-ai.code-workspace

@@ -1,0 +1,624 @@
+.
+├── general
+│   ├── general_model.keras
+│   ├── symbol_encoder.gz
+│   └── training_history.png
+├── news
+├── prediction
+│   ├── lstm
+│   │   ├── AAPL_metrics.json
+│   │   ├── AAPL_model.keras
+│   │   └── AAPL_scaler.gz
+│   ├── model_metadata.json
+│   └── prophet
+├── prophet
+│   ├── AAPL_prophet.json
+│   ├── ADBE_prophet.json
+│   ├── AMZN_prophet.json
+│   ├── CSCO_prophet.json
+│   ├── GOOGL_prophet.json
+│   ├── INTC_prophet.json
+│   ├── META_prophet.json
+│   ├── MSFT_prophet.json
+│   ├── NVDA_prophet.json
+│   └── TSLA_prophet.json
+├── specific
+│   ├── AAPL
+│   │   ├── AAPL_model.keras
+│   │   ├── AAPL_model.weights.h5
+│   │   ├── AAPL_scaler.gz
+│   │   ├── AAPL_scaler_metadata.json
+│   │   └── AAPL_training_history.png
+│   ├── ABNB
+│   │   ├── ABNB_model.keras
+│   │   ├── ABNB_model.weights.h5
+│   │   ├── ABNB_scaler.gz
+│   │   ├── ABNB_scaler_metadata.json
+│   │   └── ABNB_training_history.png
+│   ├── ADBE
+│   │   ├── ADBE_model.keras
+│   │   ├── ADBE_model.weights.h5
+│   │   ├── ADBE_scaler.gz
+│   │   ├── ADBE_scaler_metadata.json
+│   │   └── ADBE_training_history.png
+│   ├── ADI
+│   │   ├── ADI_model.keras
+│   │   ├── ADI_model.weights.h5
+│   │   ├── ADI_scaler.gz
+│   │   ├── ADI_scaler_metadata.json
+│   │   └── ADI_training_history.png
+│   ├── ADP
+│   │   ├── ADP_model.keras
+│   │   ├── ADP_model.weights.h5
+│   │   ├── ADP_scaler.gz
+│   │   ├── ADP_scaler_metadata.json
+│   │   ├── ADP_training_history.png
+│   │   └── AEP
+│   │       ├── AEP_model.keras
+│   │       ├── AEP_scaler.gz
+│   │       ├── AEP_scaler_metadata.json
+│   │       └── AEP_training_history.png
+│   ├── ADSK
+│   │   ├── ADSK_model.keras
+│   │   ├── ADSK_scaler.gz
+│   │   ├── ADSK_scaler_metadata.json
+│   │   └── ADSK_training_history.png
+│   ├── AEP
+│   │   ├── AEP_model.weights.h5
+│   │   ├── AEP_scaler.gz
+│   │   ├── AEP_scaler_metadata.json
+│   │   └── AEP_training_history.png
+│   ├── AMAT
+│   │   ├── AMAT_model.keras
+│   │   ├── AMAT_model.weights.h5
+│   │   ├── AMAT_scaler.gz
+│   │   ├── AMAT_scaler_metadata.json
+│   │   └── AMAT_training_history.png
+│   ├── AMD
+│   │   ├── AMD_model.keras
+│   │   ├── AMD_scaler.gz
+│   │   ├── AMD_scaler_metadata.json
+│   │   └── AMD_training_history.png
+│   ├── AMGN
+│   │   ├── AMGN_model.keras
+│   │   ├── AMGN_model.weights.h5
+│   │   ├── AMGN_scaler.gz
+│   │   ├── AMGN_scaler_metadata.json
+│   │   └── AMGN_training_history.png
+│   ├── AMZN
+│   │   ├── AMZN_model.keras
+│   │   ├── AMZN_model.weights.h5
+│   │   ├── AMZN_scaler.gz
+│   │   ├── AMZN_scaler_metadata.json
+│   │   └── AMZN_training_history.png
+│   ├── ANSS
+│   │   ├── ANSS_model.keras
+│   │   ├── ANSS_model.weights.h5
+│   │   ├── ANSS_scaler.gz
+│   │   ├── ANSS_scaler_metadata.json
+│   │   └── ANSS_training_history.png
+│   ├── APP
+│   │   ├── APP_model.keras
+│   │   ├── APP_model.weights.h5
+│   │   ├── APP_scaler.gz
+│   │   ├── APP_scaler_metadata.json
+│   │   └── APP_training_history.png
+│   ├── ARM
+│   │   ├── ARM_scaler.gz
+│   │   └── ARM_scaler_metadata.json
+│   ├── ASML
+│   │   ├── ASML_model.keras
+│   │   ├── ASML_model.weights.h5
+│   │   ├── ASML_scaler.gz
+│   │   ├── ASML_scaler_metadata.json
+│   │   └── ASML_training_history.png
+│   ├── AVGO
+│   │   ├── AVGO_model.keras
+│   │   ├── AVGO_model.weights.h5
+│   │   ├── AVGO_scaler.gz
+│   │   ├── AVGO_scaler_metadata.json
+│   │   └── AVGO_training_history.png
+│   ├── AXON
+│   │   ├── AXON_model.keras
+│   │   ├── AXON_model.weights.h5
+│   │   ├── AXON_scaler.gz
+│   │   ├── AXON_scaler_metadata.json
+│   │   └── AXON_training_history.png
+│   ├── AZN
+│   │   ├── AZN_model.keras
+│   │   ├── AZN_model.weights.h5
+│   │   ├── AZN_scaler.gz
+│   │   ├── AZN_scaler_metadata.json
+│   │   └── AZN_training_history.png
+│   ├── BIIB
+│   │   ├── BIIB_model.keras
+│   │   ├── BIIB_model.weights.h5
+│   │   ├── BIIB_scaler.gz
+│   │   ├── BIIB_scaler_metadata.json
+│   │   └── BIIB_training_history.png
+│   ├── BKNG
+│   │   ├── BKNG_model.keras
+│   │   ├── BKNG_model.weights.h5
+│   │   ├── BKNG_scaler.gz
+│   │   ├── BKNG_scaler_metadata.json
+│   │   └── BKNG_training_history.png
+│   ├── BKR
+│   │   ├── BKR_model.keras
+│   │   ├── BKR_model.weights.h5
+│   │   ├── BKR_scaler.gz
+│   │   ├── BKR_scaler_metadata.json
+│   │   └── BKR_training_history.png
+│   ├── CCEP
+│   │   ├── CCEP_model.keras
+│   │   ├── CCEP_scaler.gz
+│   │   ├── CCEP_scaler_metadata.json
+│   │   └── CCEP_training_history.png
+│   ├── CDNS
+│   │   ├── CDNS_model.keras
+│   │   ├── CDNS_model.weights.h5
+│   │   ├── CDNS_scaler.gz
+│   │   ├── CDNS_scaler_metadata.json
+│   │   └── CDNS_training_history.png
+│   ├── CDW
+│   │   ├── CDW_model.keras
+│   │   ├── CDW_model.weights.h5
+│   │   ├── CDW_scaler.gz
+│   │   ├── CDW_scaler_metadata.json
+│   │   └── CDW_training_history.png
+│   ├── CEG
+│   │   ├── CEG_model.keras
+│   │   ├── CEG_model.weights.h5
+│   │   ├── CEG_scaler.gz
+│   │   ├── CEG_scaler_metadata.json
+│   │   └── CEG_training_history.png
+│   ├── CHTR
+│   │   ├── CHTR_model.keras
+│   │   ├── CHTR_model.weights.h5
+│   │   ├── CHTR_scaler.gz
+│   │   ├── CHTR_scaler_metadata.json
+│   │   └── CHTR_training_history.png
+│   ├── CMCSA
+│   │   ├── CMCSA_model.keras
+│   │   ├── CMCSA_model.weights.h5
+│   │   ├── CMCSA_scaler.gz
+│   │   ├── CMCSA_scaler_metadata.json
+│   │   └── CMCSA_training_history.png
+│   ├── COST
+│   │   ├── COST_model.keras
+│   │   ├── COST_model.weights.h5
+│   │   ├── COST_scaler.gz
+│   │   ├── COST_scaler_metadata.json
+│   │   └── COST_training_history.png
+│   ├── CPRT
+│   │   ├── CPRT_model.keras
+│   │   ├── CPRT_model.weights.h5
+│   │   ├── CPRT_scaler.gz
+│   │   ├── CPRT_scaler_metadata.json
+│   │   └── CPRT_training_history.png
+│   ├── CRWD
+│   │   ├── CRWD_model.keras
+│   │   ├── CRWD_model.weights.h5
+│   │   ├── CRWD_scaler.gz
+│   │   ├── CRWD_scaler_metadata.json
+│   │   └── CRWD_training_history.png
+│   ├── CSCO
+│   │   ├── CSCO_model.keras
+│   │   ├── CSCO_model.weights.h5
+│   │   ├── CSCO_scaler.gz
+│   │   ├── CSCO_scaler_metadata.json
+│   │   └── CSCO_training_history.png
+│   ├── CSGP
+│   │   ├── CSGP_model.keras
+│   │   ├── CSGP_model.weights.h5
+│   │   ├── CSGP_scaler.gz
+│   │   ├── CSGP_scaler_metadata.json
+│   │   └── CSGP_training_history.png
+│   ├── CSX
+│   │   ├── CSX_model.keras
+│   │   ├── CSX_model.weights.h5
+│   │   ├── CSX_scaler.gz
+│   │   ├── CSX_scaler_metadata.json
+│   │   └── CSX_training_history.png
+│   ├── CTAS
+│   │   ├── CTAS_model.keras
+│   │   ├── CTAS_model.weights.h5
+│   │   ├── CTAS_scaler.gz
+│   │   ├── CTAS_scaler_metadata.json
+│   │   └── CTAS_training_history.png
+│   ├── CTSH
+│   │   ├── CTSH_model.keras
+│   │   ├── CTSH_model.weights.h5
+│   │   ├── CTSH_scaler.gz
+│   │   ├── CTSH_scaler_metadata.json
+│   │   └── CTSH_training_history.png
+│   ├── DASH
+│   │   ├── DASH_model.keras
+│   │   ├── DASH_scaler.gz
+│   │   ├── DASH_scaler_metadata.json
+│   │   └── DASH_training_history.png
+│   ├── DDOG
+│   │   ├── DDOG_model.keras
+│   │   ├── DDOG_model.weights.h5
+│   │   ├── DDOG_scaler.gz
+│   │   ├── DDOG_scaler_metadata.json
+│   │   └── DDOG_training_history.png
+│   ├── DXCM
+│   │   ├── DXCM_model.keras
+│   │   ├── DXCM_model.weights.h5
+│   │   ├── DXCM_scaler.gz
+│   │   ├── DXCM_scaler_metadata.json
+│   │   └── DXCM_training_history.png
+│   ├── EA
+│   │   ├── EA_model.keras
+│   │   ├── EA_model.weights.h5
+│   │   ├── EA_scaler.gz
+│   │   ├── EA_scaler_metadata.json
+│   │   └── EA_training_history.png
+│   ├── EXC
+│   │   ├── EXC_model.keras
+│   │   ├── EXC_scaler.gz
+│   │   ├── EXC_scaler_metadata.json
+│   │   └── EXC_training_history.png
+│   ├── FANG
+│   │   ├── FANG_model.keras
+│   │   ├── FANG_model.weights.h5
+│   │   ├── FANG_scaler.gz
+│   │   ├── FANG_scaler_metadata.json
+│   │   └── FANG_training_history.png
+│   ├── FAST
+│   │   ├── FAST_model.keras
+│   │   ├── FAST_model.weights.h5
+│   │   ├── FAST_scaler.gz
+│   │   ├── FAST_scaler_metadata.json
+│   │   └── FAST_training_history.png
+│   ├── FTNT
+│   │   ├── FTNT_model.keras
+│   │   ├── FTNT_scaler.gz
+│   │   ├── FTNT_scaler_metadata.json
+│   │   └── FTNT_training_history.png
+│   ├── GEHC
+│   │   ├── GEHC_scaler.gz
+│   │   └── GEHC_scaler_metadata.json
+│   ├── GFS
+│   │   ├── GFS_model.keras
+│   │   ├── GFS_model.weights.h5
+│   │   ├── GFS_scaler.gz
+│   │   ├── GFS_scaler_metadata.json
+│   │   └── GFS_training_history.png
+│   ├── GILD
+│   │   ├── GILD_model.keras
+│   │   ├── GILD_model.weights.h5
+│   │   ├── GILD_scaler.gz
+│   │   ├── GILD_scaler_metadata.json
+│   │   └── GILD_training_history.png
+│   ├── GOOG
+│   │   ├── GOOG_model.keras
+│   │   ├── GOOG_model.weights.h5
+│   │   ├── GOOG_scaler.gz
+│   │   ├── GOOG_scaler_metadata.json
+│   │   └── GOOG_training_history.png
+│   ├── GOOGL
+│   │   ├── GOOGL_model.keras
+│   │   ├── GOOGL_model.weights.h5
+│   │   ├── GOOGL_scaler.gz
+│   │   ├── GOOGL_scaler_metadata.json
+│   │   └── GOOGL_training_history.png
+│   ├── HON
+│   │   ├── HON_model.keras
+│   │   ├── HON_model.weights.h5
+│   │   ├── HON_scaler.gz
+│   │   ├── HON_scaler_metadata.json
+│   │   └── HON_training_history.png
+│   ├── IDXX
+│   │   ├── IDXX_model.keras
+│   │   ├── IDXX_model.weights.h5
+│   │   ├── IDXX_scaler.gz
+│   │   ├── IDXX_scaler_metadata.json
+│   │   └── IDXX_training_history.png
+│   ├── INTC
+│   │   ├── INTC_model.keras
+│   │   ├── INTC_model.weights.h5
+│   │   ├── INTC_scaler.gz
+│   │   ├── INTC_scaler_metadata.json
+│   │   └── INTC_training_history.png
+│   ├── INTU
+│   │   ├── INTU_model.keras
+│   │   ├── INTU_model.weights.h5
+│   │   ├── INTU_scaler.gz
+│   │   ├── INTU_scaler_metadata.json
+│   │   └── INTU_training_history.png
+│   ├── ISRG
+│   │   ├── ISRG_model.keras
+│   │   ├── ISRG_model.weights.h5
+│   │   ├── ISRG_scaler.gz
+│   │   ├── ISRG_scaler_metadata.json
+│   │   └── ISRG_training_history.png
+│   ├── KDP
+│   │   ├── KDP_model.keras
+│   │   ├── KDP_model.weights.h5
+│   │   ├── KDP_scaler.gz
+│   │   ├── KDP_scaler_metadata.json
+│   │   └── KDP_training_history.png
+│   ├── KHC
+│   │   ├── KHC_model.keras
+│   │   ├── KHC_model.weights.h5
+│   │   ├── KHC_scaler.gz
+│   │   ├── KHC_scaler_metadata.json
+│   │   └── KHC_training_history.png
+│   ├── KLAC
+│   │   ├── KLAC_model.keras
+│   │   ├── KLAC_model.weights.h5
+│   │   ├── KLAC_scaler.gz
+│   │   ├── KLAC_scaler_metadata.json
+│   │   └── KLAC_training_history.png
+│   ├── LIN
+│   │   ├── LIN_model.keras
+│   │   ├── LIN_model.weights.h5
+│   │   ├── LIN_scaler.gz
+│   │   ├── LIN_scaler_metadata.json
+│   │   └── LIN_training_history.png
+│   ├── LRCX
+│   │   ├── LRCX_model.keras
+│   │   ├── LRCX_model.weights.h5
+│   │   ├── LRCX_scaler.gz
+│   │   ├── LRCX_scaler_metadata.json
+│   │   └── LRCX_training_history.png
+│   ├── LULU
+│   │   ├── LULU_model.keras
+│   │   ├── LULU_model.weights.h5
+│   │   ├── LULU_scaler.gz
+│   │   ├── LULU_scaler_metadata.json
+│   │   └── LULU_training_history.png
+│   ├── MAR
+│   │   ├── MAR_model.keras
+│   │   ├── MAR_model.weights.h5
+│   │   ├── MAR_scaler.gz
+│   │   ├── MAR_scaler_metadata.json
+│   │   └── MAR_training_history.png
+│   ├── MCHP
+│   │   ├── MCHP_model.keras
+│   │   ├── MCHP_model.weights.h5
+│   │   ├── MCHP_scaler.gz
+│   │   ├── MCHP_scaler_metadata.json
+│   │   └── MCHP_training_history.png
+│   ├── MDB
+│   │   ├── MDB_model.keras
+│   │   ├── MDB_model.weights.h5
+│   │   ├── MDB_scaler.gz
+│   │   ├── MDB_scaler_metadata.json
+│   │   └── MDB_training_history.png
+│   ├── MDLZ
+│   │   ├── MDLZ_model.keras
+│   │   ├── MDLZ_model.weights.h5
+│   │   ├── MDLZ_scaler.gz
+│   │   ├── MDLZ_scaler_metadata.json
+│   │   └── MDLZ_training_history.png
+│   ├── MELI
+│   │   ├── MELI_model.keras
+│   │   ├── MELI_model.weights.h5
+│   │   ├── MELI_scaler.gz
+│   │   ├── MELI_scaler_metadata.json
+│   │   └── MELI_training_history.png
+│   ├── META
+│   │   ├── META_model.keras
+│   │   ├── META_model.weights.h5
+│   │   ├── META_scaler.gz
+│   │   ├── META_scaler_metadata.json
+│   │   └── META_training_history.png
+│   ├── MNST
+│   │   ├── MNST_model.keras
+│   │   ├── MNST_model.weights.h5
+│   │   ├── MNST_scaler.gz
+│   │   ├── MNST_scaler_metadata.json
+│   │   └── MNST_training_history.png
+│   ├── MRVL
+│   │   ├── MRVL_model.keras
+│   │   ├── MRVL_scaler.gz
+│   │   ├── MRVL_scaler_metadata.json
+│   │   └── MRVL_training_history.png
+│   ├── MSFT
+│   │   ├── MSFT_model.keras
+│   │   ├── MSFT_model.weights.h5
+│   │   ├── MSFT_scaler.gz
+│   │   ├── MSFT_scaler_metadata.json
+│   │   └── MSFT_training_history.png
+│   ├── MSTR
+│   │   ├── MSTR_model.keras
+│   │   ├── MSTR_model.weights.h5
+│   │   ├── MSTR_scaler.gz
+│   │   ├── MSTR_scaler_metadata.json
+│   │   └── MSTR_training_history.png
+│   ├── MU
+│   │   ├── MU_model.keras
+│   │   ├── MU_model.weights.h5
+│   │   ├── MU_scaler.gz
+│   │   ├── MU_scaler_metadata.json
+│   │   └── MU_training_history.png
+│   ├── NFLX
+│   │   ├── NFLX_model.keras
+│   │   ├── NFLX_model.weights.h5
+│   │   ├── NFLX_scaler.gz
+│   │   ├── NFLX_scaler_metadata.json
+│   │   └── NFLX_training_history.png
+│   ├── NVDA
+│   │   ├── NVDA_model.keras
+│   │   ├── NVDA_model.weights.h5
+│   │   ├── NVDA_scaler.gz
+│   │   ├── NVDA_scaler_metadata.json
+│   │   └── NVDA_training_history.png
+│   ├── NXPI
+│   │   ├── NXPI_model.keras
+│   │   ├── NXPI_model.weights.h5
+│   │   ├── NXPI_scaler.gz
+│   │   ├── NXPI_scaler_metadata.json
+│   │   └── NXPI_training_history.png
+│   ├── ODFL
+│   │   ├── ODFL_model.keras
+│   │   ├── ODFL_model.weights.h5
+│   │   ├── ODFL_scaler.gz
+│   │   ├── ODFL_scaler_metadata.json
+│   │   └── ODFL_training_history.png
+│   ├── ON
+│   │   ├── ON_model.keras
+│   │   ├── ON_model.weights.h5
+│   │   ├── ON_scaler.gz
+│   │   ├── ON_scaler_metadata.json
+│   │   └── ON_training_history.png
+│   ├── ORLY
+│   │   ├── ORLY_model.keras
+│   │   ├── ORLY_model.weights.h5
+│   │   ├── ORLY_scaler.gz
+│   │   ├── ORLY_scaler_metadata.json
+│   │   └── ORLY_training_history.png
+│   ├── PANW
+│   │   ├── PANW_model.keras
+│   │   ├── PANW_model.weights.h5
+│   │   ├── PANW_scaler.gz
+│   │   ├── PANW_scaler_metadata.json
+│   │   └── PANW_training_history.png
+│   ├── PAYX
+│   │   ├── PAYX_model.keras
+│   │   ├── PAYX_model.weights.h5
+│   │   ├── PAYX_scaler.gz
+│   │   ├── PAYX_scaler_metadata.json
+│   │   └── PAYX_training_history.png
+│   ├── PCAR
+│   │   ├── PCAR_model.keras
+│   │   ├── PCAR_model.weights.h5
+│   │   ├── PCAR_scaler.gz
+│   │   ├── PCAR_scaler_metadata.json
+│   │   └── PCAR_training_history.png
+│   ├── PDD
+│   │   ├── PDD_model.keras
+│   │   ├── PDD_model.weights.h5
+│   │   ├── PDD_scaler.gz
+│   │   ├── PDD_scaler_metadata.json
+│   │   └── PDD_training_history.png
+│   ├── PEP
+│   │   ├── PEP_model.keras
+│   │   ├── PEP_model.weights.h5
+│   │   ├── PEP_scaler.gz
+│   │   ├── PEP_scaler_metadata.json
+│   │   └── PEP_training_history.png
+│   ├── PLTR
+│   │   ├── PLTR_model.keras
+│   │   ├── PLTR_model.weights.h5
+│   │   ├── PLTR_scaler.gz
+│   │   ├── PLTR_scaler_metadata.json
+│   │   └── PLTR_training_history.png
+│   ├── PYPL
+│   │   ├── PYPL_model.keras
+│   │   ├── PYPL_scaler.gz
+│   │   ├── PYPL_scaler_metadata.json
+│   │   └── PYPL_training_history.png
+│   ├── QCOM
+│   │   ├── QCOM_model.keras
+│   │   ├── QCOM_model.weights.h5
+│   │   ├── QCOM_scaler.gz
+│   │   ├── QCOM_scaler_metadata.json
+│   │   └── QCOM_training_history.png
+│   ├── REGN
+│   │   ├── REGN_model.keras
+│   │   ├── REGN_model.weights.h5
+│   │   ├── REGN_scaler.gz
+│   │   ├── REGN_scaler_metadata.json
+│   │   └── REGN_training_history.png
+│   ├── ROP
+│   │   ├── ROP_model.keras
+│   │   ├── ROP_model.weights.h5
+│   │   ├── ROP_scaler.gz
+│   │   ├── ROP_scaler_metadata.json
+│   │   └── ROP_training_history.png
+│   ├── ROST
+│   │   ├── ROST_model.keras
+│   │   ├── ROST_model.weights.h5
+│   │   ├── ROST_scaler.gz
+│   │   ├── ROST_scaler_metadata.json
+│   │   └── ROST_training_history.png
+│   ├── SBUX
+│   │   ├── SBUX_model.keras
+│   │   ├── SBUX_model.weights.h5
+│   │   ├── SBUX_scaler.gz
+│   │   ├── SBUX_scaler_metadata.json
+│   │   └── SBUX_training_history.png
+│   ├── SNPS
+│   │   ├── SNPS_model.keras
+│   │   ├── SNPS_model.weights.h5
+│   │   ├── SNPS_scaler.gz
+│   │   ├── SNPS_scaler_metadata.json
+│   │   └── SNPS_training_history.png
+│   ├── TEAM
+│   │   ├── TEAM_model.keras
+│   │   ├── TEAM_model.weights.h5
+│   │   ├── TEAM_scaler.gz
+│   │   ├── TEAM_scaler_metadata.json
+│   │   └── TEAM_training_history.png
+│   ├── TMUS
+│   │   ├── TMUS_model.keras
+│   │   ├── TMUS_model.weights.h5
+│   │   ├── TMUS_scaler.gz
+│   │   ├── TMUS_scaler_metadata.json
+│   │   └── TMUS_training_history.png
+│   ├── TSLA
+│   │   ├── TSLA_model.keras
+│   │   ├── TSLA_model.weights.h5
+│   │   ├── TSLA_scaler.gz
+│   │   ├── TSLA_scaler_metadata.json
+│   │   └── TSLA_training_history.png
+│   ├── TTD
+│   │   ├── TTD_model.keras
+│   │   ├── TTD_model.weights.h5
+│   │   ├── TTD_scaler.gz
+│   │   ├── TTD_scaler_metadata.json
+│   │   └── TTD_training_history.png
+│   ├── TTWO
+│   │   ├── TTWO_model.keras
+│   │   ├── TTWO_model.weights.h5
+│   │   ├── TTWO_scaler.gz
+│   │   ├── TTWO_scaler_metadata.json
+│   │   └── TTWO_training_history.png
+│   ├── TXN
+│   │   ├── TXN_model.keras
+│   │   ├── TXN_model.weights.h5
+│   │   ├── TXN_scaler.gz
+│   │   ├── TXN_scaler_metadata.json
+│   │   └── TXN_training_history.png
+│   ├── VRSK
+│   │   ├── VRSK_model.keras
+│   │   ├── VRSK_model.weights.h5
+│   │   ├── VRSK_scaler.gz
+│   │   ├── VRSK_scaler_metadata.json
+│   │   └── VRSK_training_history.png
+│   ├── VRTX
+│   │   ├── VRTX_model.keras
+│   │   ├── VRTX_model.weights.h5
+│   │   ├── VRTX_scaler.gz
+│   │   ├── VRTX_scaler_metadata.json
+│   │   └── VRTX_training_history.png
+│   ├── WBD
+│   │   ├── WBD_model.keras
+│   │   ├── WBD_model.weights.h5
+│   │   ├── WBD_scaler.gz
+│   │   ├── WBD_scaler_metadata.json
+│   │   └── WBD_training_history.png
+│   ├── WDAY
+│   │   ├── WDAY_model.keras
+│   │   ├── WDAY_model.weights.h5
+│   │   ├── WDAY_scaler.gz
+│   │   ├── WDAY_scaler_metadata.json
+│   │   └── WDAY_training_history.png
+│   ├── XEL
+│   │   ├── XEL_model.keras
+│   │   ├── XEL_model.weights.h5
+│   │   ├── XEL_scaler.gz
+│   │   ├── XEL_scaler_metadata.json
+│   │   └── XEL_training_history.png
+│   └── ZS
+│       ├── ZS_model.keras
+│       ├── ZS_model.weights.h5
+│       ├── ZS_scaler.gz
+│       ├── ZS_scaler_metadata.json
+│       └── ZS_training_history.png
+└── tree.txt
+
+110 directories, 512 files

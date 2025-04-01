@@ -1,51 +1,27 @@
 services:
-  stock-predictor:
+  stock-ai:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: stock-predictor
+    container_name: stock-ai
     ports:
       - "8000:8000"
     volumes:
-      - ./stock-prediction/models:/app/stock-prediction/models
-      - ./stock-prediction/data:/app/stock-prediction/data
-      - ./stock-prediction/logs:/app/stock-prediction/logs
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
     environment:
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
       - RABBITMQ_USER=guest
       - RABBITMQ_PASS=guest
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
     networks:
       - backend_auth
     restart: on-failure:3
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://rabbitmq:15672/api/health/checks/port-listener/5672 -u guest:guest"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
-  news-analyzer:
-    build:
-      context: ./news-analyzer
-      dockerfile: Dockerfile
-    container_name: news-analyzer
-    ports:
-      - "8092:8092"
-    volumes:
-      - ./news-analyzer:/app
-      - ./stock-prediction/logs:/app/logs
-    environment:
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
-      - RABBITMQ_USER=guest
-      - RABBITMQ_PASS=guest
-      - PORT=8092
-      - HOST=0.0.0.0
-    networks:
-      - backend_auth
-    restart: on-failure:3
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8092/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
