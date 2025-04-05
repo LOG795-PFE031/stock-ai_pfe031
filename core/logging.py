@@ -51,7 +51,7 @@ def setup_logging(component: str) -> logging.Logger:
     """
     # Create logger
     logger = logging.getLogger(component)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
     
     # Create logs directory if it doesn't exist
     log_dir = config.data.LOGS_DIR / component
@@ -63,11 +63,11 @@ def setup_logging(component: str) -> logging.Logger:
     
     # Create file handler with filter
     file_handler = FileHandlerWithFilter(log_file)
-    file_handler.setLevel(logging.INFO)
+    file_handler.setLevel(logging.DEBUG)
     
     # Create console handler
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(logging.DEBUG)
     
     # Create formatters
     file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')

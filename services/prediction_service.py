@@ -18,6 +18,7 @@ from core.utils import (
 from core.logging import logger
 from services.model_service import ModelService
 from services.data_service import DataService
+from core.config import config
 
 def configure_tensorflow():
     """Configure TensorFlow for CPU-only operation."""
@@ -49,6 +50,7 @@ class PredictionService(BaseService):
         self.model_service = model_service
         self.data_service = data_service
         self.logger = logger['prediction']
+        self.config = config
     
     async def initialize(self) -> None:
         """Initialize the prediction service."""
@@ -112,17 +114,28 @@ class PredictionService(BaseService):
             else:
                 prediction = await self._get_prophet_prediction(symbol)
             
+            # Check if prediction failed
+            if prediction.get("status") == "error":
+                return prediction
+            
             # Format the response using the utility function
             return format_prediction_response(
                 prediction=prediction["prediction"],
                 confidence=prediction["confidence_score"],
                 model_type=prediction["model_type"],
-                model_version=prediction["model_version"]
+                model_version=prediction["model_version"],
+                symbol=symbol
             )
             
         except Exception as e:
             self.logger.error(f"Error getting prediction for {symbol}: {str(e)}")
-            raise
+            return {
+                "status": "error",
+                "error": str(e),
+                "symbol": symbol,
+                "model_type": model_type,
+                "timestamp": datetime.now().isoformat()
+            }
     
     async def _get_lstm_prediction(self, symbol: str) -> Dict[str, Any]:
         """Get prediction using LSTM model."""
@@ -140,12 +153,18 @@ class PredictionService(BaseService):
             if data_result["status"] != "success":
                 raise RuntimeError(f"Failed to get latest data for {symbol}")
             
-            # Prepare features
+            # Prepare features with correct column names
             df = data_result["data"]
-            features = df[self.config.model.FEATURES].values
+            
+            # Calculate technical indicators
+            df = calculate_technical_indicators(df)
+            
+            # Select features
+            features_df = df[self.config.model.FEATURES].copy()
+            features_df.columns = self.config.model.FEATURES  # Ensure column names match
             
             # Scale features
-            scaled_features = scaler.transform(features)
+            scaled_features = scaler.transform(features_df)
             
             # Create sequence for LSTM (samples, time steps, features)
             sequence = scaled_features[-self.config.model.SEQUENCE_LENGTH:].reshape(
@@ -197,7 +216,13 @@ class PredictionService(BaseService):
             
         except Exception as e:
             self.logger.error(f"Error getting LSTM prediction for {symbol}: {str(e)}")
-            raise
+            return {
+                "status": "error",
+                "error": str(e),
+                "symbol": symbol,
+                "model_type": "lstm",
+                "timestamp": datetime.now().isoformat()
+            }
 
     def _inverse_scale_lstm_prediction(
         self,
@@ -208,42 +233,71 @@ class PredictionService(BaseService):
         close_idx: int
     ) -> float:
         """Inverse scale the LSTM prediction."""
-        # Calculate the predicted change in scaled space
-        scaled_change = scaled_prediction - last_scaled
-        
-        # Create a dummy array for inverse transform
-        dummy = np.zeros((1, len(self.config.model.FEATURES)))
-        dummy[0, close_idx] = scaled_change
-        
-        # Inverse transform the change
-        real_change = scaler.inverse_transform(dummy)[0, close_idx]
-        
-        # Apply the change to the last actual price
-        return last_close + real_change
+        try:
+            # Calculate the predicted change in scaled space
+            scaled_change = scaled_prediction - last_scaled
+            
+            # Create a dummy array for inverse transform
+            dummy = np.zeros((1, len(self.config.model.FEATURES)))
+            dummy[0, close_idx] = scaled_change
+            
+            # Inverse transform the change
+            real_change = scaler.inverse_transform(dummy)[0, close_idx]
+            
+            # Apply the change to the last actual price
+            prediction = last_close + real_change
+            
+            # Handle invalid float values
+            if np.isnan(prediction) or np.isinf(prediction):
+                self.logger.warning(f"Invalid prediction value detected: {prediction}. Using last close price.")
+                return float(last_close)
+            
+            # Calculate relative change
+            relative_change = (prediction - last_close) / last_close
+            
+            # Apply conservative scaling for large changes (legacy approach)
+            if abs(relative_change) > 0.2:  # 20% change threshold
+                conservative_price = last_close * (1 + (prediction - last_close) / last_close * 0.1)
+                self.logger.debug(f"Large change detected: {relative_change:.2%}. Using conservative estimate: {conservative_price:.2f}")
+                return float(conservative_price)
+            
+            return float(prediction)
+            
+        except Exception as e:
+            self.logger.error(f"Error in inverse scaling: {str(e)}")
+            return float(last_close)  # Return last close price as fallback
 
     def _calculate_lstm_confidence(
         self,
         sequence: np.ndarray,
-        prediction: np.ndarray,
+        scaled_prediction: np.ndarray,
         model: Any,
         scaler: Any,
-        close_idx: int
+        close_idx: int,
+        num_samples: int = 30
     ) -> float:
         """Calculate confidence score for LSTM prediction."""
-        # Generate multiple predictions with dropout enabled
-        predictions = []
-        for _ in range(10):  # Monte Carlo dropout
-            pred = model(sequence, training=True)
-            predictions.append(pred.numpy()[0, 0])
-        
-        # Calculate prediction variance
-        variance = np.var(predictions)
-        
-        # Scale variance to confidence score (0 to 1)
-        # Higher variance means lower confidence
-        confidence = np.exp(-variance)
-        
-        return float(np.clip(confidence, 0, 1))
+        try:
+            # Generate multiple predictions with slight variations
+            predictions = []
+            for _ in range(num_samples):
+                # Add small random noise to the sequence
+                noisy_sequence = sequence + np.random.normal(0, 0.01, sequence.shape)
+                # Make prediction
+                pred = model.predict(noisy_sequence)
+                predictions.append(pred[0, 0])
+            
+            # Calculate variance of predictions
+            variance = np.var(predictions)
+            
+            # Convert variance to confidence score (lower variance = higher confidence)
+            confidence = 1.0 / (1.0 + variance)
+            
+            return float(confidence)
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating LSTM confidence: {str(e)}")
+            return 0.5  # Return neutral confidence on error
     
     async def _get_prophet_prediction(self, symbol: str) -> Dict[str, Any]:
         """Get prediction using Prophet model."""
@@ -262,36 +316,87 @@ class PredictionService(BaseService):
             
             # Prepare data for Prophet
             df = data_result["data"]
+            self.logger.debug(f"DataFrame columns: {df.columns.tolist()}")
+            
+            # Calculate technical indicators if not already present
+            if 'RSI' not in df.columns:
+                df = calculate_technical_indicators(df)
+                self.logger.debug(f"Added technical indicators. New columns: {df.columns.tolist()}")
+            
+            # Create Prophet dataframe with all required columns
             prophet_df = pd.DataFrame({
                 'ds': pd.to_datetime(df['Date']),
                 'y': df['Close']
             })
+            self.logger.debug(f"Created Prophet DataFrame with columns: {prophet_df.columns.tolist()}")
             
-            # Add regressors if available
-            for feature in self.config.model.FEATURES:
-                if feature not in ['Close', 'Date']:
-                    prophet_df[feature] = df[feature]
-                    if not hasattr(model, feature):
-                        model.add_regressor(feature)
+            # Add regressors if they exist in the model
+            if hasattr(model, 'extra_regressors'):
+                self.logger.debug(f"Model has {len(model.extra_regressors)} regressors")
+                for regressor in model.extra_regressors.keys():
+                    # Try exact match first
+                    if regressor in df.columns:
+                        prophet_df[regressor] = df[regressor]
+                        self.logger.debug(f"Added regressor {regressor} from exact column match")
+                    else:
+                        # Try case-insensitive match
+                        matching_cols = [col for col in df.columns if col.lower() == regressor.lower()]
+                        if matching_cols:
+                            prophet_df[regressor] = df[matching_cols[0]]
+                            self.logger.debug(f"Added regressor {regressor} from case-insensitive match with {matching_cols[0]}")
+                        else:
+                            self.logger.warning(f"Regressor {regressor} not found in DataFrame columns: {df.columns.tolist()}")
+                            raise ValueError(f"Regressor '{regressor}' missing from dataframe")
             
-            # Make future dataframe
+            self.logger.debug(f"Final Prophet DataFrame columns: {prophet_df.columns.tolist()}")
+            
+            # Make future dataframe with all required columns
             future = model.make_future_dataframe(periods=1)
+            self.logger.debug(f"Created future DataFrame with columns: {future.columns.tolist()}")
             
-            # Add latest regressor values to future dataframe
-            for feature in self.config.model.FEATURES:
-                if feature not in ['Close', 'Date']:
-                    future[feature] = df[feature].iloc[-1]
+            # Add regressors to future dataframe
+            if hasattr(model, 'extra_regressors'):
+                self.logger.debug("Adding regressors to future DataFrame")
+                for regressor in model.extra_regressors.keys():
+                    # Try exact match first
+                    if regressor in df.columns:
+                        future[regressor] = df[regressor].iloc[-1]
+                        self.logger.debug(f"Added regressor {regressor} from exact column match")
+                    else:
+                        # Try case-insensitive match
+                        matching_cols = [col for col in df.columns if col.lower() == regressor.lower()]
+                        if matching_cols:
+                            future[regressor] = df[matching_cols[0]].iloc[-1]
+                            self.logger.debug(f"Added regressor {regressor} from case-insensitive match with {matching_cols[0]}")
+                        else:
+                            self.logger.warning(f"Regressor {regressor} not found in DataFrame columns: {df.columns.tolist()}")
+                            raise ValueError(f"Regressor '{regressor}' missing from dataframe")
+            
+            self.logger.debug(f"Final future DataFrame columns: {future.columns.tolist()}")
             
             # Make prediction
             forecast = model.predict(future)
             prediction = forecast.iloc[-1]['yhat']
             
-            # Calculate confidence using Prophet's uncertainty intervals
-            lower = forecast.iloc[-1]['yhat_lower']
-            upper = forecast.iloc[-1]['yhat_upper']
-            interval_width = upper - lower
+            # Get the last actual close price
             last_price = df['Close'].iloc[-1]
-            confidence = max(0, min(1, 1 - (interval_width / (4 * last_price))))
+            
+            # Calculate relative change
+            relative_change = (prediction - last_price) / last_price
+            
+            # Apply conservative scaling for large changes (legacy approach)
+            if abs(relative_change) > 0.2:  # 20% change threshold
+                conservative_price = last_price * (1 + (prediction - last_price) / last_price * 0.1)
+                self.logger.debug(f"Large change detected: {relative_change:.2%}. Using conservative estimate: {conservative_price:.2f}")
+                prediction = conservative_price
+            
+            # Calculate confidence using the new method
+            confidence = self._calculate_prophet_confidence(forecast, last_price)
+            
+            # Handle invalid prediction values
+            if np.isnan(prediction) or np.isinf(prediction):
+                self.logger.warning(f"Invalid prediction value detected: {prediction}. Using last close price.")
+                prediction = last_price
             
             # Prepare prediction details
             prediction_details = {
@@ -299,9 +404,10 @@ class PredictionService(BaseService):
                 "predicted_change": float(prediction - last_price),
                 "predicted_change_percent": float((prediction - last_price) / last_price * 100),
                 "confidence_interval": {
-                    "lower": float(lower),
-                    "upper": float(upper)
-                }
+                    "lower": float(forecast.iloc[-1]['yhat_lower']),
+                    "upper": float(forecast.iloc[-1]['yhat_upper'])
+                },
+                "status": "within_normal_range" if abs(relative_change) <= 0.2 else "large_change_detected"
             }
             
             return {
@@ -315,7 +421,47 @@ class PredictionService(BaseService):
             
         except Exception as e:
             self.logger.error(f"Error getting Prophet prediction for {symbol}: {str(e)}")
-            raise
+            return {
+                "status": "error",
+                "error": str(e),
+                "symbol": symbol,
+                "model_type": "prophet",
+                "timestamp": datetime.now().isoformat()
+            }
+
+    def _calculate_prophet_confidence(
+        self,
+        forecast: pd.DataFrame,
+        last_price: float
+    ) -> float:
+        """Calculate confidence score for Prophet prediction."""
+        try:
+            # Get prediction interval
+            yhat = forecast.iloc[-1]['yhat']
+            yhat_lower = forecast.iloc[-1]['yhat_lower']
+            yhat_upper = forecast.iloc[-1]['yhat_upper']
+            
+            # Calculate interval width relative to prediction
+            interval_width = yhat_upper - yhat_lower
+            relative_width = interval_width / abs(yhat) if yhat != 0 else float('inf')
+            
+            # Convert to confidence score (inverse relationship with relative width)
+            # Wider intervals mean lower confidence
+            confidence = np.exp(-relative_width)
+            
+            # Adjust confidence based on prediction deviation from last price
+            price_change = abs(yhat - last_price) / last_price
+            if price_change > 0.1:  # More than 10% change
+                confidence *= np.exp(-price_change + 0.1)
+            
+            # Ensure confidence is between 0 and 1
+            confidence = float(np.clip(confidence, 0, 1))
+            
+            return confidence
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating Prophet confidence: {str(e)}")
+            return 0.5  # Return moderate confidence as fallback
     
     async def get_historical_predictions(
         self,
@@ -339,12 +485,81 @@ class PredictionService(BaseService):
             raise ValueError(f"Invalid stock symbol: {symbol}")
         
         try:
-            # Implementation will be added later
-            pass
+            # Load the latest model and scaler
+            model_result = await self.model_service.load_model(symbol, "lstm")
+            if model_result["status"] != "success":
+                raise RuntimeError(f"Failed to load LSTM model for {symbol}")
+            
+            model = model_result["model"]
+            scaler = model_result["scaler"]
+            
+            # Get historical data
+            data_result = await self.data_service.get_historical_data(symbol, days=days + self.config.model.SEQUENCE_LENGTH)
+            if data_result["status"] != "success":
+                raise RuntimeError(f"Failed to get historical data for {symbol}")
+            
+            # Prepare features
+            df = data_result["data"]
+            features_df = df[self.config.model.FEATURES].copy()
+            features_df.columns = self.config.model.FEATURES
+            
+            # Scale features
+            scaled_features = scaler.transform(features_df)
+            
+            # Create sequences for LSTM
+            sequences = []
+            for i in range(len(scaled_features) - self.config.model.SEQUENCE_LENGTH):
+                sequence = scaled_features[i:i + self.config.model.SEQUENCE_LENGTH]
+                sequences.append(sequence)
+            
+            # Make predictions
+            predictions = []
+            for sequence in sequences:
+                # Reshape sequence for prediction
+                sequence = sequence.reshape(1, self.config.model.SEQUENCE_LENGTH, len(self.config.model.FEATURES))
+                # Make prediction
+                scaled_prediction = model.predict(sequence)
+                predictions.append(scaled_prediction[0, 0])
+            
+            # Inverse transform predictions
+            last_close = df['Close'].iloc[-1]
+            last_scaled = scaled_features[-1, self.config.model.FEATURES.index('Close')]
+            predictions = [self._inverse_scale_lstm_prediction(
+                pred,
+                last_close,
+                last_scaled,
+                scaler,
+                self.config.model.FEATURES.index('Close')
+            ) for pred in predictions]
+            
+            # Prepare response
+            historical_predictions = []
+            for i, pred in enumerate(predictions):
+                historical_predictions.append({
+                    "date": df['Date'].iloc[i + self.config.model.SEQUENCE_LENGTH].isoformat(),
+                    "prediction": float(pred),
+                    "actual": float(df['Close'].iloc[i + self.config.model.SEQUENCE_LENGTH]),
+                    "error": float(pred - df['Close'].iloc[i + self.config.model.SEQUENCE_LENGTH])
+                })
+            
+            return {
+                "status": "success",
+                "symbol": symbol,
+                "historical_predictions": historical_predictions,
+                "model_version": model_result.get("version", "1.0.0"),
+                "model_type": "lstm"
+            }
             
         except Exception as e:
             self.logger.error(f"Error getting historical predictions for {symbol}: {str(e)}")
-            raise 
+            return {
+                "status": "error",
+                "error": str(e),
+                "symbol": symbol,
+                "historical_predictions": [],
+                "model_version": "unknown",
+                "model_type": "lstm"
+            }
 
     async def get_next_day_prediction(self, symbol: str, model_type: str = "lstm") -> Dict[str, Any]:
         """Get next day prediction for a stock."""
@@ -431,6 +646,7 @@ class PredictionService(BaseService):
                 raise RuntimeError(f"Failed to load model for {symbol}")
             
             model = model_result["model"]
+            scaler = model_result["scaler"]
             
             # Get historical data
             data_result = await self.data_service.get_historical_data(symbol, days)
@@ -441,9 +657,17 @@ class PredictionService(BaseService):
             for i in range(len(data_result["data"])):
                 # Prepare features
                 features = calculate_technical_indicators(data_result["data"][:i+1])
+                features = features[self.config.model.FEATURES].values
+                features = scaler.transform(features)
+                features = features.reshape(1, self.config.model.SEQUENCE_LENGTH, len(self.config.model.FEATURES))
                 
                 # Make prediction
                 prediction = model.predict(features)
+                
+                # Inverse transform the prediction
+                prediction = scaler.inverse_transform(
+                    np.hstack([prediction, np.zeros((prediction.shape[0], len(self.config.model.FEATURES) - 1))])
+                )[:, 0]
                 
                 # Get confidence score
                 confidence = self._calculate_confidence(prediction, features)
@@ -451,7 +675,7 @@ class PredictionService(BaseService):
                 predictions.append({
                     "symbol": symbol,
                     "date": data_result["data"].iloc[i]["Date"].strftime("%Y-%m-%d"),
-                    "predicted_price": float(prediction[0][0]),
+                    "predicted_price": float(prediction[0]),
                     "confidence": float(confidence),
                     "model_type": model_type,
                     "timestamp": datetime.utcnow().isoformat()

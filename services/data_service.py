@@ -296,6 +296,8 @@ class DataService(BaseService):
             else:
                 df = pd.read_csv(data_file)
                 df['Date'] = pd.to_datetime(df['Date'], utc=True)
+                # Recalculate technical indicators
+                df = calculate_technical_indicators(df)
             
             # Get the last 60 days of data (enough for technical indicators)
             df = df.tail(60)
@@ -332,6 +334,8 @@ class DataService(BaseService):
             else:
                 df = pd.read_csv(data_file)
                 df['Date'] = pd.to_datetime(df['Date'], utc=True)
+                # Recalculate technical indicators
+                df = calculate_technical_indicators(df)
             
             # Get the last n days of data
             end_date = df['Date'].max()

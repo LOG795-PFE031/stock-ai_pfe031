@@ -146,12 +146,12 @@ class LSTMTrainer(BaseTrainer):
         """Save LSTM model and scaler."""
         try:
             # Create symbol-specific directory
-            symbol_dir = self.model_dir / symbol
+            symbol_dir = self.model_dir / "specific" / symbol
             symbol_dir.mkdir(parents=True, exist_ok=True)
             
-            # Save model
+            # Save model in Keras format
             model_path = symbol_dir / f"{symbol}_model.keras"
-            model.save(model_path)
+            model.save(str(model_path))
             
             # Save scaler
             scaler_path = symbol_dir / f"{symbol}_scaler.gz"

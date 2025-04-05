@@ -261,28 +261,31 @@ async def get_next_day_prediction(
                 detail=f"Invalid stock symbol: {symbol}"
             )
         
-        # Get prediction
-        prediction = await prediction_service.get_next_day_prediction(
+        # Get prediction using the new method
+        prediction = await prediction_service.get_prediction(
             symbol=symbol,
             model_type=model_type.value
         )
+        
+        # Check if prediction failed
+        if prediction.get("status") == "error":
+            error_msg = prediction.get("error", "Unknown error")
+            api_logger.error(f"Prediction failed for {symbol}: {error_msg}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Prediction failed: {error_msg}"
+            )
         
         # Calculate next day's date
         current_date = datetime.now()
         next_day = current_date + timedelta(days=1)
         next_day_str = next_day.strftime("%Y-%m-%d")
         
-        # Format the response using the utility function
-        response = format_prediction_response(
-            prediction=prediction["prediction"],
-            confidence=prediction["confidence_score"],
-            model_type=prediction["model_type"],
-            model_version=prediction["model_version"],
-            symbol=symbol,
-            date=next_day_str
-        )
+        # The prediction is already formatted by the service
+        prediction["date"] = next_day_str
+        prediction["symbol"] = symbol
         
-        return response
+        return prediction
         
     except Exception as e:
         api_logger.error(f"Prediction failed: {str(e)}")

@@ -7,6 +7,8 @@ import pandas as pd
 import numpy as np
 from prophet import Prophet
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import joblib
+import json
 
 from training.base_trainer import BaseTrainer
 from core.config import config
@@ -134,12 +136,20 @@ class ProphetTrainer(BaseTrainer):
     ) -> None:
         """Save Prophet model."""
         try:
-            # Save model
-            model_path = self.model_dir / f"{symbol}_model.joblib"
+            # Create symbol-specific directory
+            symbol_dir = self.model_dir / symbol
+            symbol_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save model using joblib
+            model_path = symbol_dir / f"{symbol}_model.joblib"
             joblib.dump(model, model_path)
             
-            # Save metrics
-            self._save_metrics(symbol, metrics)
+            # Save metrics with timestamp
+            metrics["timestamp"] = datetime.now().isoformat()
+            metrics["model_version"] = self.model_version
+            metrics_path = symbol_dir / f"{symbol}_metrics.json"
+            with open(metrics_path, "w") as f:
+                json.dump(metrics, f, indent=4)
             
             self.logger.info(f"Saved Prophet model for {symbol}")
             

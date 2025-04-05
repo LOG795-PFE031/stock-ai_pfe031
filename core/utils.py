@@ -5,6 +5,9 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
+import logging
+
+logger = logging.getLogger(__name__)
 
 def calculate_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -16,30 +19,45 @@ def calculate_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame with additional technical indicators
     """
-    # Calculate SMA
-    df['SMA_20'] = df['Close'].rolling(window=20).mean()
-    df['SMA_50'] = df['Close'].rolling(window=50).mean()
-    
-    # Calculate RSI
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
-    
-    # Calculate MACD
-    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = exp1 - exp2
-    df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-    
-    # Calculate Bollinger Bands
-    df['BB_Middle'] = df['Close'].rolling(window=20).mean()
-    bb_std = df['Close'].rolling(window=20).std()
-    df['BB_Upper'] = df['BB_Middle'] + (bb_std * 2)
-    df['BB_Lower'] = df['BB_Middle'] - (bb_std * 2)
-    
-    return df
+    try:
+        # Create a copy of the DataFrame to avoid modifying the original
+        df = df.copy()
+        
+        # Calculate Returns (percentage change)
+        df['Returns'] = df['Close'].pct_change()
+        
+        # Calculate Moving Averages
+        df['MA_5'] = df['Close'].rolling(window=5).mean()
+        df['MA_20'] = df['Close'].rolling(window=20).mean()
+        
+        # Calculate Volatility (20-day standard deviation of returns)
+        df['Volatility'] = df['Returns'].rolling(window=20).std()
+        
+        # Calculate RSI
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+        
+        # Calculate MACD
+        exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+        exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+        df['MACD'] = exp1 - exp2
+        df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+        
+        # Ensure Adj Close exists (if not, use Close)
+        if 'Adj Close' not in df.columns:
+            df['Adj Close'] = df['Close']
+        
+        # Fill NaN values
+        df = df.fillna(method='ffill').fillna(method='bfill')
+        
+        return df
+        
+    except Exception as e:
+        logger.error(f"Error calculating technical indicators: {str(e)}")
+        raise
 
 def validate_stock_symbol(symbol: str) -> bool:
     """
@@ -79,11 +97,18 @@ def format_prediction_response(
     Returns:
         Formatted response dictionary
     """
+    # Handle invalid float values
+    def safe_float(value: float) -> float:
+        """Convert float to JSON-safe value."""
+        if np.isnan(value) or np.isinf(value):
+            return 0.0
+        return float(np.clip(value, -1e10, 1e10))  # Clip to reasonable range
+    
     return {
         "symbol": symbol,
         "date": date or (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d"),
-        "predicted_price": prediction,
-        "confidence": confidence,
+        "predicted_price": safe_float(prediction),
+        "confidence": safe_float(confidence),
         "model_type": model_type,
         "model_version": model_version,
         "timestamp": datetime.now().isoformat()

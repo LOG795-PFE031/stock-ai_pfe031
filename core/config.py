@@ -18,15 +18,15 @@ class DataConfig(BaseModel):
 class ModelConfig(BaseModel):
     """Model configuration."""
     PREDICTION_MODELS_DIR: Path = Path("models/specific")
+    PROPHET_MODELS_DIR: Path = Path("models/prophet")
     NEWS_MODELS_DIR: Path = Path("models/news")
     SENTIMENT_MODEL_NAME: str = "distilbert-base-uncased-finetuned-sst-2-english"
     FEATURES: list = [
-        "Open", "High", "Low", "Close", "Volume",
-        "SMA_20", "SMA_50", "RSI", "MACD", "MACD_Signal",
-        "BB_Upper", "BB_Lower", "BB_Middle"
+        'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume',
+        'Returns', 'MA_5', 'MA_20', 'Volatility', 'RSI', 'MACD', 'MACD_Signal'
     ]
     SEQUENCE_LENGTH: int = 60
-    BATCH_SIZE: int = 32
+    BATCH_SIZE: int = 1024
     EPOCHS: int = 50
     VALIDATION_SPLIT: float = 0.2
 
@@ -65,6 +65,7 @@ class Config:
             self.data.NEWS_DATA_DIR,
             self.data.LOGS_DIR,
             self.model.PREDICTION_MODELS_DIR,
+            self.model.PROPHET_MODELS_DIR,
             self.model.NEWS_MODELS_DIR
         ]
         

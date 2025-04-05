@@ -11,6 +11,8 @@ import numpy as np
 from huggingface_hub import snapshot_download
 from rich.panel import Panel
 import time
+import asyncio
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from services.base_service import BaseService
 from core.utils import get_date_range
@@ -36,6 +38,19 @@ class NewsService(BaseService):
         self.logger = logger['news']
         self.layout = create_layout()
     
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    async def _download_model(self) -> str:
+        """Download the sentiment model with retry logic."""
+        try:
+            return snapshot_download(
+                self.config.model.SENTIMENT_MODEL_NAME,
+                force_download=True,
+                local_files_only=False
+            )
+        except Exception as e:
+            self.logger.error(f"Model download attempt failed: {str(e)}")
+            raise
+    
     async def initialize(self) -> None:
         """Initialize the news service."""
         try:
@@ -45,32 +60,41 @@ class NewsService(BaseService):
             # Start spinner
             spinner.start()
             
-            # Download model with force_download to avoid resume_download warning
-            model_path = snapshot_download(
-                self.config.model.SENTIMENT_MODEL_NAME,
-                force_download=True
-            )
-            
-            # Initialize sentiment analyzer
-            self.sentiment_analyzer = pipeline(
-                "sentiment-analysis",
-                model=model_path
-            )
-            
-            # Stop spinner
-            spinner.stop()
-            
-            # Clear console and show success message
-            time.sleep(0.5)  # Small delay to ensure spinner is cleared
-            print_status(
-                "Success",
-                "News service initialized successfully",
-                "success",
-                clear_previous=True
-            )
-            
-            self._initialized = True
-            self.logger.info("News service initialized successfully")
+            try:
+                # Download model with retry logic
+                model_path = await self._download_model()
+                
+                # Initialize sentiment analyzer
+                self.sentiment_analyzer = pipeline(
+                    "sentiment-analysis",
+                    model=model_path
+                )
+                
+                # Stop spinner
+                spinner.stop()
+                
+                # Clear console and show success message
+                time.sleep(0.5)  # Small delay to ensure spinner is cleared
+                print_status(
+                    "Success",
+                    "News service initialized successfully",
+                    "success",
+                    clear_previous=True
+                )
+                
+                self._initialized = True
+                self.logger.info("News service initialized successfully")
+                
+            except Exception as e:
+                spinner.stop()
+                self.logger.warning(f"Failed to download model, proceeding with TextBlob fallback: {str(e)}")
+                print_status(
+                    "Warning",
+                    "Using TextBlob fallback for sentiment analysis",
+                    "warning",
+                    clear_previous=True
+                )
+                self._initialized = True  # Mark as initialized even with fallback
             
         except Exception as e:
             self.logger.error(f"Failed to initialize news service: {str(e)}")
