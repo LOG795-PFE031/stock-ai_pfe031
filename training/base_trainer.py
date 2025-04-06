@@ -22,8 +22,7 @@ class BaseTrainer(ABC):
         self.logger = logger
         self.model_type = model_type
         self.model_version = "0.1.0"
-        self.model_dir = self.config.model.PREDICTION_MODELS_DIR / model_type
-        self.model_dir.mkdir(parents=True, exist_ok=True)
+        self.model_dir = self.config.model.PREDICTION_MODELS_DIR
     
     @abstractmethod
     async def prepare_data(

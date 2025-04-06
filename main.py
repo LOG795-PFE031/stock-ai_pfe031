@@ -71,9 +71,39 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Stock AI API",
-    description="API for stock price prediction and analysis",
+    description="""
+    API for stock price prediction and analysis, providing comprehensive financial data analysis and ML-powered predictions.
+    
+    ## Features
+    - Real-time stock data retrieval and analysis
+    - News sentiment analysis with FinBERT
+    - ML-powered price predictions
+    - Model training and management
+    """,
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    openapi_tags=[
+        {
+            "name": "System",
+            "description": "System health and status endpoints"
+        },
+        {
+            "name": "Data Services",
+            "description": "Endpoints for retrieving and updating stock and news data"
+        },
+        {
+            "name": "Model Management",
+            "description": "Endpoints for managing ML models"
+        },
+        {
+            "name": "Prediction Services",
+            "description": "Endpoints for stock price predictions"
+        },
+        {
+            "name": "Training Services",
+            "description": "Endpoints for model training and status monitoring"
+        }
+    ]
 )
 
 # Configure CORS
@@ -86,7 +116,7 @@ app.add_middleware(
 )
 
 # Add root route handler
-@app.get("/")
+@app.get("/", tags=["System"])
 async def root():
     """Redirect root to API documentation."""
     return RedirectResponse(url="/docs")
@@ -95,7 +125,7 @@ async def root():
 app.include_router(router, prefix="/api")  # Add /api prefix to all routes
 
 # Health check endpoint
-@app.get("/health")
+@app.get("/health", tags=["System"])
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}

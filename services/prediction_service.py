@@ -26,6 +26,17 @@ def configure_tensorflow():
     tf.config.threading.set_inter_op_parallelism_threads(1)
     tf.config.threading.set_intra_op_parallelism_threads(1)
     
+    # Disable oneDNN optimization for half precision
+    tf.config.experimental.enable_tensor_float_32_execution(False)
+    
+    # Set memory growth
+    physical_devices = tf.config.list_physical_devices('GPU')
+    try:
+        for device in physical_devices:
+            tf.config.experimental.set_memory_growth(device, True)
+    except:
+        pass
+    
     # Set random seeds for reproducibility
     random.seed(42)
     np.random.seed(42)
@@ -140,9 +151,12 @@ class PredictionService(BaseService):
     async def _get_lstm_prediction(self, symbol: str) -> Dict[str, Any]:
         """Get prediction using LSTM model."""
         try:
+            self.logger.info(f"Starting prediction for {symbol}")
+            
             # Load the latest model and scaler
             model_result = await self.model_service.load_model(symbol, "lstm")
             if model_result["status"] != "success":
+                self.logger.error(f"Model loading failed for {symbol}")
                 raise RuntimeError(f"Failed to load LSTM model for {symbol}")
             
             model = model_result["model"]
@@ -151,22 +165,16 @@ class PredictionService(BaseService):
             # Get latest data
             data_result = await self.data_service.get_latest_data(symbol)
             if data_result["status"] != "success":
+                self.logger.error(f"Data fetch failed for {symbol}")
                 raise RuntimeError(f"Failed to get latest data for {symbol}")
             
-            # Prepare features with correct column names
+            # Prepare features and make prediction
             df = data_result["data"]
-            
-            # Calculate technical indicators
             df = calculate_technical_indicators(df)
-            
-            # Select features
             features_df = df[self.config.model.FEATURES].copy()
-            features_df.columns = self.config.model.FEATURES  # Ensure column names match
             
             # Scale features
             scaled_features = scaler.transform(features_df)
-            
-            # Create sequence for LSTM (samples, time steps, features)
             sequence = scaled_features[-self.config.model.SEQUENCE_LENGTH:].reshape(
                 1, self.config.model.SEQUENCE_LENGTH, len(self.config.model.FEATURES)
             )
@@ -174,11 +182,10 @@ class PredictionService(BaseService):
             # Make prediction
             scaled_prediction = model.predict(sequence)
             
-            # Get the last actual close price for scaling reference
+            # Process prediction
             last_close = df['Close'].iloc[-1]
             last_scaled = scaled_features[-1, self.config.model.FEATURES.index('Close')]
             
-            # Inverse transform the prediction
             prediction = self._inverse_scale_lstm_prediction(
                 scaled_prediction[0, 0],
                 last_close,
@@ -187,7 +194,6 @@ class PredictionService(BaseService):
                 self.config.model.FEATURES.index('Close')
             )
             
-            # Calculate confidence based on prediction variance
             confidence = self._calculate_lstm_confidence(
                 sequence,
                 scaled_prediction,
@@ -196,14 +202,15 @@ class PredictionService(BaseService):
                 self.config.model.FEATURES.index('Close')
             )
             
-            # Prepare prediction details
-            prediction_details = {
-                "last_close": float(last_close),
-                "predicted_change": float(prediction - last_close),
-                "predicted_change_percent": float((prediction - last_close) / last_close * 100),
-                "sequence_length": self.config.model.SEQUENCE_LENGTH,
-                "features_used": self.config.model.FEATURES
-            }
+            # Calculate changes
+            change = prediction - last_close
+            change_percent = (change / last_close) * 100
+            
+            # Log prediction results
+            self.logger.info(f"Prediction ready for {symbol}:")
+            self.logger.info(f"Current: ${last_close:.2f} → Predicted: ${prediction:.2f}")
+            self.logger.info(f"Change: ${change:+.2f} ({change_percent:+.2f}%)")
+            self.logger.info(f"Confidence: {confidence:.1%}")
             
             return {
                 "prediction": float(prediction),
@@ -211,11 +218,17 @@ class PredictionService(BaseService):
                 "confidence_score": float(confidence),
                 "model_version": model_result.get("version", "1.0.0"),
                 "model_type": "lstm",
-                "prediction_details": prediction_details
+                "prediction_details": {
+                    "last_close": float(last_close),
+                    "predicted_change": float(change),
+                    "predicted_change_percent": float(change_percent),
+                    "sequence_length": self.config.model.SEQUENCE_LENGTH,
+                    "features_used": self.config.model.FEATURES
+                }
             }
             
         except Exception as e:
-            self.logger.error(f"Error getting LSTM prediction for {symbol}: {str(e)}")
+            self.logger.error(f"Prediction failed for {symbol}: {str(e)}")
             return {
                 "status": "error",
                 "error": str(e),
@@ -281,17 +294,42 @@ class PredictionService(BaseService):
             # Generate multiple predictions with slight variations
             predictions = []
             for _ in range(num_samples):
-                # Add small random noise to the sequence
-                noisy_sequence = sequence + np.random.normal(0, 0.01, sequence.shape)
+                # Add random noise to the sequence (increased noise for better variance)
+                noisy_sequence = sequence + np.random.normal(0, 0.05, sequence.shape)
                 # Make prediction
                 pred = model.predict(noisy_sequence)
                 predictions.append(pred[0, 0])
             
-            # Calculate variance of predictions
-            variance = np.var(predictions)
+            predictions = np.array(predictions)
             
-            # Convert variance to confidence score (lower variance = higher confidence)
-            confidence = 1.0 / (1.0 + variance)
+            # Calculate statistics in the original price space
+            dummy = np.zeros((len(predictions), len(self.config.model.FEATURES)))
+            dummy[:, close_idx] = predictions
+            unscaled_predictions = scaler.inverse_transform(dummy)[:, close_idx]
+            
+            # Calculate relative standard deviation (coefficient of variation)
+            mean_pred = np.mean(unscaled_predictions)
+            std_pred = np.std(unscaled_predictions)
+            relative_std = std_pred / abs(mean_pred) if mean_pred != 0 else float('inf')
+            
+            # Convert to confidence score
+            # Use exponential decay: confidence = exp(-k * relative_std)
+            # k = 5 means:
+            # - 1% relative std -> 0.95 confidence
+            # - 5% relative std -> 0.78 confidence
+            # - 10% relative std -> 0.61 confidence
+            # - 20% relative std -> 0.37 confidence
+            confidence = np.exp(-5 * relative_std)
+            
+            # Clip confidence to [0, 1] range
+            confidence = np.clip(confidence, 0, 1)
+            
+            # Log the confidence calculation details for debugging
+            self.logger.debug(f"Confidence calculation details:")
+            self.logger.debug(f"Mean prediction: {mean_pred:.2f}")
+            self.logger.debug(f"Std prediction: {std_pred:.2f}")
+            self.logger.debug(f"Relative std: {relative_std:.4f}")
+            self.logger.debug(f"Final confidence: {confidence:.4f}")
             
             return float(confidence)
             

@@ -352,4 +352,67 @@ class DataService(BaseService):
             return {
                 "status": "error",
                 "message": str(e)
-            } 
+            }
+    
+    async def get_stock_data(
+        self,
+        symbol: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> pd.DataFrame:
+        """
+        Get stock data for a symbol. If data doesn't exist or is outdated, collect new data.
+        
+        Args:
+            symbol: Stock symbol
+            start_date: Start date for data retrieval
+            end_date: End date for data retrieval
+            
+        Returns:
+            DataFrame containing stock data
+        """
+        try:
+            # Set default date range if not provided
+            if not end_date:
+                end_date = datetime.now()
+            if not start_date:
+                start_date = end_date - timedelta(days=self.config.data.STOCK_HISTORY_DAYS)
+            
+            # Ensure dates are timezone-naive
+            if start_date.tzinfo:
+                start_date = start_date.replace(tzinfo=None)
+            if end_date.tzinfo:
+                end_date = end_date.replace(tzinfo=None)
+            
+            # Check if we have recent data
+            data_file = self.config.data.STOCK_DATA_DIR / f"{symbol}_data.csv"
+            if data_file.exists():
+                df = pd.read_csv(data_file)
+                # Convert dates to timezone-naive datetime
+                df['Date'] = pd.to_datetime(df['Date'], utc=True).dt.tz_localize(None)
+                
+                # Check if data is up to date
+                latest_date = df['Date'].max()
+                current_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                if latest_date.date() < (current_date - timedelta(days=1)).date():
+                    # Data is outdated, collect new data
+                    df = await self.collect_stock_data(symbol, start_date, end_date)
+                    df['Date'] = pd.to_datetime(df['Date'], utc=True).dt.tz_localize(None)
+            else:
+                # No data exists, collect new data
+                df = await self.collect_stock_data(symbol, start_date, end_date)
+                df['Date'] = pd.to_datetime(df['Date'], utc=True).dt.tz_localize(None)
+            
+            # Filter data for requested date range
+            mask = (df['Date'].dt.date >= start_date.date()) & (df['Date'].dt.date <= end_date.date())
+            df = df[mask]
+            
+            # Sort by date
+            df = df.sort_values('Date')
+            
+            self.logger.info(f"Retrieved stock data for {symbol}")
+            return df
+            
+        except Exception as e:
+            self.logger.error(f"Error getting stock data for {symbol}: {str(e)}")
+            raise 

@@ -98,15 +98,16 @@ class StockDataResponse(BaseModel):
     """Stock data response."""
     symbol: str
     data: List[Dict[str, Any]]
-    columns: List[str]
-    timestamp: str
+    meta: MetaInfo
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 class NewsDataResponse(BaseModel):
     """News data response."""
     symbol: str
     articles: List[Dict[str, Any]]
     total_articles: int
-    timestamp: str
+    sentiment_metrics: Dict[str, float]
+    meta: MetaInfo
 
 class ModelMetadata(BaseModel):
     """Model metadata information."""

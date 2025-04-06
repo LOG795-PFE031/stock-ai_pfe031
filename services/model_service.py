@@ -117,84 +117,106 @@ class ModelService(BaseService):
     async def _load_models(self) -> None:
         """Load all models from disk."""
         try:
-            # Load LSTM models
-            for symbol_dir in self.model_dir.iterdir():
-                if symbol_dir.is_dir():
-                    symbol = symbol_dir.name
-                    try:
-                        # Load scaler
-                        scaler_path = symbol_dir / f"{symbol}_scaler.gz"
-                        if scaler_path.exists():
-                            self._specific_scalers[symbol] = joblib.load(scaler_path)
-                            self.logger.info(f"Loaded scaler for {symbol}")
-                        else:
-                            self.logger.warning(f"Scaler file not found for {symbol} at {scaler_path}")
-                        
-                        # Load model
-                        model_path = symbol_dir / f"{symbol}_model.keras"
-                        if model_path.exists():
-                            self._specific_models[symbol] = tf.keras.models.load_model(str(model_path))
-                            self.logger.info(f"Loaded LSTM model for {symbol}")
-                        else:
-                            self.logger.warning(f"Model file not found for {symbol} at {model_path}")
-                    except Exception as e:
-                        self.logger.error(f"Error loading model for {symbol}: {str(e)}")
+            loaded_lstm = []
+            loaded_prophet = []
+            total_processed = 0
             
-            # Load Prophet models
-            prophet_dir = self.model_dir / "prophet"
-            if prophet_dir.exists():
-                for symbol_dir in prophet_dir.iterdir():
+            # Get total number of directories to process
+            total_dirs = 0
+            if self.model_dir.exists():
+                total_dirs += len([d for d in self.model_dir.iterdir() if d.is_dir() and not d.name.lower() in ['lstm', 'prophet']])
+            if self.prophet_dir.exists():
+                total_dirs += len([d for d in self.prophet_dir.iterdir() if d.is_dir()])
+            
+            # Start loading indicator
+            self.logger.info("🤖 Loading models...")
+            
+            # Load LSTM models from symbol-specific directories
+            if self.model_dir.exists():
+                for symbol_dir in self.model_dir.iterdir():
+                    if symbol_dir.is_dir() and not symbol_dir.name.lower() in ['lstm', 'prophet']:
+                        symbol = symbol_dir.name
+                        try:
+                            # Load scaler
+                            scaler_path = symbol_dir / f"{symbol}_scaler.gz"
+                            model_path = symbol_dir / f"{symbol}_model.keras"
+                            
+                            if scaler_path.exists() and model_path.exists():
+                                self._specific_scalers[symbol] = joblib.load(scaler_path)
+                                self._specific_models[symbol] = tf.keras.models.load_model(str(model_path))
+                                loaded_lstm.append(symbol)
+                            
+                            total_processed += 1
+                            progress = (total_processed / total_dirs) * 100
+                            # Use \r to update the same line
+                            print(f"\r🔄 Loading models... {progress:.1f}% ({total_processed}/{total_dirs})", end="", flush=True)
+                            
+                        except Exception as e:
+                            self.logger.error(f"❌ Error loading model for {symbol}: {str(e)}")
+            
+            # Load Prophet models from symbol-specific directories
+            prophet_base_dir = self.prophet_dir
+            if prophet_base_dir.exists():
+                for symbol_dir in prophet_base_dir.iterdir():
                     if symbol_dir.is_dir():
                         symbol = symbol_dir.name
                         try:
                             model_path = symbol_dir / f"{symbol}_model.pkl"
                             if model_path.exists():
                                 self._specific_models[symbol] = joblib.load(model_path)
-                                self.logger.info(f"Loaded Prophet model for {symbol}")
-                            else:
-                                self.logger.warning(f"Prophet model file not found for {symbol} at {model_path}")
+                                loaded_prophet.append(symbol)
+                            
+                            total_processed += 1
+                            progress = (total_processed / total_dirs) * 100
+                            # Use \r to update the same line
+                            print(f"\r🔄 Loading models... {progress:.1f}% ({total_processed}/{total_dirs})", end="", flush=True)
+                            
                         except Exception as e:
-                            self.logger.error(f"Error loading Prophet model for {symbol}: {str(e)}")
-            else:
-                self.logger.warning(f"Prophet model directory not found at {prophet_dir}")
+                            self.logger.error(f"❌ Error loading Prophet model for {symbol}: {str(e)}")
             
-            self.logger.info("Model loading completed")
+            # Print newline after progress is complete
+            print()
+            
+            # Show summary
+            self.logger.info(f"✨ Model loading summary:")
+            self.logger.info(f"   LSTM models loaded: {len(loaded_lstm)} tickers")
+            self.logger.info(f"   Prophet models loaded: {len(loaded_prophet)} tickers")
+            if loaded_lstm:
+                self.logger.info(f"   LSTM tickers: {', '.join(sorted(loaded_lstm))}")
+            if loaded_prophet:
+                self.logger.info(f"   Prophet tickers: {', '.join(sorted(loaded_prophet))}")
             
         except Exception as e:
-            self.logger.error(f"Error loading models: {str(e)}")
+            self.logger.error(f"❌ Error loading models: {str(e)}")
             raise
     
     async def load_model(self, symbol: str, model_type: str) -> Dict[str, Any]:
         """Load a trained model and its scaler."""
         try:
-            self.logger.info(f"Attempting to load {model_type} model for {symbol}")
+            self.logger.info(f"Loading {model_type.upper()} model for {symbol}")
             
             # Get the correct directory for the model type
             if model_type == "lstm":
                 model_dir = self.model_dir / symbol
                 model_path = model_dir / f"{symbol}_model.keras"
+                weights_path = model_dir / f"{symbol}_model.weights.h5"
                 scaler_path = model_dir / f"{symbol}_scaler.gz"
-                self.logger.info(f"LSTM model directory: {model_dir}")
-                self.logger.info(f"LSTM model path: {model_path}")
-                self.logger.info(f"LSTM scaler path: {scaler_path}")
+                scaler_metadata_path = model_dir / f"{symbol}_scaler_metadata.json"
             elif model_type == "prophet":
                 model_dir = self.prophet_dir
                 model_path = model_dir / f"{symbol}_prophet.json"
                 scaler_path = None
-                self.logger.info(f"Prophet model directory: {model_dir}")
-                self.logger.info(f"Prophet model path: {model_path}")
             else:
                 raise ValueError(f"Unsupported model type: {model_type}")
             
             # Check if model exists
             if not model_path.exists():
-                self.logger.error(f"Model file not found at path: {model_path}")
-                self.logger.info(f"Directory contents: {list(model_dir.glob('*'))}")
+                self.logger.error(f"Model not found for {symbol}")
                 raise FileNotFoundError(f"Model not found: {model_path}")
             
             # Load model
             if model_type == "prophet":
-                self.logger.info("Loading Prophet model from JSON")
+                self.logger.info(f"Setting up Prophet model for {symbol}")
                 from prophet import Prophet
                 with open(model_path, 'r') as f:
                     model_data = json.load(f)
@@ -220,50 +242,57 @@ class ModelService(BaseService):
                     df['ds'] = pd.to_datetime(df['Date'])
                     df['y'] = df['Close']
                     model.fit(df)
+                    
+                self.logger.info(f"Prophet model ready for {symbol}")
             else:
-                self.logger.info("Loading LSTM model")
-                # Try loading as a Keras model first
+                self.logger.info(f"Loading neural network for {symbol}")
                 try:
-                    self.logger.info("Attempting to load as Keras model")
+                    # Try loading as SavedModel format first
                     model = tf.keras.models.load_model(str(model_path), compile=False)
-                    self.logger.info("Successfully loaded as Keras model")
                 except Exception as e:
-                    self.logger.warning(f"Failed to load as Keras model: {str(e)}")
-                    # If that fails, try loading as SavedModel
+                    self.logger.info(f"Trying alternative loading method for {symbol}")
                     try:
-                        self.logger.info("Attempting to load as SavedModel")
+                        # Load model architecture and weights separately
                         model = tf.keras.models.load_model(str(model_path), compile=False, custom_objects={})
-                        self.logger.info("Successfully loaded as SavedModel")
+                        if weights_path.exists():
+                            model.load_weights(str(weights_path))
                     except Exception as e:
-                        self.logger.error(f"Failed to load model in any format: {str(e)}")
+                        self.logger.error(f"Failed to load model for {symbol}")
                         raise
+                
+                # Compile the model
+                model.compile(optimizer='adam', loss='mse', metrics=['mae'])
             
             # Load scaler if it's an LSTM model
             scaler = None
             if model_type == "lstm":
                 if scaler_path.exists():
-                    self.logger.info("Loading LSTM scaler")
+                    self.logger.info(f"Loading data scaler for {symbol}")
                     scaler = joblib.load(str(scaler_path))
-                    self.logger.info("Successfully loaded LSTM scaler")
+                    
+                    # Verify scaler compatibility
+                    if scaler_metadata_path.exists():
+                        with open(scaler_metadata_path, 'r') as f:
+                            scaler_metadata = json.load(f)
+                        if scaler_metadata['feature_names'] != list(self.config.model.FEATURES):
+                            self.logger.warning(f"Feature mismatch detected for {symbol}")
                 else:
-                    self.logger.error(f"Scaler file not found at path: {scaler_path}")
+                    self.logger.error(f"Scaler not found for {symbol}")
                     raise FileNotFoundError(f"Scaler not found: {scaler_path}")
             
-            self.logger.info(f"Successfully loaded {model_type} model for {symbol}")
+            self.logger.info(f"Model loaded successfully for {symbol}")
             return {
                 "status": "success",
                 "model": model,
                 "scaler": scaler,
                 "version": self.model_version
             }
+            
         except Exception as e:
-            self.logger.error(f"Error loading model: {str(e)}")
+            self.logger.error(f"Failed to load model for {symbol}: {str(e)}")
             return {
                 "status": "error",
-                "error": str(e),
-                "symbol": symbol,
-                "model_type": model_type,
-                "timestamp": datetime.now().isoformat()
+                "error": str(e)
             }
     
     async def list_models(

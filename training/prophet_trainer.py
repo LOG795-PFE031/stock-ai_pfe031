@@ -136,8 +136,12 @@ class ProphetTrainer(BaseTrainer):
     ) -> None:
         """Save Prophet model."""
         try:
+            # Create prophet directory if it doesn't exist
+            prophet_dir = self.model_dir / "prophet"
+            prophet_dir.mkdir(parents=True, exist_ok=True)
+            
             # Create symbol-specific directory
-            symbol_dir = self.model_dir / symbol
+            symbol_dir = prophet_dir / symbol
             symbol_dir.mkdir(parents=True, exist_ok=True)
             
             # Save model using joblib

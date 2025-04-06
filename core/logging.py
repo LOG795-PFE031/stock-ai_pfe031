@@ -9,6 +9,46 @@ from typing import Optional
 
 from core.config import config
 
+# Emoji indicators for different log levels
+EMOJI_INDICATORS = {
+    'DEBUG': '🔍',
+    'INFO': '✨',
+    'WARNING': '⚠️',
+    'ERROR': '❌',
+    'CRITICAL': '🚨',
+    # Task-specific emojis
+    'MODEL_LOAD': '🤖',
+    'PREDICTION': '🎯',
+    'TRAINING': '📈',
+    'DATA': '📊',
+    'API': '🌐',
+    'NEWS': '📰',
+}
+
+class ConsoleFormatter(logging.Formatter):
+    """Custom formatter for console output with emojis."""
+    
+    def format(self, record):
+        # Get the appropriate emoji
+        if hasattr(record, 'emoji'):
+            emoji = record.emoji
+        else:
+            emoji = EMOJI_INDICATORS.get(record.levelname, '✨')
+        
+        # For model loading and predictions, add specific emojis
+        if 'model' in record.msg.lower():
+            emoji = EMOJI_INDICATORS['MODEL_LOAD']
+        elif 'predict' in record.msg.lower():
+            emoji = EMOJI_INDICATORS['PREDICTION']
+        
+        # Format the message
+        if record.levelno == logging.INFO:
+            # Simpler format for INFO level
+            return f"{emoji} {record.getMessage()}"
+        else:
+            # More detailed format for other levels
+            return f"{emoji} [{record.levelname}] {record.getMessage()}"
+
 class NonEmptyFilter(logging.Filter):
     """Filter to prevent empty log files."""
     
@@ -67,11 +107,11 @@ def setup_logging(component: str) -> logging.Logger:
     
     # Create console handler
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG)
+    console_handler.setLevel(logging.INFO)
     
     # Create formatters
     file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    console_formatter = logging.Formatter('%(message)s')  # Simple format for console
+    console_formatter = ConsoleFormatter()
     
     file_handler.setFormatter(file_formatter)
     console_handler.setFormatter(console_formatter)
@@ -79,6 +119,9 @@ def setup_logging(component: str) -> logging.Logger:
     # Add handlers to logger
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+    
+    # Prevent duplicate logging
+    logger.propagate = False
     
     return logger
 
@@ -100,4 +143,25 @@ logger = {
     'model': model_logger,
     'news': news_logger,
     'main': main_logger
-} 
+}
+
+# Configure logging for each component
+for name in logger:
+    logger[name] = logging.getLogger(name)
+    logger[name].setLevel(logging.INFO)
+    
+    # Add console handler if not already present
+    if not logger[name].handlers:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        console_handler.setFormatter(formatter)
+        logger[name].addHandler(console_handler)
+        
+        # Add file handler
+        file_handler = logging.FileHandler(config.data.LOGS_DIR / f"{name}.log")
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(formatter)
+        logger[name].addHandler(file_handler)
+    
+    logger[name].propagate = False  # Prevent duplicate logging 

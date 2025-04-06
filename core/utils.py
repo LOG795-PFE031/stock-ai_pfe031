@@ -3,7 +3,7 @@ Utility functions for the Stock AI system.
 """
 import pandas as pd
 import numpy as np
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 import logging
 
@@ -50,8 +50,8 @@ def calculate_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
         if 'Adj Close' not in df.columns:
             df['Adj Close'] = df['Close']
         
-        # Fill NaN values
-        df = df.fillna(method='ffill').fillna(method='bfill')
+        # Replace NaN values with forward fill then backward fill
+        df = df.ffill().bfill()
         
         return df
         
@@ -155,16 +155,30 @@ def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float
         "rmse": float(rmse)
     }
 
-def get_date_range(days: int = 7) -> tuple:
+def get_date_range(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    days: Optional[int] = None
+) -> tuple:
     """
-    Get start and end dates for a given number of days.
+    Get start and end dates for a given number of days or specific date range.
     
     Args:
-        days: Number of days
+        start_date: Optional start date string in ISO format
+        end_date: Optional end date string in ISO format
+        days: Optional number of days (used if start_date and end_date are not provided)
         
     Returns:
         Tuple of (start_date, end_date)
     """
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days)
-    return start_date, end_date 
+    if start_date and end_date:
+        # Parse provided dates
+        start = datetime.fromisoformat(start_date)
+        end = datetime.fromisoformat(end_date)
+    else:
+        # Use days parameter or default to 7 days
+        end = datetime.now()
+        days = days or 7
+        start = end - timedelta(days=days)
+    
+    return start, end 

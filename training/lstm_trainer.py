@@ -10,6 +10,7 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import joblib
 import json
+import matplotlib.pyplot as plt
 
 from training.base_trainer import BaseTrainer
 from core.config import config
@@ -149,22 +150,76 @@ class LSTMTrainer(BaseTrainer):
             symbol_dir = self.model_dir / "specific" / symbol
             symbol_dir.mkdir(parents=True, exist_ok=True)
             
-            # Save model in Keras format
-            model_path = symbol_dir / f"{symbol}_model.keras"
-            model.save(str(model_path))
+            # Save model weights separately for better compatibility
+            weights_path = symbol_dir / f"{symbol}_model.weights.h5"
+            model.save_weights(str(weights_path))
             
-            # Save scaler
+            # Save model architecture in Keras format
+            model_path = symbol_dir / f"{symbol}_model.keras"
+            tf.keras.models.save_model(
+                model,
+                str(model_path),
+                save_format='tf',  # Use TensorFlow SavedModel format for better compatibility
+                include_optimizer=False  # Don't save optimizer state for smaller file size
+            )
+            
+            # Save scaler with consistent metadata
             scaler_path = symbol_dir / f"{symbol}_scaler.gz"
             joblib.dump(self.scaler, scaler_path)
             
-            # Save metrics with timestamp
+            # Save scaler metadata separately for easier inspection
+            scaler_metadata = {
+                "feature_order": list(self.config.model.FEATURES),
+                "min_values": self.scaler.data_min_.tolist(),
+                "max_values": self.scaler.data_max_.tolist(),
+                "feature_names": list(self.config.model.FEATURES),
+                # Add sample data for verification
+                "sample_original": {
+                    feature: float(self.scaler.data_min_[i])
+                    for i, feature in enumerate(self.config.model.FEATURES)
+                },
+                "sample_scaled": {
+                    feature: 0.0  # Min value after scaling
+                    for feature in self.config.model.FEATURES
+                }
+            }
+            scaler_metadata_path = symbol_dir / f"{symbol}_scaler_metadata.json"
+            with open(scaler_metadata_path, "w") as f:
+                json.dump(scaler_metadata, f, indent=4)
+            
+            # Save metrics with timestamp and version
             metrics["timestamp"] = datetime.now().isoformat()
             metrics["model_version"] = self.model_version
             metrics_path = symbol_dir / f"{symbol}_metrics.json"
             with open(metrics_path, "w") as f:
                 json.dump(metrics, f, indent=4)
             
-            self.logger.info(f"Saved LSTM model for {symbol}")
+            # Save training history plot if available
+            if hasattr(self, 'history') and self.history is not None:
+                plt.figure(figsize=(12, 4))
+                
+                plt.subplot(1, 2, 1)
+                plt.plot(self.history.history['loss'], label='Training Loss')
+                plt.plot(self.history.history['val_loss'], label='Validation Loss')
+                plt.title(f'{symbol} Model Training History')
+                plt.xlabel('Epoch')
+                plt.ylabel('Loss')
+                plt.legend()
+                
+                plt.subplot(1, 2, 2)
+                plt.plot(self.history.history['mae'], label='Training MAE')
+                plt.plot(self.history.history['val_mae'], label='Validation MAE')
+                plt.title(f'{symbol} Model Metrics')
+                plt.xlabel('Epoch')
+                plt.ylabel('MAE')
+                plt.legend()
+                
+                plt.tight_layout()
+                history_plot_path = symbol_dir / f"{symbol}_training_history.png"
+                plt.savefig(history_plot_path)
+                plt.close()
+            
+            self.logger.info(f"Saved LSTM model and metadata for {symbol}")
             
         except Exception as e:
             self.logger.error(f"Error saving LSTM model for {symbol}: {str(e)}")
@@ -181,26 +236,30 @@ class LSTMTrainer(BaseTrainer):
                 return_sequences=True,
                 input_shape=input_shape,
                 kernel_initializer='glorot_uniform',
-                recurrent_initializer='orthogonal'
+                recurrent_initializer='orthogonal',
+                dtype=tf.float32
             ),
             tf.keras.layers.Dropout(0.2),
             tf.keras.layers.LSTM(
                 50,
                 kernel_initializer='glorot_uniform',
-                recurrent_initializer='orthogonal'
+                recurrent_initializer='orthogonal',
+                dtype=tf.float32
             ),
             tf.keras.layers.Dropout(0.2),
             tf.keras.layers.Dense(
                 50,
                 activation='relu',
-                kernel_initializer='glorot_uniform'
+                kernel_initializer='glorot_uniform',
+                dtype=tf.float32
             ),
             tf.keras.layers.Dense(
                 25,
                 activation='relu',
-                kernel_initializer='glorot_uniform'
+                kernel_initializer='glorot_uniform',
+                dtype=tf.float32
             ),
-            tf.keras.layers.Dense(1)
+            tf.keras.layers.Dense(1, dtype=tf.float32)
         ])
         
         return model

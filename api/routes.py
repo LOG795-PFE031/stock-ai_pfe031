@@ -41,13 +41,13 @@ router = APIRouter()
 api_logger = logger['api']
 
 # Root endpoint
-@router.get("/", response_class=RedirectResponse)
+@router.get("/", response_class=RedirectResponse, tags=["System"])
 async def root():
     """Redirect to API documentation."""
     return "/docs"
 
 # API welcome message
-@router.get("/welcome", response_model=MetaInfo)
+@router.get("/welcome", response_model=MetaInfo, tags=["System"])
 async def api_welcome():
     """Get API welcome message and information."""
     return {
@@ -66,7 +66,7 @@ async def api_welcome():
     }
 
 # Health check endpoint
-@router.get("/health", response_model=HealthResponse)
+@router.get("/health", response_model=HealthResponse, tags=["System"])
 async def health_check():
     """Check the health of all services."""
     try:
@@ -100,7 +100,7 @@ async def health_check():
         )
 
 # Data collection endpoints
-@router.post("/data/update/{symbol}", response_model=DataUpdateResponse)
+@router.post("/data/update/{symbol}", response_model=DataUpdateResponse, tags=["Data Services"])
 async def update_stock_data(symbol: str):
     """Update stock data for a symbol."""
     try:
@@ -132,7 +132,7 @@ async def update_stock_data(symbol: str):
             detail=f"Data update failed: {str(e)}"
         )
 
-@router.get("/data/stock/{symbol}", response_model=StockDataResponse)
+@router.get("/data/stock/{symbol}", response_model=StockDataResponse, tags=["Data Services"])
 async def get_stock_data(
     symbol: str,
     start_date: Optional[str] = None,
@@ -160,9 +160,12 @@ async def get_stock_data(
             symbol=symbol,
             data=data.to_dict(orient="records"),
             meta=MetaInfo(
-                start_date=start.isoformat(),
-                end_date=end.isoformat()
-            )
+                message=f"Stock data retrieved successfully for {symbol}",
+                version=config.api.API_VERSION,
+                documentation="https://api.example.com/docs",
+                endpoints=["/api/data/stock/{symbol}"]
+            ),
+            timestamp=datetime.utcnow().isoformat()
         )
     except Exception as e:
         api_logger.error(f"Failed to get stock data: {str(e)}")
@@ -171,7 +174,7 @@ async def get_stock_data(
             detail=f"Failed to get stock data: {str(e)}"
         )
 
-@router.get("/data/news/{symbol}", response_model=NewsDataResponse)
+@router.get("/data/news/{symbol}", response_model=NewsDataResponse, tags=["Data Services"])
 async def get_news_data(
     symbol: str,
     start_date: Optional[str] = None,
@@ -197,10 +200,16 @@ async def get_news_data(
         
         return NewsDataResponse(
             symbol=symbol,
-            data=data.to_dict(orient="records"),
+            articles=data["articles"],
+            total_articles=data["total_articles"],
+            sentiment_metrics=data["sentiment_metrics"],
             meta=MetaInfo(
                 start_date=start.isoformat(),
-                end_date=end.isoformat()
+                end_date=end.isoformat(),
+                version=data["meta"]["version"],
+                message=data["meta"]["message"],
+                documentation=data["meta"]["documentation"],
+                endpoints=data["meta"]["endpoints"]
             )
         )
     except Exception as e:
@@ -211,9 +220,9 @@ async def get_news_data(
         )
 
 # Model management endpoints
-@router.get("/models", response_model=ModelListResponse)
+@router.get("/models", response_model=ModelListResponse, tags=["Model Management"])
 async def get_models():
-    """Get list of available models."""
+    """List all available ML models."""
     try:
         # Import services from main to avoid circular imports
         from main import model_service
@@ -227,7 +236,7 @@ async def get_models():
             detail=f"Failed to get models: {str(e)}"
         )
 
-@router.get("/models/{model_id}", response_model=ModelMetadataResponse)
+@router.get("/models/{model_id}", response_model=ModelMetadataResponse, tags=["Model Management"])
 async def get_model_metadata(model_id: str):
     """Get metadata for a specific model."""
     try:
@@ -244,12 +253,12 @@ async def get_model_metadata(model_id: str):
         )
 
 # Prediction endpoints
-@router.get("/predict/{symbol}", response_model=PredictionResponse)
+@router.get("/predict/{symbol}", response_model=PredictionResponse, tags=["Prediction Services"])
 async def get_next_day_prediction(
     symbol: str,
     model_type: ModelType = ModelType.LSTM
 ):
-    """Get next day prediction for a stock."""
+    """Get stock price prediction for the next day."""
     try:
         # Import services from main to avoid circular imports
         from main import prediction_service
@@ -294,14 +303,14 @@ async def get_next_day_prediction(
             detail=f"Prediction failed: {str(e)}"
         )
 
-@router.get("/predict/{symbol}/historical", response_model=PredictionsResponse)
+@router.get("/predict/{symbol}/historical", response_model=PredictionsResponse, tags=["Prediction Services"])
 async def get_historical_predictions(
     symbol: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     model_type: ModelType = ModelType.LSTM
 ):
-    """Get historical predictions for a stock."""
+    """Get historical predictions for a symbol."""
     try:
         # Import services from main to avoid circular imports
         from main import prediction_service
@@ -353,12 +362,12 @@ async def get_historical_predictions(
             detail=f"Historical predictions failed: {str(e)}"
         )
 
-@router.get("/predict/{symbol}/display", response_model=Dict[str, Any])
+@router.get("/predict/{symbol}/display", response_model=Dict[str, Any], tags=["Prediction Services"])
 async def get_direct_display(
     symbol: str,
     model_type: ModelType = ModelType.LSTM
 ):
-    """Get prediction and news analysis for direct display."""
+    """Get formatted prediction display for a symbol."""
     try:
         # Import services from main to avoid circular imports
         from main import prediction_service, news_service
@@ -398,14 +407,14 @@ async def get_direct_display(
         )
 
 # Training endpoints
-@router.post("/train/{symbol}", response_model=TrainingResponse)
+@router.post("/train/{symbol}", response_model=TrainingResponse, tags=["Training Services"])
 async def train_model(
     symbol: str,
     model_type: ModelType = ModelType.LSTM,
     epochs: int = 100,
     batch_size: int = 32
 ):
-    """Train a model for a specific stock."""
+    """Train a new model for a symbol."""
     try:
         # Import services from main to avoid circular imports
         from main import training_service
@@ -440,9 +449,9 @@ async def train_model(
             detail=f"Training failed: {str(e)}"
         )
 
-@router.get("/train/status/{task_id}", response_model=TrainingStatusResponse)
+@router.get("/train/status/{task_id}", response_model=TrainingStatusResponse, tags=["Training Services"])
 async def get_training_status(task_id: str):
-    """Get the status of a training task."""
+    """Check the status of a training task."""
     try:
         # Import services from main to avoid circular imports
         from main import training_service
@@ -456,9 +465,9 @@ async def get_training_status(task_id: str):
             detail=f"Failed to get training status: {str(e)}"
         )
 
-@router.get("/train/tasks", response_model=TrainingTasksResponse)
+@router.get("/train/tasks", response_model=TrainingTasksResponse, tags=["Training Services"])
 async def get_training_tasks():
-    """Get all training tasks."""
+    """List all training tasks."""
     try:
         # Import services from main to avoid circular imports
         from main import training_service
