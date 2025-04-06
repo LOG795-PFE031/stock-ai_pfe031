@@ -80,3 +80,6 @@ models/specific
 data/processed/
 data/raw/
 stock-ai.code-workspace
+stock-prediction/models/general
+stock-prediction/models/prophet
+stock-prediction/models/specific

@@ -48,14 +48,16 @@ All components are containerized using Docker for easy deployment and scaling.
 ### Step 1: Set Up Data and Models
 
 1. Create the required directories:
+
    ```bash
    mkdir -p data/{stock,news,processed,raw}
    mkdir -p models/{general,prophet,specific}
    mkdir -p logs
    ```
-
 2. Download the required data and models:
+
    - Option 1: Manual Download
+
      1. Visit the SharePoint links in your browser:
         - Data: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EVr2YJqRv1lMlVSdDw_ZssIBQHkblF5_4tano1Fb9_9pBQ?e=Wvc8Gw
         - Models: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EfknD8y0hDZFgWjIaiHWCdwBpK3YJvs8PIAC8RLRdMTfgw?e=UuDRZc
@@ -63,20 +65,20 @@ All components are containerized using Docker for easy deployment and scaling.
      3. Extract the contents to the appropriate directories:
         - Extract data.zip to `data/`
         - Extract models.zip to `models/`
-
    - Option 2: Using the Setup Script
+
      ```bash
      cd scripts
      pip install -r requirements.txt
      python setup_data.py
      ```
-
 3. Verify the data structure:
+
    ```bash
    # Check data directories
    ls -la data/stock
    ls -la data/news
-   
+
    # Check model directories
    ls -la models/general
    ls -la models/prophet
@@ -91,26 +93,29 @@ All components are containerized using Docker for easy deployment and scaling.
 
 ### Step 3: Create and Configure Docker Network
 
-The system uses the "backend_auth" network created by the Backend. No manual network creation is needed, but you need to ensure your services are configured to use this network.
+The system uses the "stockai-backend_auth" network created by the Backend. No manual network creation is needed, but you need to ensure your services are configured to use this network.
 
 1. First, verify the network exists after starting the backend services:
+
 ```bash
-docker network ls | grep backend_auth
+docker network ls | grep stockai-backend_auth
 ```
 
 2. Update your docker-compose.yml to use the existing network:
+
 ```yaml
 services:
   # Your services configuration...
   networks:
-    - backend_auth
+    - stockai-backend_auth
 
 networks:
-  backend_auth:
+  stockai-backend_auth:
     external: true
 ```
 
 3. To verify network connectivity, you can test the connection (after starting the services):
+
 ```bash
 # Install netcat in the container
 docker exec -it stock-predictor apt-get update && docker exec -it stock-predictor apt-get install -y netcat-openbsd
@@ -146,16 +151,19 @@ docker compose up --build
 If you need to start components separately:
 
 **Stock Prediction Service**:
+
 ```bash
 docker compose up stock-predictor
 ```
 
 **News Analyzer Service**:
+
 ```bash
 docker compose up news-analyzer
 ```
 
 **Chatbot (locally)**:
+
 ```bash
 cd chatbot
 python chatbot.py
@@ -166,11 +174,13 @@ python chatbot.py
 ### Stock Prediction Service
 
 Access the Swagger UI documentation and test interface:
+
 ```
 http://localhost:8000/docs
 ```
 
 Example API calls:
+
 ```bash
 curl -X GET "http://localhost:8000/api/predict/AAPL"
 ```
@@ -178,11 +188,13 @@ curl -X GET "http://localhost:8000/api/predict/AAPL"
 ### News Sentiment Analysis Service
 
 Access the sentiment analysis service:
+
 ```
 http://localhost:8092/
 ```
 
 Example API calls:
+
 ```bash
 curl -X GET "http://localhost:8092/api/sentiment/AAPL"
 ```
@@ -196,6 +208,7 @@ curl -X POST http://localhost:5004/chat -H "Content-Type: application/json" -d '
 ```
 
 Example queries for the chatbot:
+
 - "What's the price prediction for AAPL?"
 - "Show me the sentiment analysis for Tesla"
 - "Should I invest in Google right now?"
@@ -208,19 +221,20 @@ Example queries for the chatbot:
 If you encounter issues with data or models:
 
 1. Verify the data structure:
+
    ```bash
    # Check if directories exist and have content
    ls -la data/stock
    ls -la data/news
    ls -la models/general
    ```
-
 2. If directories are empty:
+
    - Try downloading the data manually from SharePoint
    - Make sure you're logged into your ETS account
    - Check if the SharePoint links are still valid
-
 3. If you get HTML instead of zip files:
+
    - Make sure you're logged into your ETS account
    - Try opening the links in a new browser window
    - Use the "Download" button in SharePoint instead of direct links
@@ -228,6 +242,7 @@ If you encounter issues with data or models:
 ### Docker Networking Issues
 
 If services cannot communicate:
+
 1. Check if all containers are on the same network:
    ```bash
    docker network inspect auth
@@ -240,6 +255,7 @@ If services cannot communicate:
 ### RabbitMQ Connection Problems
 
 If services can't connect to RabbitMQ:
+
 1. Check RabbitMQ status:
    ```bash
    docker exec -it rabbitmq rabbitmqctl status
@@ -252,6 +268,7 @@ If services can't connect to RabbitMQ:
 ### Model Loading Errors
 
 If the prediction service fails to load models:
+
 1. Verify the models were correctly placed in the `stock-prediction` folder
 2. Check container logs:
    ```bash
@@ -261,6 +278,7 @@ If the prediction service fails to load models:
 ### Chatbot API Key Issues
 
 If the chatbot fails to connect to OpenAI:
+
 1. Verify your API key in the `.env` file
 2. Check for OpenAI rate limits or API changes
 

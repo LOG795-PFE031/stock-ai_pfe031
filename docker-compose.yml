@@ -18,7 +18,7 @@ services:
       - API_HOST=0.0.0.0
       - API_PORT=8000
     networks:
-      - backend_auth
+      - stockai-backend_auth
     restart: on-failure:3
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -28,5 +28,5 @@ services:
       start_period: 5s
       
 networks:
-  backend_auth:
+  stockai-backend_auth:
     external: true
