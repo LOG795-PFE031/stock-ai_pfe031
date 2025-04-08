@@ -1,0 +1,69 @@
+@startuml Stock AI - Complete Pipeline
+
+' Style settings
+skinparam componentStyle uml2
+skinparam component {
+    BackgroundColor LightBlue
+    BorderColor DarkBlue
+}
+skinparam linetype polyline
+skinparam package {
+    BorderColor DarkGrey
+    BackgroundColor White
+}
+skinparam arrow {
+    Color DarkBlue
+    FontColor DarkGrey
+}
+
+' Main Layout
+left to right direction
+
+' Services Layer
+package "Services" {
+    package "Data Processing" {
+        [Data Service] as data_service
+        [Model Service] as model_service #LightGreen
+        [News Service] as news_service
+    }
+
+    package "ML Pipeline" {
+        [Training Service] as training_service
+        [Prediction Service] as prediction_service
+    }
+}
+
+package "Storage" {
+    database "Model Storage" {
+        [General Models] as general_models
+        [Specific Models] as specific_models
+        [Prophet Models] as prophet_models
+    }
+}
+
+' ML Pipeline Flow
+data_service -[#Green]-> model_service : 1. Data
+news_service -[#Green]-> model_service : 2. News
+model_service -[#Green]-> training_service : 3. Features
+training_service -[#Green]-> model_service : 4. Train Models
+prediction_service -[#Green]-> model_service : 5. Get Predictions
+
+' Model Management
+model_service --> general_models : manage
+model_service --> specific_models : manage
+model_service --> prophet_models : manage
+
+title "Stock AI Architecture - Complete ML Pipeline"
+footer "Slide 4/4: Machine Learning Pipeline"
+
+legend right
+  ML Pipeline Flow
+  ==
+  1. Data Processing
+  2. News Analysis
+  3. Feature Engineering
+  4. Model Training
+  5. Prediction Generation
+endlegend
+
+@enduml

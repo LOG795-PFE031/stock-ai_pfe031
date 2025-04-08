@@ -1,12 +1,13 @@
-# Exclude large data files
-data/processed/general/all_stocks_processed.csv
-data/processed/scaled_merged_stock_data.csv
-data/raw/
-data/processed/*.csv
-data/processed/**/*.csv
-
-# Exclude models directory (will be mounted as volume)
+# Exclude data directories (will be mounted as volumes)
+data/
 models/
+logs/
+
+# Exclude test files and directories
+tests/
+test_env/
+*.test.py
+*.spec.py
 
 # Exclude development and version control files
 .git
@@ -39,6 +40,11 @@ venv/
 
 # Exclude Docker files
 Dockerfile
-Dockerfile.training
 docker-compose.yml
 .dockerignore
+
+# Exclude documentation
+docs/
+
+# Exclude chatbot service (not part of main application)
+chatbot/

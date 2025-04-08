@@ -1,57 +1,54 @@
-# Use an official Python runtime as the base image
-FROM python:3.11-slim AS builder
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set the working directory
-WORKDIR /build
-
-# Copy requirements files
-COPY requirements-base.txt requirements.txt ./
-
-# Download all requirements including dependencies
-RUN pip download --no-cache-dir -r requirements.txt -d /build/wheels
-
-# Final stage
+# Use Python 3.11 slim image
 FROM python:3.11-slim
 
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    git \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
 WORKDIR /app
 
-# Copy wheels from builder
-COPY --from=builder /build/wheels /wheels
-COPY --from=builder /build/requirements*.txt ./
+# Copy requirements file
+COPY requirements.txt .
 
-# Install dependencies
-RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt \
-    && rm -rf /wheels
+# Install torch first to ensure availability for xformers
+RUN pip install --no-cache-dir torch>=2.0.1
 
-# Copy the entire stock-prediction directory
-COPY stock-prediction /app/stock-prediction
+# Install remaining dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY api/ ./api/
+COPY core/ ./core/
+COPY services/ ./services/
+COPY training/ ./training/
+COPY main.py .
+
+# Create necessary directories
+RUN mkdir -p /app/data /app/models /app/logs
 
 # Set environment variables
-ENV PYTHONPATH=/app \
-    MODELS_DIR=/app/stock-prediction/models \
-    GENERAL_MODEL_PATH=/app/stock-prediction/models/general/general_model.keras \
-    SYMBOL_ENCODER_PATH=/app/stock-prediction/models/general/symbol_encoder.gz \
-    SECTOR_ENCODER_PATH=/app/stock-prediction/models/general/sector_encoder.gz \
-    # RabbitMQ configuration
-    RABBITMQ_HOST=rabbitmq \
-    RABBITMQ_PORT=5672 \
-    RABBITMQ_USER=guest \
-    RABBITMQ_PASS=guest \
-    # API configuration
-    API_HOST=0.0.0.0 \
-    API_PORT=8000
-
-# Make port 8000 available
-EXPOSE 8000
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV CUDA_VISIBLE_DEVICES=-1  
+#Ensures no GPU usage, aligns with CPU-only setup
+ENV TF_CPP_MIN_LOG_LEVEL=2  
+#Suppresses TensorFlow logs, though not strictly needed now
+ENV HF_HUB_DOWNLOAD_TIMEOUT=120
+ENV HF_HUB_ENABLE_HF_TRANSFER=1
+ENV HF_HUB_OFFLINE=0
+ENV HF_HUB_DISABLE_TELEMETRY=1
+ENV KERAS_BACKEND="torch" 
+#Sets PyTorch as the Keras backend
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
-CMD ["python", "-m", "stock-prediction.inference.api_server"]
+CMD ["python", "main.py"]
