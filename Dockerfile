@@ -16,7 +16,10 @@ WORKDIR /app
 # Copy requirements file
 COPY requirements.txt .
 
-# Install Python dependencies with CPU-only TensorFlow and Keras 3.x
+# Install torch first to ensure availability for xformers
+RUN pip install --no-cache-dir torch>=2.0.1
+
+# Install remaining dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
@@ -32,12 +35,16 @@ RUN mkdir -p /app/data /app/models /app/logs
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
-ENV CUDA_VISIBLE_DEVICES=-1
-ENV TF_CPP_MIN_LOG_LEVEL=2
+ENV CUDA_VISIBLE_DEVICES=-1  
+#Ensures no GPU usage, aligns with CPU-only setup
+ENV TF_CPP_MIN_LOG_LEVEL=2  
+#Suppresses TensorFlow logs, though not strictly needed now
 ENV HF_HUB_DOWNLOAD_TIMEOUT=120
 ENV HF_HUB_ENABLE_HF_TRANSFER=1
 ENV HF_HUB_OFFLINE=0
 ENV HF_HUB_DISABLE_TELEMETRY=1
+ENV KERAS_BACKEND="torch" 
+#Sets PyTorch as the Keras backend
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \

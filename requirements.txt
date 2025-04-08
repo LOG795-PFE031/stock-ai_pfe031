@@ -1,6 +1,5 @@
 # ML specific requirements
 torch>=2.0.1
-tensorflow-cpu>=2.15.0
 keras>=3.0.0
 transformers>=4.30.2
 numpy<2.0.0  # Pin to 1.x for compatibility
@@ -17,7 +16,6 @@ tenacity>=8.2.3  # For retry logic
 accelerate>=0.20.0  # For optimized model loading
 sentencepiece>=0.1.99  # For tokenization
 protobuf>=3.20.0  # Required by transformers
-
 
 # API and web server
 fastapi>=0.68.0
@@ -68,4 +66,3 @@ python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
 alpha_vantage>=2.3.1
 newsapi-python>=0.2.6
-

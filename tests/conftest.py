@@ -8,7 +8,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from pathlib import Path
 import shutil
-import tensorflow as tf
+from keras import Sequential, layers  # Replace tensorflow import
 from prophet import Prophet
 from typing import Dict, Any
 
@@ -75,9 +75,9 @@ def sample_news_data():
 @pytest.fixture
 def sample_lstm_model():
     """Create a sample LSTM model."""
-    model = tf.keras.Sequential([
-        tf.keras.layers.LSTM(50, input_shape=(60, 13)),
-        tf.keras.layers.Dense(1)
+    model = Sequential([
+        layers.LSTM(50, input_shape=(60, 13)),
+        layers.Dense(1)
     ])
     model.compile(optimizer='adam', loss='mse')
     return model

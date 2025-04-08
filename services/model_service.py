@@ -6,7 +6,7 @@ from datetime import datetime
 import json
 import shutil
 from pathlib import Path
-import tensorflow as tf
+from keras import models  # Replace tensorflow import
 import joblib
 from packaging import version
 import pandas as pd
@@ -72,8 +72,8 @@ class ModelService(BaseService):
             
             # Save model
             model_path = model_dir / f"{symbol}_model.keras"
-            if isinstance(model, tf.keras.Model):
-                tf.saved_model.save(model, str(model_path))
+            if hasattr(model, 'save'):  # Check if it's a Keras model
+                models.save_model(model, str(model_path), save_format='keras_v3')
             else:
                 model_path = model_dir / f"{symbol}_{model_type}_model.joblib"
                 joblib.dump(model, model_path)
@@ -143,12 +143,11 @@ class ModelService(BaseService):
                             
                             if scaler_path.exists() and model_path.exists():
                                 self._specific_scalers[symbol] = joblib.load(scaler_path)
-                                self._specific_models[symbol] = tf.keras.models.load_model(str(model_path))
+                                self._specific_models[symbol] = models.load_model(str(model_path), compile=False)
                                 loaded_lstm.append(symbol)
                             
                             total_processed += 1
                             progress = (total_processed / total_dirs) * 100
-                            # Use \r to update the same line
                             print(f"\r🔄 Loading models... {progress:.1f}% ({total_processed}/{total_dirs})", end="", flush=True)
                             
                         except Exception as e:
@@ -168,16 +167,13 @@ class ModelService(BaseService):
                             
                             total_processed += 1
                             progress = (total_processed / total_dirs) * 100
-                            # Use \r to update the same line
                             print(f"\r🔄 Loading models... {progress:.1f}% ({total_processed}/{total_dirs})", end="", flush=True)
                             
                         except Exception as e:
                             self.logger.error(f"❌ Error loading Prophet model for {symbol}: {str(e)}")
             
-            # Print newline after progress is complete
             print()
             
-            # Show summary
             self.logger.info(f"✨ Model loading summary:")
             self.logger.info(f"   LSTM models loaded: {len(loaded_lstm)} tickers")
             self.logger.info(f"   Prophet models loaded: {len(loaded_prophet)} tickers")
@@ -195,33 +191,28 @@ class ModelService(BaseService):
         try:
             self.logger.info(f"Loading {model_type.upper()} model for {symbol}")
             
-            # Get the correct directory for the model type
             if model_type == "lstm":
                 model_dir = self.model_dir / symbol
                 model_path = model_dir / f"{symbol}_model.keras"
-                weights_path = model_dir / f"{symbol}_model.weights.h5"
                 scaler_path = model_dir / f"{symbol}_scaler.gz"
                 scaler_metadata_path = model_dir / f"{symbol}_scaler_metadata.json"
             elif model_type == "prophet":
-                model_dir = self.prophet_dir
+                model_dir = self.prophet_dir / symbol
                 model_path = model_dir / f"{symbol}_prophet.json"
                 scaler_path = None
             else:
                 raise ValueError(f"Unsupported model type: {model_type}")
             
-            # Check if model exists
             if not model_path.exists():
                 self.logger.error(f"Model not found for {symbol}")
                 raise FileNotFoundError(f"Model not found: {model_path}")
             
-            # Load model
             if model_type == "prophet":
                 self.logger.info(f"Setting up Prophet model for {symbol}")
                 from prophet import Prophet
                 with open(model_path, 'r') as f:
                     model_data = json.load(f)
                 
-                # Create a new Prophet model with the saved parameters
                 model = Prophet(
                     changepoint_prior_scale=model_data['params']['changepoint_prior_scale'],
                     seasonality_prior_scale=model_data['params']['seasonality_prior_scale'],
@@ -231,12 +222,10 @@ class ModelService(BaseService):
                     yearly_seasonality=model_data['params']['yearly_seasonality']
                 )
                 
-                # Add regressors if they exist
                 if 'regressors' in model_data and model_data['regressors']:
                     for regressor in model_data['regressors']:
                         model.add_regressor(regressor)
                 
-                # Add the training data if it exists
                 if 'last_data' in model_data and model_data['last_data']:
                     df = pd.DataFrame(model_data['last_data'])
                     df['ds'] = pd.to_datetime(df['Date'])
@@ -246,39 +235,19 @@ class ModelService(BaseService):
                 self.logger.info(f"Prophet model ready for {symbol}")
             else:
                 self.logger.info(f"Loading neural network for {symbol}")
-                try:
-                    # Try loading as SavedModel format first
-                    model = tf.keras.models.load_model(str(model_path), compile=False)
-                except Exception as e:
-                    self.logger.info(f"Trying alternative loading method for {symbol}")
-                    try:
-                        # Load model architecture and weights separately
-                        model = tf.keras.models.load_model(str(model_path), compile=False, custom_objects={})
-                        if weights_path.exists():
-                            model.load_weights(str(weights_path))
-                    except Exception as e:
-                        self.logger.error(f"Failed to load model for {symbol}")
-                        raise
-                
-                # Compile the model
+                model = models.load_model(str(model_path), compile=False)
                 model.compile(optimizer='adam', loss='mse', metrics=['mae'])
             
-            # Load scaler if it's an LSTM model
             scaler = None
-            if model_type == "lstm":
-                if scaler_path.exists():
-                    self.logger.info(f"Loading data scaler for {symbol}")
-                    scaler = joblib.load(str(scaler_path))
-                    
-                    # Verify scaler compatibility
-                    if scaler_metadata_path.exists():
-                        with open(scaler_metadata_path, 'r') as f:
-                            scaler_metadata = json.load(f)
-                        if scaler_metadata['feature_names'] != list(self.config.model.FEATURES):
-                            self.logger.warning(f"Feature mismatch detected for {symbol}")
-                else:
-                    self.logger.error(f"Scaler not found for {symbol}")
-                    raise FileNotFoundError(f"Scaler not found: {scaler_path}")
+            if model_type == "lstm" and scaler_path.exists():
+                self.logger.info(f"Loading data scaler for {symbol}")
+                scaler = joblib.load(str(scaler_path))
+                
+                if scaler_metadata_path.exists():
+                    with open(scaler_metadata_path, 'r') as f:
+                        scaler_metadata = json.load(f)
+                    if scaler_metadata['feature_names'] != list(self.config.model.FEATURES):
+                        self.logger.warning(f"Feature mismatch detected for {symbol}")
             
             self.logger.info(f"Model loaded successfully for {symbol}")
             return {
@@ -294,6 +263,8 @@ class ModelService(BaseService):
                 "status": "error",
                 "error": str(e)
             }
+    
+    # ... (rest of the methods remain unchanged: list_models, delete_model, _get_version_dir, etc.)
     
     async def list_models(
         self,
