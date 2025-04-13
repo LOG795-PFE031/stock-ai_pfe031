@@ -10,6 +10,7 @@ import random
 from keras import backend as K  # Replace tensorflow with keras backend
 
 from services.base_service import BaseService
+from services.rabbitmq_service import RabbitMQService
 from core.utils import (
     calculate_technical_indicators,
     validate_stock_symbol,
@@ -49,6 +50,7 @@ class PredictionService(BaseService):
         self.data_service = data_service
         self.logger = logger['prediction']
         self.config = config
+        self.rabbitmq_service = RabbitMQService()
     
     async def initialize(self) -> None:
         """Initialize the prediction service."""
@@ -66,6 +68,7 @@ class PredictionService(BaseService):
             self.models.clear()
             self.scalers.clear()
             self._initialized = False
+            self.rabbitmq_service.close()
             K.clear_session()  # Use Keras backend to clear session
             self.logger.info("Prediction service cleaned up successfully")
         except Exception as e:
@@ -99,6 +102,12 @@ class PredictionService(BaseService):
             
             if prediction.get("status") == "error":
                 return prediction
+            
+            # Publish prediction to RabbitMQ
+            try:
+                self.rabbitmq_service.publish_stock_quote(symbol, prediction)
+            except Exception as e:
+                self.logger.error(f"Failed to publish prediction to RabbitMQ: {str(e)}")
             
             return format_prediction_response(
                 prediction=prediction["prediction"],
@@ -137,13 +146,23 @@ class PredictionService(BaseService):
                 raise RuntimeError(f"Failed to get latest data for {symbol}")
             
             df = data_result["data"]
+            self.logger.info(f"Data shape for {symbol}: {df.shape}")
+            self.logger.info(f"Data columns for {symbol}: {df.columns.tolist()}")
+            
             df = calculate_technical_indicators(df)
+            self.logger.info(f"Data shape after technical indicators for {symbol}: {df.shape}")
+            self.logger.info(f"Data columns after technical indicators for {symbol}: {df.columns.tolist()}")
+            
             features_df = df[self.config.model.FEATURES].copy()
+            self.logger.info(f"Features shape for {symbol}: {features_df.shape}")
             
             scaled_features = scaler.transform(features_df)
+            self.logger.info(f"Scaled features shape for {symbol}: {scaled_features.shape}")
+            
             sequence = scaled_features[-self.config.model.SEQUENCE_LENGTH:].reshape(
                 1, self.config.model.SEQUENCE_LENGTH, len(self.config.model.FEATURES)
             )
+            self.logger.info(f"Final sequence shape for {symbol}: {sequence.shape}")
             
             scaled_prediction = model.predict(sequence)
             

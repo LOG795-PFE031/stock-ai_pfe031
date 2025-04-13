@@ -31,7 +31,7 @@ requests>=2.26.0
 joblib>=1.0.2
 python-dateutil==2.9.0.post0
 tqdm>=4.62.3
-ta>=0.7.0  # Technical analysis library
+ta>=0.10.0  # Technical analysis library
 rich>=13.0.0  # For beautiful terminal output and progress bars
 
 # Financial data
@@ -44,9 +44,9 @@ beautifulsoup4>=4.9.3
 aiohttp>=3.8.0
 lxml>=4.9.0
 asyncio==3.4.3
-uuid==1.30
 textblob>=0.15.3
 sentence-transformers>=2.2.2  # For better text embeddings
+feedparser>=6.0.10  # For RSS feed parsing
 
 # Testing
 pytest>=6.2.5

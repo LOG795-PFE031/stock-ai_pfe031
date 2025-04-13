@@ -16,8 +16,14 @@ WORKDIR /app
 # Copy requirements file
 COPY requirements.txt .
 
+# Install build tools and wheel
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
 # Install torch first to ensure availability for xformers
 RUN pip install --no-cache-dir torch>=2.0.1
+
+# Install ta package separately to ensure proper installation
+RUN pip install --no-cache-dir ta>=0.10.0
 
 # Install remaining dependencies
 RUN pip install --no-cache-dir -r requirements.txt

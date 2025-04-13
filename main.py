@@ -22,6 +22,7 @@ from services.model_service import ModelService
 from services.news_service import NewsService
 from services.training_service import TrainingService
 from services.prediction_service import PredictionService
+from services.rabbitmq_service import RabbitMQService
 
 # Create service instances in dependency order
 data_service = DataService()
@@ -29,6 +30,7 @@ model_service = ModelService()
 news_service = NewsService()
 training_service = TrainingService(model_service=model_service, data_service=data_service)
 prediction_service = PredictionService(model_service=model_service, data_service=data_service)
+rabbitmq_service = RabbitMQService()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -62,6 +64,7 @@ async def lifespan(app: FastAPI):
             await news_service.cleanup()
             await model_service.cleanup()
             await data_service.cleanup()
+            rabbitmq_service.close()  # Close RabbitMQ connection
             
             logger['main'].info("All services cleaned up successfully")
             
