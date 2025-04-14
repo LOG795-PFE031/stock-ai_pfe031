@@ -59,8 +59,8 @@ All components are containerized using Docker for easy deployment and scaling.
    - Option 1: Manual Download
 
      1. Visit the SharePoint links in your browser:
-        - Data: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EVr2YJqRv1lMlVSdDw_ZssIBQHkblF5_4tano1Fb9_9pBQ?e=Wvc8Gw
-        - Models: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EfknD8y0hDZFgWjIaiHWCdwBpK3YJvs8PIAC8RLRdMTfgw?e=UuDRZc
+        - Data: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/Ed_0wI8AD8xNmEtrGtQpTRAB_WuEg9C99yxiq7mraEsr3Q?e=uPbi7a
+        - Models: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EWqmO8g1MgNDiu9CfSXoxDUBsFq9VsTkVruAlScEWX_8xw?e=bhekWX
      2. Download the files
      3. Extract the contents to the appropriate directories:
         - Extract data.zip to `data/`
