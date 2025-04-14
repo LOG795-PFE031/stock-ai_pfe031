@@ -62,9 +62,7 @@ All components are containerized using Docker for easy deployment and scaling.
         - Data: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/Ed_0wI8AD8xNmEtrGtQpTRAB_WuEg9C99yxiq7mraEsr3Q?e=uPbi7a
         - Models: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EWqmO8g1MgNDiu9CfSXoxDUBsFq9VsTkVruAlScEWX_8xw?e=bhekWX
      2. Download the files
-     3. Extract the contents to the appropriate directories:
-        - Extract data.zip to `data/`
-        - Extract models.zip to `models/`
+     3. Extract the contents to the root of the project
    - Option 2: Using the Setup Script
 
      ```bash
