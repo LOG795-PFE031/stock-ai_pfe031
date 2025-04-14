@@ -156,21 +156,18 @@ class ModelService(BaseService):
             # Load Prophet models from symbol-specific directories
             prophet_base_dir = self.prophet_dir
             if prophet_base_dir.exists():
-                for symbol_dir in prophet_base_dir.iterdir():
-                    if symbol_dir.is_dir():
-                        symbol = symbol_dir.name
-                        try:
-                            model_path = symbol_dir / f"{symbol}_model.pkl"
-                            if model_path.exists():
-                                self._specific_models[symbol] = joblib.load(model_path)
-                                loaded_prophet.append(symbol)
-                            
-                            total_processed += 1
-                            progress = (total_processed / total_dirs) * 100
-                            print(f"\r🔄 Loading models... {progress:.1f}% ({total_processed}/{total_dirs})", end="", flush=True)
-                            
-                        except Exception as e:
-                            self.logger.error(f"❌ Error loading Prophet model for {symbol}: {str(e)}")
+                for model_file in prophet_base_dir.glob("*_prophet.json"):
+                    symbol = model_file.stem.split('_')[0]
+                    try:
+                        self._specific_models[symbol] = model_file
+                        loaded_prophet.append(symbol)
+                        
+                        total_processed += 1
+                        progress = (total_processed / total_dirs) * 100
+                        print(f"\r🔄 Loading models... {progress:.1f}% ({total_processed}/{total_dirs})", end="", flush=True)
+                        
+                    except Exception as e:
+                        self.logger.error(f"❌ Error loading Prophet model for {symbol}: {str(e)}")
             
             print()
             
@@ -197,7 +194,7 @@ class ModelService(BaseService):
                 scaler_path = model_dir / f"{symbol}_scaler.gz"
                 scaler_metadata_path = model_dir / f"{symbol}_scaler_metadata.json"
             elif model_type == "prophet":
-                model_dir = self.prophet_dir / symbol
+                model_dir = self.prophet_dir
                 model_path = model_dir / f"{symbol}_prophet.json"
                 scaler_path = None
             else:
@@ -231,8 +228,13 @@ class ModelService(BaseService):
                     df['ds'] = pd.to_datetime(df['Date'])
                     df['y'] = df['Close']
                     model.fit(df)
-                    
+                
                 self.logger.info(f"Prophet model ready for {symbol}")
+                return {
+                    "status": "success",
+                    "model": model,
+                    "version": self.model_version
+                }
             else:
                 self.logger.info(f"Loading neural network for {symbol}")
                 model = models.load_model(str(model_path), compile=False)

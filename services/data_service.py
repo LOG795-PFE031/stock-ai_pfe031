@@ -290,17 +290,45 @@ class DataService(BaseService):
         try:
             # Load data from file
             data_file = self.config.data.STOCK_DATA_DIR / f"{symbol}_data.csv"
+            
+            # Check if file exists and is valid
+            needs_refresh = False
             if not data_file.exists():
-                # If file doesn't exist, collect new data
+                needs_refresh = True
+            else:
+                try:
+                    df = pd.read_csv(data_file)
+                    df['Date'] = pd.to_datetime(df['Date'], utc=True)
+                    
+                    # Validate data
+                    if len(df) < 80:  # Need at least 80 days for technical indicators
+                        self.logger.warning(f"Data file for {symbol} has insufficient data points: {len(df)}")
+                        needs_refresh = True
+                    elif (datetime.now() - df['Date'].max()).days > 1:  # Data is more than 1 day old
+                        self.logger.warning(f"Data file for {symbol} is outdated: {df['Date'].max()}")
+                        needs_refresh = True
+                    elif not all(col in df.columns for col in self.config.model.FEATURES):
+                        self.logger.warning(f"Data file for {symbol} is missing required columns")
+                        needs_refresh = True
+                except Exception as e:
+                    self.logger.error(f"Error reading data file for {symbol}: {str(e)}")
+                    needs_refresh = True
+            
+            # Refresh data if needed
+            if needs_refresh:
+                self.logger.info(f"Refreshing data for {symbol}")
                 df = await self.collect_stock_data(symbol)
             else:
-                df = pd.read_csv(data_file)
-                df['Date'] = pd.to_datetime(df['Date'], utc=True)
                 # Recalculate technical indicators
                 df = calculate_technical_indicators(df)
             
-            # Get the last 60 days of data (enough for technical indicators)
-            df = df.tail(60)
+            # Get enough data for technical indicators (60 days + max lookback period)
+            # MA_20 needs 20 days, so we need at least 80 days to get 60 complete sequences
+            df = df.tail(80)
+            
+            # Final validation
+            if len(df) < 80:
+                raise ValueError(f"Failed to collect sufficient data for {symbol}. Got {len(df)} days, need 80.")
             
             return {
                 "status": "success",
@@ -415,4 +443,80 @@ class DataService(BaseService):
             
         except Exception as e:
             self.logger.error(f"Error getting stock data for {symbol}: {str(e)}")
-            raise 
+            raise
+    
+    async def cleanup_data(self, symbol: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Clean up and maintain data files.
+        
+        Args:
+            symbol: Optional specific symbol to clean up. If None, cleans all data files.
+            
+        Returns:
+            Dictionary containing cleanup results
+        """
+        try:
+            cleaned_files = []
+            failed_files = []
+            
+            # Get list of files to clean
+            if symbol:
+                files = [self.config.data.STOCK_DATA_DIR / f"{symbol}_data.csv"]
+            else:
+                files = list(self.config.data.STOCK_DATA_DIR.glob("*_data.csv"))
+            
+            for data_file in files:
+                try:
+                    # Skip if file doesn't exist
+                    if not data_file.exists():
+                        continue
+                    
+                    # Read and validate data
+                    df = pd.read_csv(data_file)
+                    df['Date'] = pd.to_datetime(df['Date'], utc=True)
+                    
+                    # Check for issues
+                    needs_cleanup = False
+                    if len(df) < 80:
+                        self.logger.warning(f"Data file {data_file.name} has insufficient data points: {len(df)}")
+                        needs_cleanup = True
+                    elif (datetime.now() - df['Date'].max()).days > 1:
+                        self.logger.warning(f"Data file {data_file.name} is outdated: {df['Date'].max()}")
+                        needs_cleanup = True
+                    elif not all(col in df.columns for col in self.config.model.FEATURES):
+                        self.logger.warning(f"Data file {data_file.name} is missing required columns")
+                        needs_cleanup = True
+                    elif df.isna().any().any():
+                        self.logger.warning(f"Data file {data_file.name} contains NaN values")
+                        needs_cleanup = True
+                    
+                    # Clean up if needed
+                    if needs_cleanup:
+                        # Backup the file
+                        backup_file = data_file.with_suffix('.csv.bak')
+                        data_file.rename(backup_file)
+                        
+                        # Collect fresh data
+                        symbol = data_file.stem.split('_')[0]
+                        await self.collect_stock_data(symbol)
+                        
+                        cleaned_files.append(data_file.name)
+                    
+                except Exception as e:
+                    self.logger.error(f"Error cleaning up {data_file.name}: {str(e)}")
+                    failed_files.append(data_file.name)
+            
+            return {
+                "status": "success",
+                "cleaned_files": cleaned_files,
+                "failed_files": failed_files,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error during data cleanup: {str(e)}")
+            return {
+                "status": "error",
+                "message": str(e),
+                "timestamp": datetime.now().isoformat()
+            } 

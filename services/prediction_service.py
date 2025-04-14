@@ -95,6 +95,16 @@ class PredictionService(BaseService):
             raise ValueError(f"Unsupported model type: {model_type}")
         
         try:
+            if model_type == "prophet":
+                # Check if Prophet model exists for this symbol
+                prophet_models = [f.stem.split('_')[0] for f in self.model_service.prophet_dir.glob("*_prophet.json")]
+                if symbol not in prophet_models:
+                    available_models = ", ".join(sorted(prophet_models))
+                    raise ValueError(
+                        f"No Prophet model available for {symbol}. "
+                        f"Available Prophet models: {available_models}"
+                    )
+            
             if model_type == "lstm":
                 prediction = await self._get_lstm_prediction(symbol)
             else:
@@ -142,12 +152,17 @@ class PredictionService(BaseService):
             
             data_result = await self.data_service.get_latest_data(symbol)
             if data_result["status"] != "success":
-                self.logger.error(f"Data fetch failed for {symbol}")
-                raise RuntimeError(f"Failed to get latest data for {symbol}")
+                self.logger.error(f"Data fetch failed for {symbol}: {data_result.get('message', 'Unknown error')}")
+                raise RuntimeError(f"Failed to get latest data for {symbol}: {data_result.get('message', 'Unknown error')}")
             
             df = data_result["data"]
             self.logger.info(f"Data shape for {symbol}: {df.shape}")
             self.logger.info(f"Data columns for {symbol}: {df.columns.tolist()}")
+            
+            # Validate data columns
+            missing_features = [f for f in self.config.model.FEATURES if f not in df.columns]
+            if missing_features:
+                raise ValueError(f"Missing required features: {', '.join(missing_features)}")
             
             df = calculate_technical_indicators(df)
             self.logger.info(f"Data shape after technical indicators for {symbol}: {df.shape}")
@@ -156,9 +171,22 @@ class PredictionService(BaseService):
             features_df = df[self.config.model.FEATURES].copy()
             self.logger.info(f"Features shape for {symbol}: {features_df.shape}")
             
+            # Validate for NaN values
+            if features_df.isna().any().any():
+                nan_cols = features_df.columns[features_df.isna().any()].tolist()
+                raise ValueError(f"Found NaN values in features: {', '.join(nan_cols)}")
+            
             scaled_features = scaler.transform(features_df)
             self.logger.info(f"Scaled features shape for {symbol}: {scaled_features.shape}")
             
+            # Ensure we have enough data for the sequence
+            if len(scaled_features) < self.config.model.SEQUENCE_LENGTH:
+                raise ValueError(
+                    f"Not enough data for prediction. Need {self.config.model.SEQUENCE_LENGTH} days, "
+                    f"but only have {len(scaled_features)} days of data."
+                )
+            
+            # Take the last SEQUENCE_LENGTH days of data
             sequence = scaled_features[-self.config.model.SEQUENCE_LENGTH:].reshape(
                 1, self.config.model.SEQUENCE_LENGTH, len(self.config.model.FEATURES)
             )
