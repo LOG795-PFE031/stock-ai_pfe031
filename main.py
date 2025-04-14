@@ -46,6 +46,9 @@ async def lifespan(app: FastAPI):
         await training_service.initialize()  # Depends on data_service and model_service
         await prediction_service.initialize()  # Depends on data_service and model_service
         
+        # Start auto-publishing predictions
+        await prediction_service.start_auto_publishing(interval_minutes=5)
+        
         logger['main'].info("All services initialized successfully")
         yield
         
@@ -59,7 +62,7 @@ async def lifespan(app: FastAPI):
             logger['main'].info("Shutting down services...")
             
             # Cleanup in reverse order of initialization
-            await prediction_service.cleanup()
+            await prediction_service.cleanup()  # This will also stop auto-publishing
             await training_service.cleanup()
             await news_service.cleanup()
             await model_service.cleanup()

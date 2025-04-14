@@ -7,6 +7,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import os
 import random
+import asyncio
 from keras import backend as K  # Replace tensorflow with keras backend
 
 from services.base_service import BaseService
@@ -51,6 +52,8 @@ class PredictionService(BaseService):
         self.logger = logger['prediction']
         self.config = config
         self.rabbitmq_service = RabbitMQService()
+        self._publish_task = None
+        self._stop_publishing = False
     
     async def initialize(self) -> None:
         """Initialize the prediction service."""
@@ -58,13 +61,212 @@ class PredictionService(BaseService):
             await self._load_models()
             self._initialized = True
             self.logger.info("Prediction service initialized successfully with CPU configuration")
+            
+            # Set up day-started callback
+            self.rabbitmq_service.set_day_started_callback(self._on_day_started)
+            
         except Exception as e:
             self.logger.error(f"Failed to initialize prediction service: {str(e)}")
             raise
     
+    def _on_day_started(self, message: Dict[str, Any]) -> None:
+        """Handle day-started event."""
+        try:
+            self.logger.info("Day started event received, publishing predictions")
+            asyncio.create_task(self._publish_all_predictions())
+        except Exception as e:
+            self.logger.error(f"Error handling day-started event: {str(e)}")
+    
+    async def _publish_all_predictions(self) -> None:
+        """Publish predictions for all available models."""
+        try:
+            # Get all available models
+            lstm_models = list(self.model_service._specific_models.keys())
+            prophet_models = [f.stem.split('_')[0] for f in self.model_service.prophet_dir.glob("*_prophet.json")]
+            
+            # Combine and deduplicate symbols
+            all_symbols = list(set(lstm_models + prophet_models))
+            
+            self.logger.info(f"Publishing predictions for {len(all_symbols)} symbols")
+            
+            # Create tasks for all predictions
+            tasks = []
+            for symbol in all_symbols:
+                # Try LSTM first
+                if symbol in lstm_models:
+                    tasks.append(self.get_prediction(symbol, "lstm"))
+                # Then try Prophet
+                if symbol in prophet_models:
+                    tasks.append(self.get_prediction(symbol, "prophet"))
+            
+            # Process predictions as they complete
+            success_count = 0
+            error_count = 0
+            successful_predictions = []
+            failed_predictions = []
+            
+            # Create a progress tracking task
+            total_tasks = len(tasks)
+            completed_tasks = 0
+            
+            # Process results as they complete
+            for future in asyncio.as_completed(tasks):
+                try:
+                    result = await future
+                    completed_tasks += 1
+                    
+                    if isinstance(result, dict) and result.get("status") != "error":
+                        success_count += 1
+                        pred_info = {
+                            "symbol": result.get("symbol", "unknown"),
+                            "model_type": result.get("model_type", "unknown"),
+                            "prediction": result.get("prediction", 0.0),
+                            "confidence": result.get("confidence_score", 0.0)
+                        }
+                        successful_predictions.append(pred_info)
+                        self.logger.info(
+                            f"✅ [{completed_tasks}/{total_tasks}] {pred_info['symbol']} ({pred_info['model_type'].upper()}): "
+                            f"${pred_info['prediction']:.2f} (Confidence: {pred_info['confidence']:.1%})"
+                        )
+                    else:
+                        error_count += 1
+                        fail_info = {
+                            "symbol": result.get("symbol", "unknown") if isinstance(result, dict) else "unknown",
+                            "error": str(result) if not isinstance(result, dict) else result.get("error", "unknown error")
+                        }
+                        failed_predictions.append(fail_info)
+                        self.logger.warning(
+                            f"❌ [{completed_tasks}/{total_tasks}] {fail_info['symbol']}: {fail_info['error']}"
+                        )
+                except Exception as e:
+                    error_count += 1
+                    self.logger.error(f"❌ [{completed_tasks}/{total_tasks}] Error processing prediction: {str(e)}")
+            
+            # Log final summary
+            self.logger.info(f"📊 Prediction Summary:")
+            self.logger.info(f"   Total predictions attempted: {total_tasks}")
+            self.logger.info(f"   Successful predictions: {success_count}")
+            self.logger.info(f"   Failed predictions: {error_count}")
+            
+            # Log successful predictions summary
+            if successful_predictions:
+                self.logger.info("✨ Successful Predictions Summary:")
+                for pred in successful_predictions:
+                    self.logger.info(
+                        f"   {pred['symbol']} ({pred['model_type'].upper()}): "
+                        f"${pred['prediction']:.2f} (Confidence: {pred['confidence']:.1%})"
+                    )
+            
+            # Log failed predictions summary
+            if failed_predictions:
+                self.logger.warning("❌ Failed Predictions Summary:")
+                for fail in failed_predictions:
+                    self.logger.warning(f"   {fail['symbol']}: {fail['error']}")
+            
+        except Exception as e:
+            self.logger.error(f"Error publishing predictions: {str(e)}")
+    
+    async def start_auto_publishing(self, interval_minutes: int = 5) -> None:
+        """
+        Start automatically publishing predictions for all available models.
+        
+        Args:
+            interval_minutes: Time interval between publishing predictions
+        """
+        if not self._initialized:
+            raise RuntimeError("Prediction service not initialized")
+        
+        self._stop_publishing = False
+        self._publish_task = asyncio.create_task(self._publish_loop(interval_minutes))
+        self.logger.info(f"Started auto-publishing predictions every {interval_minutes} minutes")
+    
+    async def stop_auto_publishing(self) -> None:
+        """Stop the auto-publishing task."""
+        if self._publish_task:
+            self._stop_publishing = True
+            await self._publish_task
+            self._publish_task = None
+            self.logger.info("Stopped auto-publishing predictions")
+    
+    async def _publish_loop(self, interval_minutes: int) -> None:
+        """Main loop for publishing predictions."""
+        while not self._stop_publishing:
+            try:
+                # Get all available models
+                lstm_models = list(self.model_service._specific_models.keys())
+                prophet_models = [f.stem.split('_')[0] for f in self.model_service.prophet_dir.glob("*_prophet.json")]
+                
+                # Combine and deduplicate symbols
+                all_symbols = list(set(lstm_models + prophet_models))
+                
+                self.logger.info(f"Publishing predictions for {len(all_symbols)} symbols")
+                
+                # Create tasks for all predictions
+                tasks = []
+                for symbol in all_symbols:
+                    # Try LSTM first
+                    if symbol in lstm_models:
+                        tasks.append(self.get_prediction(symbol, "lstm"))
+                    # Then try Prophet
+                    if symbol in prophet_models:
+                        tasks.append(self.get_prediction(symbol, "prophet"))
+                
+                # Wait for all predictions to complete
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Log results
+                success_count = 0
+                error_count = 0
+                successful_predictions = []
+                failed_predictions = []
+                
+                for result in results:
+                    if isinstance(result, dict) and result.get("status") != "error":
+                        success_count += 1
+                        successful_predictions.append({
+                            "symbol": result.get("symbol", "unknown"),
+                            "model_type": result.get("model_type", "unknown"),
+                            "prediction": result.get("prediction", 0.0),
+                            "confidence": result.get("confidence_score", 0.0)
+                        })
+                    else:
+                        error_count += 1
+                        failed_predictions.append({
+                            "symbol": result.get("symbol", "unknown") if isinstance(result, dict) else "unknown",
+                            "error": str(result) if not isinstance(result, dict) else result.get("error", "unknown error")
+                        })
+                
+                # Log summary
+                self.logger.info(f"📊 Prediction Summary:")
+                self.logger.info(f"   Total predictions attempted: {len(results)}")
+                self.logger.info(f"   Successful predictions: {success_count}")
+                self.logger.info(f"   Failed predictions: {error_count}")
+                
+                # Log successful predictions
+                if successful_predictions:
+                    self.logger.info("✨ Successful Predictions:")
+                    for pred in successful_predictions:
+                        self.logger.info(
+                            f"   {pred['symbol']} ({pred['model_type'].upper()}): "
+                            f"${pred['prediction']:.2f} (Confidence: {pred['confidence']:.1%})"
+                        )
+                
+                # Log failed predictions
+                if failed_predictions:
+                    self.logger.warning("❌ Failed Predictions:")
+                    for fail in failed_predictions:
+                        self.logger.warning(f"   {fail['symbol']}: {fail['error']}")
+                
+            except Exception as e:
+                self.logger.error(f"Error in publish loop: {str(e)}")
+            
+            # Wait for the next interval
+            await asyncio.sleep(interval_minutes * 60)
+    
     async def cleanup(self) -> None:
         """Clean up resources."""
         try:
+            await self.stop_auto_publishing()
             self.models.clear()
             self.scalers.clear()
             self._initialized = False
@@ -284,32 +486,31 @@ class PredictionService(BaseService):
         scaled_prediction: np.ndarray,
         model: Any,
         scaler: Any,
-        close_idx: int,
-        num_samples: int = 30
+        close_idx: int
     ) -> float:
         """Calculate confidence score for LSTM prediction."""
         try:
-            predictions = []
-            for _ in range(num_samples):
-                noisy_sequence = sequence + np.random.normal(0, 0.05, sequence.shape)
-                pred = model.predict(noisy_sequence)
-                predictions.append(pred[0, 0])
+            # Calculate historical volatility from the sequence
+            historical_volatility = np.std(sequence[:, :, close_idx]) / np.mean(sequence[:, :, close_idx])
             
-            predictions = np.array(predictions)
-            dummy = np.zeros((len(predictions), len(self.config.model.FEATURES)))
-            dummy[:, close_idx] = predictions
-            unscaled_predictions = scaler.inverse_transform(dummy)[:, close_idx]
+            # Calculate prediction magnitude (relative to last price)
+            last_price = sequence[-1, -1, close_idx]
+            prediction_magnitude = abs(scaled_prediction[0, 0] - last_price) / abs(last_price) if last_price != 0 else float('inf')
             
-            mean_pred = np.mean(unscaled_predictions)
-            std_pred = np.std(unscaled_predictions)
-            relative_std = std_pred / abs(mean_pred) if mean_pred != 0 else float('inf')
-            confidence = np.exp(-5 * relative_std)
+            # Calculate confidence based on volatility and prediction magnitude
+            # Lower volatility and smaller prediction changes result in higher confidence
+            volatility_factor = np.exp(-2 * historical_volatility)
+            magnitude_factor = np.exp(-3 * prediction_magnitude)
+            
+            # Combine factors with weights
+            confidence = 0.7 * volatility_factor + 0.3 * magnitude_factor
             confidence = np.clip(confidence, 0, 1)
             
             self.logger.debug(f"Confidence calculation details:")
-            self.logger.debug(f"Mean prediction: {mean_pred:.2f}")
-            self.logger.debug(f"Std prediction: {std_pred:.2f}")
-            self.logger.debug(f"Relative std: {relative_std:.4f}")
+            self.logger.debug(f"Historical volatility: {historical_volatility:.4f}")
+            self.logger.debug(f"Prediction magnitude: {prediction_magnitude:.4f}")
+            self.logger.debug(f"Volatility factor: {volatility_factor:.4f}")
+            self.logger.debug(f"Magnitude factor: {magnitude_factor:.4f}")
             self.logger.debug(f"Final confidence: {confidence:.4f}")
             
             return float(confidence)

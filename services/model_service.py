@@ -121,12 +121,14 @@ class ModelService(BaseService):
             loaded_prophet = []
             total_processed = 0
             
-            # Get total number of directories to process
-            total_dirs = 0
+            # Get total number of items to process (both directories and files)
+            total_items = 0
             if self.model_dir.exists():
-                total_dirs += len([d for d in self.model_dir.iterdir() if d.is_dir() and not d.name.lower() in ['lstm', 'prophet']])
+                # Count LSTM model directories
+                total_items += len([d for d in self.model_dir.iterdir() if d.is_dir() and not d.name.lower() in ['lstm', 'prophet']])
             if self.prophet_dir.exists():
-                total_dirs += len([d for d in self.prophet_dir.iterdir() if d.is_dir()])
+                # Count Prophet model files
+                total_items += len(list(self.prophet_dir.glob("*_prophet.json")))
             
             # Start loading indicator
             self.logger.info("🤖 Loading models...")
@@ -147,8 +149,8 @@ class ModelService(BaseService):
                                 loaded_lstm.append(symbol)
                             
                             total_processed += 1
-                            progress = (total_processed / total_dirs) * 100
-                            print(f"\r🔄 Loading models... {progress:.1f}% ({total_processed}/{total_dirs})", end="", flush=True)
+                            progress = (total_processed / total_items) * 100
+                            print(f"\r🔄 Loading models... {progress:.1f}% ({total_processed}/{total_items})", end="", flush=True)
                             
                         except Exception as e:
                             self.logger.error(f"❌ Error loading model for {symbol}: {str(e)}")
@@ -163,8 +165,8 @@ class ModelService(BaseService):
                         loaded_prophet.append(symbol)
                         
                         total_processed += 1
-                        progress = (total_processed / total_dirs) * 100
-                        print(f"\r🔄 Loading models... {progress:.1f}% ({total_processed}/{total_dirs})", end="", flush=True)
+                        progress = (total_processed / total_items) * 100
+                        print(f"\r🔄 Loading models... {progress:.1f}% ({total_processed}/{total_items})", end="", flush=True)
                         
                     except Exception as e:
                         self.logger.error(f"❌ Error loading Prophet model for {symbol}: {str(e)}")
