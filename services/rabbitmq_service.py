@@ -215,7 +215,7 @@ class RabbitMQService:
         if self._day_started_callback:
             self._setup_day_started_consumer()
         else:
-            self.logger.warning("⚠️ No day-started callback set, skipping consumer setup for now (will be setup on first publish)")
+            self.logger.warning("⚠️ No day-started callback set, skipping consumer setup for now (it will be set on first publish)")
             # Don't set the event here, wait for quote queue to be bound
             self.logger.info("✨ Waiting for quote queue to be bound...")
     

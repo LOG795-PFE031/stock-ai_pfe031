@@ -278,7 +278,7 @@ class PredictionService(BaseService):
                     tasks.append(lstm_task)
                     
                     # Only add Prophet task if model exists
-                    prophet_models = [f.stem.split('_')[0] for f in self.model_service.prophet_dir.glob("*_prophet.json")]
+                    prophet_models = [f.stem.split('_')[0] for f in self.model_service.prophet_dir.glob("*_prophet.joblib")]
                     if symbol in prophet_models:
                         prophet_task = asyncio.create_task(self._get_prophet_prediction(symbol))
                         tasks.append(prophet_task)
@@ -375,7 +375,7 @@ class PredictionService(BaseService):
         try:
             if model_type == "prophet":
                 # Check if Prophet model exists for this symbol
-                prophet_models = [f.stem.split('_')[0] for f in self.model_service.prophet_dir.glob("*_prophet.json")]
+                prophet_models = [f.stem.split('_')[0] for f in self.model_service.prophet_dir.glob("*_prophet.joblib")]
                 if symbol not in prophet_models:
                     available_models = ", ".join(sorted(prophet_models))
                     self.logger.warning(f"No Prophet model available for {symbol}. Available Prophet models: {available_models}")
@@ -630,8 +630,14 @@ class PredictionService(BaseService):
                 df = calculate_technical_indicators(df)
             
             # Ensure dates are timezone-aware UTC
+            dates = pd.to_datetime(df['Date'])
+            if dates.dt.tz is None:
+                dates = dates.dt.tz_localize('UTC')
+            else:
+                dates = dates.dt.tz_convert('UTC')
+            
             prophet_df = pd.DataFrame({
-                'ds': pd.to_datetime(df['Date']).dt.tz_localize('UTC'),
+                'ds': dates,
                 'y': df['Close']
             })
             
@@ -649,7 +655,12 @@ class PredictionService(BaseService):
             
             # Create future dataframe with timezone-aware dates
             future = model.make_future_dataframe(periods=1)
-            future['ds'] = pd.to_datetime(future['ds']).dt.tz_localize('UTC')
+            future_dates = pd.to_datetime(future['ds'])
+            if future_dates.dt.tz is None:
+                future_dates = future_dates.dt.tz_localize('UTC')
+            else:
+                future_dates = future_dates.dt.tz_convert('UTC')
+            future['ds'] = future_dates
             
             # Add regressors to future dataframe
             if hasattr(model, 'extra_regressors'):
@@ -789,7 +800,7 @@ class PredictionService(BaseService):
         try:
             # Get all available models
             lstm_models = list(self.model_service._specific_models.keys())
-            prophet_models = [f.stem.split('_')[0] for f in self.model_service.prophet_dir.glob("*_prophet.json")]
+            prophet_models = [f.stem.split('_')[0] for f in self.model_service.prophet_dir.glob("*_prophet.joblib")]
             
             # Combine and deduplicate symbols
             all_symbols = list(set(lstm_models + prophet_models))
