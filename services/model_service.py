@@ -20,8 +20,8 @@ class ModelService(BaseService):
     
     def __init__(self):
         super().__init__()
-        self.model_dir = Path("/app/models/specific").resolve()
-        self.prophet_dir = Path("/app/models/prophet").resolve()
+        self.model_dir = Path("models/specific").resolve()
+        self.prophet_dir = Path("models/prophet").resolve()
         self._model_metadata = {}
         self.model_version = "1.0.0"
         self.logger = logger['model']
@@ -75,7 +75,7 @@ class ModelService(BaseService):
             if hasattr(model, 'save'):  # Check if it's a Keras model
                 models.save_model(model, str(model_path), save_format='keras_v3')
             else:
-                model_path = model_dir / f"{symbol}_{model_type}_model.joblib"
+                model_path = model_dir / f"{symbol}_{model_type}_prophet.joblib"
                 joblib.dump(model, model_path)
             
             # Save metrics
@@ -121,12 +121,14 @@ class ModelService(BaseService):
             loaded_prophet = []
             total_processed = 0
             
-            # Get total number of directories to process
-            total_dirs = 0
+            # Get total number of items to process (both directories and files)
+            total_items = 0
             if self.model_dir.exists():
-                total_dirs += len([d for d in self.model_dir.iterdir() if d.is_dir() and not d.name.lower() in ['lstm', 'prophet']])
+                # Count LSTM model directories
+                total_items += len([d for d in self.model_dir.iterdir() if d.is_dir() and not d.name.lower() in ['lstm', 'prophet']])
             if self.prophet_dir.exists():
-                total_dirs += len([d for d in self.prophet_dir.iterdir() if d.is_dir()])
+                # Count Prophet model files
+                total_items += len(list(self.prophet_dir.glob("*_prophet.joblib")))
             
             # Start loading indicator
             self.logger.info("🤖 Loading models...")
@@ -147,8 +149,8 @@ class ModelService(BaseService):
                                 loaded_lstm.append(symbol)
                             
                             total_processed += 1
-                            progress = (total_processed / total_dirs) * 100
-                            print(f"\r🔄 Loading models... {progress:.1f}% ({total_processed}/{total_dirs})", end="", flush=True)
+                            progress = (total_processed / total_items) * 100
+                            print(f"\r🔄 Loading models... {progress:.1f}% ({total_processed}/{total_items})", end="", flush=True)
                             
                         except Exception as e:
                             self.logger.error(f"❌ Error loading model for {symbol}: {str(e)}")
@@ -156,21 +158,18 @@ class ModelService(BaseService):
             # Load Prophet models from symbol-specific directories
             prophet_base_dir = self.prophet_dir
             if prophet_base_dir.exists():
-                for symbol_dir in prophet_base_dir.iterdir():
-                    if symbol_dir.is_dir():
-                        symbol = symbol_dir.name
-                        try:
-                            model_path = symbol_dir / f"{symbol}_model.pkl"
-                            if model_path.exists():
-                                self._specific_models[symbol] = joblib.load(model_path)
-                                loaded_prophet.append(symbol)
-                            
-                            total_processed += 1
-                            progress = (total_processed / total_dirs) * 100
-                            print(f"\r🔄 Loading models... {progress:.1f}% ({total_processed}/{total_dirs})", end="", flush=True)
-                            
-                        except Exception as e:
-                            self.logger.error(f"❌ Error loading Prophet model for {symbol}: {str(e)}")
+                for model_file in prophet_base_dir.glob("*_prophet.joblib"):
+                    symbol = model_file.stem.split('_')[0]
+                    try:
+                        self._specific_models[symbol] = joblib.load(model_file)
+                        loaded_prophet.append(symbol)
+                        
+                        total_processed += 1
+                        progress = (total_processed / total_items) * 100
+                        print(f"\r🔄 Loading models... {progress:.1f}% ({total_processed}/{total_items})", end="", flush=True)
+                        
+                    except Exception as e:
+                        self.logger.error(f"❌ Error loading Prophet model for {symbol}: {str(e)}")
             
             print()
             
@@ -197,71 +196,71 @@ class ModelService(BaseService):
                 scaler_path = model_dir / f"{symbol}_scaler.gz"
                 scaler_metadata_path = model_dir / f"{symbol}_scaler_metadata.json"
             elif model_type == "prophet":
-                model_dir = self.prophet_dir / symbol
-                model_path = model_dir / f"{symbol}_prophet.json"
-                scaler_path = None
+                model_dir = self.prophet_dir
+                model_path = model_dir / f"{symbol}_prophet.joblib"
+                metadata_path = model_dir / f"{symbol}_prophet_metadata.json"
             else:
                 raise ValueError(f"Unsupported model type: {model_type}")
             
             if not model_path.exists():
-                self.logger.error(f"Model not found for {symbol}")
-                raise FileNotFoundError(f"Model not found: {model_path}")
+                self.logger.warning(f"Model file not found: {model_path}")
+                return {
+                    "status": "error",
+                    "error": f"Model file not found for {symbol} ({model_type})",
+                    "symbol": symbol,
+                    "model_type": model_type,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
             
-            if model_type == "prophet":
-                self.logger.info(f"Setting up Prophet model for {symbol}")
-                from prophet import Prophet
-                with open(model_path, 'r') as f:
-                    model_data = json.load(f)
-                
-                model = Prophet(
-                    changepoint_prior_scale=model_data['params']['changepoint_prior_scale'],
-                    seasonality_prior_scale=model_data['params']['seasonality_prior_scale'],
-                    seasonality_mode=model_data['params']['seasonality_mode'],
-                    daily_seasonality=model_data['params']['daily_seasonality'],
-                    weekly_seasonality=model_data['params']['weekly_seasonality'],
-                    yearly_seasonality=model_data['params']['yearly_seasonality']
-                )
-                
-                if 'regressors' in model_data and model_data['regressors']:
-                    for regressor in model_data['regressors']:
-                        model.add_regressor(regressor)
-                
-                if 'last_data' in model_data and model_data['last_data']:
-                    df = pd.DataFrame(model_data['last_data'])
-                    df['ds'] = pd.to_datetime(df['Date'])
-                    df['y'] = df['Close']
-                    model.fit(df)
+            try:
+                if model_type == "lstm":
+                    model = models.load_model(str(model_path), compile=False)
+                    scaler = joblib.load(scaler_path) if scaler_path.exists() else None
+                    scaler_metadata = {}
+                    if scaler_metadata_path.exists():
+                        with open(scaler_metadata_path, "r") as f:
+                            scaler_metadata = json.load(f)
                     
-                self.logger.info(f"Prophet model ready for {symbol}")
-            else:
-                self.logger.info(f"Loading neural network for {symbol}")
-                model = models.load_model(str(model_path), compile=False)
-                model.compile(optimizer='adam', loss='mse', metrics=['mae'])
-            
-            scaler = None
-            if model_type == "lstm" and scaler_path.exists():
-                self.logger.info(f"Loading data scaler for {symbol}")
-                scaler = joblib.load(str(scaler_path))
-                
-                if scaler_metadata_path.exists():
-                    with open(scaler_metadata_path, 'r') as f:
-                        scaler_metadata = json.load(f)
-                    if scaler_metadata['feature_names'] != list(self.config.model.FEATURES):
-                        self.logger.warning(f"Feature mismatch detected for {symbol}")
-            
-            self.logger.info(f"Model loaded successfully for {symbol}")
-            return {
-                "status": "success",
-                "model": model,
-                "scaler": scaler,
-                "version": self.model_version
-            }
+                    return {
+                        "status": "success",
+                        "model": model,
+                        "scaler": scaler,
+                        "scaler_metadata": scaler_metadata,
+                        "version": self.model_version,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                else:  # prophet
+                    model = joblib.load(model_path)
+                    metadata = {}
+                    if metadata_path.exists():
+                        with open(metadata_path, "r") as f:
+                            metadata = json.load(f)
+                    
+                    return {
+                        "status": "success",
+                        "model": model,
+                        "metadata": metadata,
+                        "version": self.model_version,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+            except Exception as e:
+                self.logger.error(f"Error loading {model_type} model for {symbol}: {str(e)}")
+                return {
+                    "status": "error",
+                    "error": f"Error loading model: {str(e)}",
+                    "symbol": symbol,
+                    "model_type": model_type,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
             
         except Exception as e:
-            self.logger.error(f"Failed to load model for {symbol}: {str(e)}")
+            self.logger.error(f"Error in load_model: {str(e)}")
             return {
                 "status": "error",
-                "error": str(e)
+                "error": str(e),
+                "symbol": symbol,
+                "model_type": model_type,
+                "timestamp": datetime.utcnow().isoformat()
             }
     
     # ... (rest of the methods remain unchanged: list_models, delete_model, _get_version_dir, etc.)

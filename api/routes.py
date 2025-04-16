@@ -280,6 +280,11 @@ async def get_next_day_prediction(
         if prediction.get("status") == "error":
             error_msg = prediction.get("error", "Unknown error")
             api_logger.error(f"Prediction failed for {symbol}: {error_msg}")
+            if "No Prophet model available" in error_msg:
+                raise HTTPException(
+                    status_code=404,
+                    detail=error_msg
+                )
             raise HTTPException(
                 status_code=500,
                 detail=f"Prediction failed: {error_msg}"
@@ -479,4 +484,29 @@ async def get_training_tasks():
         raise HTTPException(
             status_code=500,
             detail=f"Failed to get training tasks: {str(e)}"
+        )
+
+@router.post("/data/cleanup/{symbol}", response_model=Dict[str, Any], tags=["Data Services"])
+async def cleanup_stock_data(symbol: Optional[str] = None):
+    """Clean up and maintain stock data files."""
+    try:
+        # Import services from main to avoid circular imports
+        from main import data_service
+        
+        # Clean up data
+        result = await data_service.cleanup_data(symbol)
+        
+        if result["status"] == "error":
+            raise HTTPException(
+                status_code=500,
+                detail=f"Data cleanup failed: {result.get('message', 'Unknown error')}"
+            )
+        
+        return result
+        
+    except Exception as e:
+        api_logger.error(f"Data cleanup failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Data cleanup failed: {str(e)}"
         ) 

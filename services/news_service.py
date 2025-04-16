@@ -108,13 +108,24 @@ class NewsService(BaseService):
     async def _download_model(self) -> str:
         """Download the sentiment model with retry logic."""
         try:
+            # First try to load from cache
+            cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+            model_path = os.path.join(cache_dir, self.config.model.SENTIMENT_MODEL_NAME)
+            
+            if os.path.exists(model_path):
+                logger.info(f"Using cached model from {model_path}")
+                return model_path
+            
+            # If not in cache, download
+            logger.info(f"Downloading model {self.config.model.SENTIMENT_MODEL_NAME}...")
             return snapshot_download(
                 self.config.model.SENTIMENT_MODEL_NAME,
-                force_download=True,
-                local_files_only=False
+                force_download=False,  # Don't force download if already cached
+                local_files_only=False,
+                cache_dir=cache_dir
             )
         except Exception as e:
-            self.logger.error(f"Model download attempt failed: {str(e)}")
+            logger.error(f"Model download attempt failed: {str(e)}")
             raise
     
     async def initialize(self) -> None:
@@ -127,7 +138,7 @@ class NewsService(BaseService):
             spinner.start()
             
             try:
-                # Download model with retry logic
+                # Try to download model with retry logic
                 model_path = await self._download_model()
                 
                 # Initialize sentiment analyzer

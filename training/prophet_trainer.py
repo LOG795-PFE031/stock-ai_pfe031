@@ -2,7 +2,7 @@
 Prophet model trainer.
 """
 from typing import Dict, Any, Optional, List, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 import numpy as np
 from prophet import Prophet
@@ -19,6 +19,7 @@ class ProphetTrainer(BaseTrainer):
     
     def __init__(self):
         super().__init__("prophet")
+        self.logger = logger['training']
     
     async def prepare_data(
         self,
@@ -32,13 +33,21 @@ class ProphetTrainer(BaseTrainer):
             data_file = self.config.data.STOCK_DATA_DIR / f"{symbol}_data.csv"
             df = pd.read_csv(data_file)
             
-            # Convert date column
+            # Convert date column to datetime and convert to UTC
             df['Date'] = pd.to_datetime(df['Date'])
+            if df['Date'].dt.tz is not None:
+                df['Date'] = df['Date'].dt.tz_convert('UTC').dt.tz_localize(None)
+            else:
+                df['Date'] = df['Date'].dt.tz_localize('UTC').dt.tz_localize(None)
             
             # Filter date range if specified
             if start_date:
+                if start_date.tzinfo is not None:
+                    start_date = start_date.astimezone(timezone.utc).replace(tzinfo=None)
                 df = df[df['Date'] >= start_date]
             if end_date:
+                if end_date.tzinfo is not None:
+                    end_date = end_date.astimezone(timezone.utc).replace(tzinfo=None)
                 df = df[df['Date'] <= end_date]
             
             # Prepare data for Prophet
@@ -89,9 +98,9 @@ class ProphetTrainer(BaseTrainer):
             
             # Get training history
             history = {
-                "changepoints": model.changepoints.tolist(),
-                "trend": model.trend.tolist(),
-                "seasonality": model.seasonality.tolist()
+                "changepoints": model.changepoints.tolist() if hasattr(model, 'changepoints') else [],
+                "trend": model.params['k'].tolist() if 'k' in model.params else [],
+                "seasonality": model.params['beta'].tolist() if 'beta' in model.params else []
             }
             
             return model, history
@@ -114,14 +123,16 @@ class ProphetTrainer(BaseTrainer):
             y_true = test_data['y'].values
             y_pred = forecast['yhat'].values
             
-            mse = np.mean((y_true - y_pred) ** 2)
-            mae = np.mean(np.abs(y_true - y_pred))
+            mse = mean_squared_error(y_true, y_pred)
+            mae = mean_absolute_error(y_true, y_pred)
             rmse = np.sqrt(mse)
+            r2 = r2_score(y_true, y_pred)
             
             return {
                 "mse": float(mse),
                 "mae": float(mae),
-                "rmse": float(rmse)
+                "rmse": float(rmse),
+                "r2": float(r2)
             }
             
         except Exception as e:
@@ -137,26 +148,54 @@ class ProphetTrainer(BaseTrainer):
         """Save Prophet model."""
         try:
             # Create prophet directory if it doesn't exist
-            prophet_dir = self.model_dir / "prophet"
+            prophet_dir = self.config.model.PROPHET_MODELS_DIR
             prophet_dir.mkdir(parents=True, exist_ok=True)
             
-            # Create symbol-specific directory
-            symbol_dir = prophet_dir / symbol
-            symbol_dir.mkdir(parents=True, exist_ok=True)
+            # Save the actual Prophet model using joblib
+            model_file = prophet_dir / f"{symbol}_prophet.joblib"
+            joblib.dump(model, model_file)
             
-            # Save model using joblib
-            model_path = symbol_dir / f"{symbol}_model.joblib"
-            joblib.dump(model, model_path)
+            # Save model metadata
+            model_data = {
+                "metrics": metrics,
+                "timestamp": datetime.now().isoformat(),
+                "model_version": self.model_version
+            }
             
-            # Save metrics with timestamp
-            metrics["timestamp"] = datetime.now().isoformat()
-            metrics["model_version"] = self.model_version
-            metrics_path = symbol_dir / f"{symbol}_metrics.json"
-            with open(metrics_path, "w") as f:
-                json.dump(metrics, f, indent=4)
+            # Save metadata as JSON
+            metadata_path = prophet_dir / f"{symbol}_prophet_metadata.json"
+            with open(metadata_path, "w") as f:
+                json.dump(model_data, f, indent=4)
             
             self.logger.info(f"Saved Prophet model for {symbol}")
             
         except Exception as e:
             self.logger.error(f"Error saving Prophet model for {symbol}: {str(e)}")
-            raise 
+            raise
+    
+    async def load_model(self, symbol: str) -> Optional[Prophet]:
+        """Load Prophet model."""
+        try:
+            prophet_dir = self.model_dir / "prophet"
+            model_file = prophet_dir / f"{symbol}_prophet.joblib"
+            metadata_file = prophet_dir / f"{symbol}_prophet_metadata.json"
+            
+            if not model_file.exists():
+                self.logger.warning(f"No Prophet model found for {symbol}")
+                return None
+            
+            # Load the actual Prophet model
+            model = joblib.load(model_file)
+            
+            # Load model metadata
+            if metadata_file.exists():
+                with open(metadata_file, "r") as f:
+                    model_data = json.load(f)
+                    self.logger.info(f"Loaded Prophet model metadata for {symbol}")
+                    self.logger.info(f"Model metrics: {model_data.get('metrics', {})}")
+            
+            return model
+            
+        except Exception as e:
+            self.logger.error(f"Error loading Prophet model for {symbol}: {str(e)}")
+            return None 

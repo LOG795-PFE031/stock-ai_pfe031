@@ -18,7 +18,7 @@ services:
       - API_HOST=0.0.0.0
       - API_PORT=8000
     networks:
-      - stockai-backend_auth
+      - microservices_auth
     restart: on-failure:3
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -26,7 +26,23 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
+
+  monitor:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile.monitor
+    container_name: stock-ai-monitor
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASS=guest
+    networks:
+      - microservices_auth
+    depends_on:
+      - stock-ai
       
 networks:
-  stockai-backend_auth:
+  microservices_auth:
     external: true
+    name: microservices_auth
