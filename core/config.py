@@ -40,7 +40,7 @@ class APIConfig(BaseModel):
 
 class RabbitMQConfig(BaseModel):
     """RabbitMQ configuration."""
-    HOST: str = "localhost"
+    HOST: str = "rabbitmq"  # Use the Docker container's hostname
     PORT: int = 5672
     USER: str = "guest"
     PASSWORD: str = "guest"

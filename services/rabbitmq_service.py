@@ -12,6 +12,7 @@ import uuid
 import socket
 import ssl
 import os
+import asyncio
 
 from core.config import config
 from core.logging import logger
@@ -126,6 +127,7 @@ class RabbitMQService:
         self.logger.info("✨ Connection opened")
         self.connection = connection
         self._connection_state = 'connected'
+        self.logger.info(f"✨ Connection state updated to: {self._connection_state}")
         self.connection.channel(on_open_callback=self._on_channel_open)
     
     def _on_connection_closed(self, connection, reason):
@@ -142,8 +144,10 @@ class RabbitMQService:
         self.logger.info("✨ Channel opened")
         self.channel = channel
         self._connection_state = 'channel_open'
+        self.logger.info(f"✨ Connection state updated to: {self._connection_state}")
         
         # Declare quote exchange
+        self.logger.info(f"✨ Declaring quote exchange '{self.exchange_name}'...")
         self.channel.exchange_declare(
             exchange=self.exchange_name,
             exchange_type='fanout',
@@ -153,10 +157,22 @@ class RabbitMQService:
     
     def _on_quote_exchange_declared(self, frame):
         """Called when the quote exchange is declared."""
-        self.logger.info(f"✨ Quote exchange {self.exchange_name} declared")
+        self.logger.info(f"✨ Quote exchange {self.exchange_name} declared successfully")
         self._connection_state = 'quote_exchange_declared'
+        self.logger.info(f"✨ Connection state updated to: {self._connection_state}")
+        
+        # Create a queue for publishing
+        self.logger.info(f"✨ Creating queue for quote exchange...")
+        self.channel.queue_declare(
+            queue='stock-ai-quotes',
+            durable=True,
+            exclusive=False,
+            auto_delete=False,
+            callback=self._on_quote_queue_declared
+        )
         
         # Declare day-started exchange
+        self.logger.info(f"✨ Declaring day-started exchange '{self.day_started_exchange}'...")
         self.channel.exchange_declare(
             exchange=self.day_started_exchange,
             exchange_type='fanout',
@@ -164,17 +180,44 @@ class RabbitMQService:
             callback=self._on_day_started_exchange_declared
         )
     
+    def _on_quote_queue_declared(self, frame):
+        """Called when the quote queue is declared."""
+        self.logger.info(f"✨ Quote queue 'stock-ai-quotes' declared successfully")
+        
+        # Bind queue to exchange
+        self.logger.info(f"✨ Binding queue to quote exchange...")
+        self.channel.queue_bind(
+            exchange=self.exchange_name,
+            queue='stock-ai-quotes',
+            routing_key='',
+            callback=self._on_quote_queue_bound
+        )
+    
+    def _on_quote_queue_bound(self, frame):
+        """Called when the quote queue is bound."""
+        self.logger.info("✨ Quote queue bound to exchange successfully")
+        self._connection_state = 'quote_queue_bound'
+        self.logger.info(f"✨ Connection state updated to: {self._connection_state}")
+        self._event.set()  # Signal that setup is complete
+        self.logger.info("✨ Setup complete, connection is ready for publishing")
+        
+        # If we have a day-started callback, ensure it's set up
+        if self._day_started_callback:
+            self._setup_day_started_consumer()
+    
     def _on_day_started_exchange_declared(self, frame):
         """Called when the day-started exchange is declared."""
-        self.logger.info(f"✨ Day-started exchange {self.day_started_exchange} declared")
+        self.logger.info(f"✨ Day-started exchange {self.day_started_exchange} declared successfully")
         self._connection_state = 'day_started_exchange_declared'
+        self.logger.info(f"✨ Connection state updated to: {self._connection_state}")
         
         # Set up day-started consumer if callback is set
         if self._day_started_callback:
             self._setup_day_started_consumer()
         else:
             self.logger.warning("⚠️ No day-started callback set, skipping consumer setup for now (will be setup on first publish)")
-            self._event.set()  # Signal that setup is complete
+            # Don't set the event here, wait for quote queue to be bound
+            self.logger.info("✨ Waiting for quote queue to be bound...")
     
     def _on_day_started_queue_declared(self, frame):
         """Called when the day-started queue is declared."""
@@ -199,7 +242,6 @@ class RabbitMQService:
             auto_ack=True
         )
         
-        self._event.set()
         self.logger.info("✅ Day-started event consumer is ready")
     
     def _on_day_started_message(self, channel, method, properties, body):
@@ -209,7 +251,17 @@ class RabbitMQService:
             self.logger.info(f"✨ Received day-started event: {message}")
             
             if self._day_started_callback:
-                self._day_started_callback(message)
+                # Create a new event loop for this thread if needed
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                
+                # Schedule the callback to run in the current event loop
+                loop.call_soon_threadsafe(
+                    lambda: asyncio.create_task(self._day_started_callback(message))
+                )
             else:
                 self.logger.warning("⚠️ No callback set for day-started events")
                 
@@ -309,14 +361,52 @@ class RabbitMQService:
         with self._lock:
             for attempt in range(3):  # Max 3 retries
                 try:
+                    # Log current connection state
+                    self.logger.info(f"✨ Publishing attempt {attempt + 1}/3 for {symbol}")
+                    self.logger.info(f"✨ Current connection state: {self._connection_state}")
+                    
                     # Ensure connection and channel are open
                     if not self.connection or self.connection.is_closed or not self.channel or self.channel.is_closed:
+                        self.logger.warning("⚠️ Connection or channel is closed, attempting to reconnect...")
                         try:
                             self.connect()
                             if not self._event.wait(timeout=10):
                                 raise pika.exceptions.AMQPConnectionError("Failed to establish connection")
+                            self.logger.info("✅ Successfully reconnected to RabbitMQ")
                         except Exception as e:
                             self.logger.error(f"❌ Failed to establish connection for publishing: {str(e)}")
+                            return False
+                    
+                    # Ensure exchange and queue are set up
+                    if self._connection_state != 'quote_queue_bound':
+                        self.logger.warning("⚠️ Quote exchange or queue not properly set up, attempting to set up...")
+                        try:
+                            # Declare exchange
+                            self.channel.exchange_declare(
+                                exchange=self.exchange_name,
+                                exchange_type='fanout',
+                                durable=True
+                            )
+                            self._connection_state = 'quote_exchange_declared'
+                            
+                            # Declare queue
+                            self.channel.queue_declare(
+                                queue='stock-ai-quotes',
+                                durable=True,
+                                exclusive=False,
+                                auto_delete=False
+                            )
+                            
+                            # Bind queue
+                            self.channel.queue_bind(
+                                exchange=self.exchange_name,
+                                queue='stock-ai-quotes',
+                                routing_key=''
+                            )
+                            self._connection_state = 'quote_queue_bound'
+                            self.logger.info("✅ Successfully set up quote exchange and queue")
+                        except Exception as e:
+                            self.logger.error(f"❌ Failed to set up quote exchange and queue: {str(e)}")
                             return False
                     
                     # Generate a unique message ID
@@ -334,6 +424,13 @@ class RabbitMQService:
                         "Confidence": float(prediction.get('confidence_score', 0.0)),  # Add confidence score
                         "ModelVersion": prediction.get('model_version', 'unknown')  # Add model version
                     }
+                    
+                    # Log message details
+                    self.logger.info(f"✨ Preparing to publish message for {symbol}:")
+                    self.logger.info(f"   Price: ${message['Price']:.2f}")
+                    self.logger.info(f"   Model Type: {message['ModelType']}")
+                    self.logger.info(f"   Confidence: {message['Confidence']:.1%}")
+                    self.logger.info(f"   Model Version: {message['ModelVersion']}")
                     
                     # Serialize message
                     message_body = json.dumps(message).encode('utf-8')
@@ -359,17 +456,19 @@ class RabbitMQService:
                         }
                     )
                     
+                    # Log publishing attempt
+                    self.logger.info(f"✨ Publishing to exchange '{self.exchange_name}'...")
+                    
                     # Publish message
                     self.channel.basic_publish(
                         exchange=self.exchange_name,
                         routing_key='',
                         body=message_body,
-                        properties=properties,
-                        mandatory=True
+                        properties=properties
                     )
                     
                     self.logger.info(
-                        f"✅ Published prediction for {symbol} ({prediction.get('model_type', 'unknown')}): "
+                        f"✅ Successfully published prediction for {symbol} ({prediction.get('model_type', 'unknown')}): "
                         f"${prediction.get('prediction', 0.0):.2f} (Confidence: {prediction.get('confidence_score', 0.0):.1%})"
                     )
                     return True
@@ -377,6 +476,9 @@ class RabbitMQService:
                 except Exception as e:
                     if attempt == 2:  # Last attempt
                         self.logger.error(f"❌ Failed to publish message for {symbol} after 3 attempts: {str(e)}")
+                        self.logger.error(f"❌ Connection state: {self._connection_state}")
+                        self.logger.error(f"❌ Connection open: {self.connection and not self.connection.is_closed if self.connection else False}")
+                        self.logger.error(f"❌ Channel open: {self.channel and not self.channel.is_closed if self.channel else False}")
                         return False
                     self.logger.warning(f"⚠️ Publish attempt {attempt + 1} failed: {str(e)}")
                     time.sleep(2)  # Wait 2 seconds before retrying

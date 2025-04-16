@@ -26,7 +26,23 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
+
+  monitor:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile.monitor
+    container_name: stock-ai-monitor
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASS=guest
+    networks:
+      - microservices_auth
+    depends_on:
+      - stock-ai
       
 networks:
   microservices_auth:
     external: true
+    name: microservices_auth

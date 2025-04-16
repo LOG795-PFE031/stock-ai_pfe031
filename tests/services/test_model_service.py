@@ -65,7 +65,7 @@ async def test_save_prophet_model(model_service, config, sample_prophet_model):
     # Check if files are created
     version_dir = model_service._get_version_dir(symbol, model_type)
     assert version_dir.exists()
-    assert (version_dir / f"{symbol}_{model_type}_model.joblib").exists()
+    assert (version_dir / f"{symbol}_{model_type}_prophet.joblib").exists()
 
 async def test_load_model(model_service, config, sample_lstm_model):
     """Test loading a saved model."""

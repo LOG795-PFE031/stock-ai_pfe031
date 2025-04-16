@@ -78,13 +78,31 @@ class TrainingService(BaseService):
             Dictionary containing training results
         """
         if not self._initialized:
-            raise RuntimeError("Training service not initialized")
+            return {
+                "status": "error",
+                "error": "Training service not initialized",
+                "symbol": symbol,
+                "model_type": model_type,
+                "timestamp": datetime.now().isoformat()
+            }
         
         if not validate_stock_symbol(symbol):
-            raise ValueError(f"Invalid stock symbol: {symbol}")
+            return {
+                "status": "error",
+                "error": f"Invalid stock symbol: {symbol}",
+                "symbol": symbol,
+                "model_type": model_type,
+                "timestamp": datetime.now().isoformat()
+            }
         
         if model_type not in self.trainers:
-            raise ValueError(f"Unsupported model type: {model_type}")
+            return {
+                "status": "error",
+                "error": f"Unsupported model type: {model_type}",
+                "symbol": symbol,
+                "model_type": model_type,
+                "timestamp": datetime.now().isoformat()
+            }
         
         try:
             # Create training task
@@ -107,11 +125,23 @@ class TrainingService(BaseService):
             # Remove completed task
             del self.training_tasks[task_key]
             
-            return result
+            return {
+                "status": "success",
+                "symbol": symbol,
+                "model_type": model_type,
+                "result": result,
+                "timestamp": datetime.now().isoformat()
+            }
             
         except Exception as e:
             self.logger.error(f"Error training {model_type} model for {symbol}: {str(e)}")
-            raise
+            return {
+                "status": "error",
+                "error": str(e),
+                "symbol": symbol,
+                "model_type": model_type,
+                "timestamp": datetime.now().isoformat()
+            }
     
     async def get_training_status(
         self,
