@@ -60,7 +60,7 @@ All components are containerized using Docker for easy deployment and scaling.
 
      1. Visit the SharePoint links in your browser:
         - Data: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/Ed_0wI8AD8xNmEtrGtQpTRAB_WuEg9C99yxiq7mraEsr3Q?e=uPbi7a
-        - Models: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EWqmO8g1MgNDiu9CfSXoxDUBsFq9VsTkVruAlScEWX_8xw?e=bhekWX
+        - Models: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EUR5xD1QhJNAoJsduDJhJLYBxRIYmJGSe3J5fBIuTPpaLw?e=PlasAh
      2. Download the files
      3. Extract the contents to the root of the project
    - Option 2: Using the Setup Script

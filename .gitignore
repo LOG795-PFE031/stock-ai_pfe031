@@ -70,16 +70,11 @@ sandbox/lstm-stock-price-prediction/models/
 **.csv
 **.gz
 
-data/interim/
-data/processed/
-data/raw/
+data/news/
+data/stock/
 
 models/general
 models/prophet
 models/specific
-data/processed/
-data/raw/
+
 stock-ai.code-workspace
-stock-prediction/models/general
-stock-prediction/models/prophet
-stock-prediction/models/specific
