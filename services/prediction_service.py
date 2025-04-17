@@ -629,12 +629,13 @@ class PredictionService(BaseService):
             if 'RSI' not in df.columns:
                 df = calculate_technical_indicators(df)
             
-            # Ensure dates are timezone-aware UTC
+            # Store original timezone information
+            original_tz = df['Date'].iloc[0].tzinfo
+            
+            # Convert to timezone-naive for Prophet
             dates = pd.to_datetime(df['Date'])
-            if dates.dt.tz is None:
-                dates = dates.dt.tz_localize('UTC')
-            else:
-                dates = dates.dt.tz_convert('UTC')
+            if dates.dt.tz is not None:
+                dates = dates.dt.tz_localize(None)
             
             prophet_df = pd.DataFrame({
                 'ds': dates,
@@ -653,13 +654,11 @@ class PredictionService(BaseService):
                         else:
                             raise ValueError(f"Regressor '{regressor}' missing from dataframe")
             
-            # Create future dataframe with timezone-aware dates
+            # Create future dataframe with timezone-naive dates
             future = model.make_future_dataframe(periods=1)
             future_dates = pd.to_datetime(future['ds'])
-            if future_dates.dt.tz is None:
-                future_dates = future_dates.dt.tz_localize('UTC')
-            else:
-                future_dates = future_dates.dt.tz_convert('UTC')
+            if future_dates.dt.tz is not None:
+                future_dates = future_dates.dt.tz_localize(None)
             future['ds'] = future_dates
             
             # Add regressors to future dataframe
@@ -683,16 +682,22 @@ class PredictionService(BaseService):
             # Calculate confidence based on prediction interval width
             confidence = 100 * (1 - (last_prediction['yhat_upper'] - last_prediction['yhat_lower']) / last_prediction['yhat'])
             
+            # Convert prediction dates back to original timezone
+            prediction_date = pd.to_datetime(forecast['ds'].iloc[-1])
+            if original_tz is not None:
+                prediction_date = prediction_date.tz_localize(original_tz)
+            
             prediction_data = {
                 "prediction": float(last_prediction['yhat']),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": prediction_date.isoformat(),
                 "confidence_score": float(confidence),
                 "model_version": model_metadata.get("model_version", "1.0.0"),
                 "model_type": "prophet",
                 "prediction_details": {
                     "yhat_lower": float(last_prediction['yhat_lower']),
                     "yhat_upper": float(last_prediction['yhat_upper']),
-                    "interval_width": float(last_prediction['yhat_upper'] - last_prediction['yhat_lower'])
+                    "interval_width": float(last_prediction['yhat_upper'] - last_prediction['yhat_lower']),
+                    "timezone": str(original_tz) if original_tz else None
                 }
             }
             
