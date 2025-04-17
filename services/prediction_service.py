@@ -680,7 +680,30 @@ class PredictionService(BaseService):
             last_prediction = forecast.iloc[-1]
             
             # Calculate confidence based on prediction interval width
-            confidence = 100 * (1 - (last_prediction['yhat_upper'] - last_prediction['yhat_lower']) / last_prediction['yhat'])
+            interval_width = last_prediction['yhat_upper'] - last_prediction['yhat_lower']
+            relative_width = interval_width / abs(last_prediction['yhat'])
+            
+            self.logger.debug(f"Prophet confidence calculation for {symbol}:")
+            self.logger.debug(f"  Prediction: {last_prediction['yhat']:.2f}")
+            self.logger.debug(f"  Interval: [{last_prediction['yhat_lower']:.2f}, {last_prediction['yhat_upper']:.2f}]")
+            self.logger.debug(f"  Interval width: {interval_width:.2f}")
+            self.logger.debug(f"  Relative width: {relative_width:.4f}")
+            
+            # Convert to confidence score (0-1)
+            # Use a more conservative sigmoid function that accounts for stock market uncertainty
+            # The parameters are tuned to give reasonable confidence scores for typical stock price movements
+            raw_confidence = 1 / (1 + np.exp(10 * relative_width - 1))
+            self.logger.debug(f"  Raw confidence: {raw_confidence:.4f}")
+            
+            # Cap confidence at 0.85 to maintain uncertainty
+            confidence = min(raw_confidence, 0.85)
+            
+            # Ensure minimum confidence of 0.50
+            confidence = max(confidence, 0.50)
+            
+            # Round to 3 decimal places for cleaner output
+            confidence = round(confidence, 3)
+            self.logger.debug(f"  Final confidence: {confidence:.3f}")
             
             # Convert prediction dates back to original timezone
             prediction_date = pd.to_datetime(forecast['ds'].iloc[-1])
@@ -690,7 +713,7 @@ class PredictionService(BaseService):
             prediction_data = {
                 "prediction": float(last_prediction['yhat']),
                 "timestamp": prediction_date.isoformat(),
-                "confidence_score": float(confidence),
+                "confidence_score": confidence,  # Store as decimal between 0 and 1
                 "model_version": model_metadata.get("model_version", "1.0.0"),
                 "model_type": "prophet",
                 "prediction_details": {
@@ -706,99 +729,6 @@ class PredictionService(BaseService):
         except Exception as e:
             self.logger.error(f"Error getting Prophet prediction for {symbol}: {str(e)}")
             raise
-
-    def _calculate_prophet_confidence(
-        self,
-        forecast: pd.DataFrame,
-        last_price: float
-    ) -> float:
-        """Calculate confidence score for Prophet prediction."""
-        try:
-            yhat = forecast.iloc[-1]['yhat']
-            yhat_lower = forecast.iloc[-1]['yhat_lower']
-            yhat_upper = forecast.iloc[-1]['yhat_upper']
-            interval_width = yhat_upper - yhat_lower
-            relative_width = interval_width / abs(yhat) if yhat != 0 else float('inf')
-            confidence = np.exp(-relative_width)
-            price_change = abs(yhat - last_price) / last_price
-            if price_change > 0.1:
-                confidence *= np.exp(-price_change + 0.1)
-            confidence = float(np.clip(confidence, 0, 1))
-            return confidence
-        except Exception as e:
-            self.logger.error(f"Error calculating Prophet confidence: {str(e)}")
-            return 0.5
-    
-    async def get_historical_predictions(
-        self,
-        symbol: str,
-        days: int = 7
-    ) -> Dict[str, Any]:
-        """Get historical predictions for a given symbol."""
-        try:
-            model_result = await self.model_service.load_model(symbol, "lstm")
-            if model_result["status"] != "success":
-                raise RuntimeError(f"Failed to load LSTM model for {symbol}")
-            
-            model = model_result["model"]
-            scaler = model_result["scaler"]
-            
-            data_result = await self.data_service.get_historical_data(symbol, days=days + self.config.model.SEQUENCE_LENGTH)
-            if data_result["status"] != "success":
-                raise RuntimeError(f"Failed to get historical data for {symbol}")
-            
-            df = data_result["data"]
-            features_df = df[self.config.model.FEATURES].copy()
-            scaled_features = scaler.transform(features_df)
-            
-            sequences = []
-            for i in range(len(scaled_features) - self.config.model.SEQUENCE_LENGTH):
-                sequence = scaled_features[i:i + self.config.model.SEQUENCE_LENGTH]
-                sequences.append(sequence)
-            
-            predictions = []
-            for sequence in sequences:
-                sequence = sequence.reshape(1, self.config.model.SEQUENCE_LENGTH, len(self.config.model.FEATURES))
-                scaled_prediction = model.predict(sequence)
-                predictions.append(scaled_prediction[0, 0])
-            
-            last_close = df['Close'].iloc[-1]
-            last_scaled = scaled_features[-1, self.config.model.FEATURES.index('Close')]
-            predictions = [self._inverse_scale_lstm_prediction(
-                pred,
-                last_close,
-                last_scaled,
-                scaler,
-                self.config.model.FEATURES.index('Close')
-            ) for pred in predictions]
-            
-            historical_predictions = []
-            for i, pred in enumerate(predictions):
-                historical_predictions.append({
-                    "date": df['Date'].iloc[i + self.config.model.SEQUENCE_LENGTH].isoformat(),
-                    "prediction": float(pred),
-                    "actual": float(df['Close'].iloc[i + self.config.model.SEQUENCE_LENGTH]),
-                    "error": float(pred - df['Close'].iloc[i + self.config.model.SEQUENCE_LENGTH])
-                })
-            
-            return {
-                "status": "success",
-                "symbol": symbol,
-                "historical_predictions": historical_predictions,
-                "model_version": model_result.get("version", "1.0.0"),
-                "model_type": "lstm"
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error getting historical predictions for {symbol}: {str(e)}")
-            return {
-                "status": "error",
-                "error": str(e),
-                "symbol": symbol,
-                "historical_predictions": [],
-                "model_version": "unknown",
-                "model_type": "lstm"
-            }
 
     def _get_symbols_for_prediction(self) -> List[str]:
         """Get list of symbols that need predictions."""
