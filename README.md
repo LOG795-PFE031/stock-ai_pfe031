@@ -85,7 +85,7 @@ All components are containerized using Docker for easy deployment and scaling.
 
 ### Step 2: Set Up the Backend
 
-1. Clone the backend repository (C# service with RabbitMQ)
+1. Clone the backend repository (C# service with RabbitMQ) at https://github.com/LOG795-PFE020/BackendMicroservices
 2. Follow the README steps in that repository to get it up and running
 3. Ensure the RabbitMQ container is running properly
 
