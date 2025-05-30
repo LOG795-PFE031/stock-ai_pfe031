@@ -579,8 +579,6 @@ class NewsService(BaseService):
         """Get news data for a given symbol and date range."""
         try:
             self.logger.info(f"Starting news data retrieval for {symbol}")
-            self.logger.info(f"Start date data {start_date}")
-            self.logger.info(f"Start date data {end_date}")
 
             # Fetch news articles
             articles = await self._get_news_articles(symbol, start_date, end_date)
