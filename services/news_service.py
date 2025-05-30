@@ -413,6 +413,11 @@ class NewsService(BaseService):
             if end_date.tzinfo is None:
                 end_date = end_date.replace(tzinfo=timezone.utc)
 
+            # Ensure to include the entire end_date by setting its time to the end of the day
+            end_date = end_date.replace(
+                hour=23, minute=59, second=59, microsecond=999999
+            )
+
             # Fetch news from Yahoo Finance
             ticker = yf.Ticker(symbol)
             news = ticker.news
@@ -422,13 +427,13 @@ class NewsService(BaseService):
                 try:
                     # Extract article date
                     news_date = None
-                    if "displayTime" in item:
+                    if "pubDate" in item:
                         news_date = datetime.fromisoformat(
-                            item["displayTime"].replace("Z", "+00:00")
+                            item["pubDate"].replace("Z", "+00:00")
                         )
-                    elif "content" in item and "displayTime" in item["content"]:
+                    elif "content" in item and "pubDate" in item["content"]:
                         news_date = datetime.fromisoformat(
-                            item["content"]["displayTime"].replace("Z", "+00:00")
+                            item["content"]["pubDate"].replace("Z", "+00:00")
                         )
 
                     # Only include articles within the date range
@@ -584,6 +589,7 @@ class NewsService(BaseService):
                 return {
                     "articles": [],
                     "total_articles": 0,
+                    "sentiment_metrics": {},
                     "meta": {
                         "start_date": start_date.isoformat(),
                         "end_date": end_date.isoformat(),
