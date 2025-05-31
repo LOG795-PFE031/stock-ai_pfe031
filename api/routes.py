@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
+from core.utils import get_next_trading_day
 import pandas as pd
 import numpy as np
 from pydantic import BaseModel
@@ -299,13 +300,8 @@ async def get_next_day_prediction(symbol: str, model_type: ModelType = ModelType
                 status_code=500, detail=f"Prediction failed: {error_msg}"
             )
 
-        # Calculate next day's date
-        current_date = datetime.now()
-        next_day = current_date + timedelta(days=1)
-        next_day_str = next_day.strftime("%Y-%m-%d")
-
         # The prediction is already formatted by the service
-        prediction["date"] = next_day_str
+        prediction["date"] = get_next_trading_day()
         prediction["symbol"] = symbol
 
         return prediction
