@@ -3,7 +3,7 @@ Data service for fetching and processing stock data.
 """
 
 from typing import Dict, Any, Optional, List
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time
 import pandas as pd
 import numpy as np
 import yfinance as yf
@@ -88,6 +88,9 @@ class DataService(BaseService):
                 start_date = start_date.replace(tzinfo=timezone.utc)
             if end_date.tzinfo is None:
                 end_date = end_date.replace(tzinfo=timezone.utc)
+
+            # Adjust the end date to the last possible moment of the day (to have the full-day)
+            end_date = datetime.combine(end_date, time.max)
 
             # Download data from Yahoo Finance
             stock = yf.Ticker(symbol)
