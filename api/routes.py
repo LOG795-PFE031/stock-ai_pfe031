@@ -170,10 +170,11 @@ async def get_stock_data(
         start, end = get_date_range(start_date, end_date)
 
         # Get data
-        data = await data_service.get_stock_data(symbol, start, end)
+        data, stock_name = await data_service.get_stock_data(symbol, start, end)
 
         return StockDataResponse(
             symbol=symbol,
+            name=stock_name,
             data=data.to_dict(orient="records"),
             meta=MetaInfo(
                 message=f"Stock data retrieved successfully for {symbol}",
