@@ -7,20 +7,15 @@ from datetime import datetime, timedelta, timezone, time
 import pandas as pd
 import numpy as np
 import yfinance as yf
-from ta.trend import SMAIndicator, EMAIndicator
-from ta.momentum import RSIIndicator
-from ta.volatility import BollingerBands
-import requests
 from bs4 import BeautifulSoup
 import asyncio
 import aiohttp
-from pathlib import Path
-import os
 
 from services.base_service import BaseService
 from core.config import config
 from core.logging import logger
 from core.utils import calculate_technical_indicators
+from monitoring.prometheus_metrics import external_requests_total
 
 
 class DataService(BaseService):
@@ -56,6 +51,57 @@ class DataService(BaseService):
             self.logger.info("Data service cleaned up successfully")
         except Exception as e:
             self.logger.error(f"Error during data service cleanup: {str(e)}")
+
+    async def get_stock_name(self, symbol: str) -> str:
+        """
+        Get the name of a stock given its symbol
+
+        Args:
+            symbol (str): Stock symbol
+
+        Returns:
+            str: The stock name
+        """
+
+        symbol = symbol.upper()
+        data_file = self.stock_data_dir / "stock_names.csv"
+
+        try:
+            # Check if cache exist
+            if data_file.exists():
+                df = pd.read_csv(data_file, index_col="symbol")
+                if symbol in df.index:
+                    return df.loc[symbol, "name"]
+            else:
+                # Empty DataFrame with correct structure
+                df = pd.DataFrame(columns=["name"])
+                df.index.name = "symbol"
+
+            # Download data from Yahoo Finance
+            stock = yf.Ticker(symbol)
+
+            # Log the successful external request to Yahoo Finance (Prometheus)
+            external_requests_total.labels(site="yahoo_finance", result="success").inc()
+
+            # Get the stock name (company)
+            name = stock.info.get("shortName")
+
+            self.logger.info(f"Collected stock name for {symbol}")
+
+            # Add new entry
+            df.loc[symbol] = name
+
+            # Save updated csv cache
+            df.to_csv(data_file)
+
+            return name
+
+        except Exception as e:
+            self.logger.error(f"Error collecting stock name for {symbol}: {str(e)}")
+
+            # Log the unsuccessful external request to Yahoo Finance (Prometheuss)
+            external_requests_total.labels(site="yahoo_finance", result="error").inc()
+            raise
 
     async def collect_stock_data(
         self,
@@ -94,6 +140,10 @@ class DataService(BaseService):
 
             # Download data from Yahoo Finance
             stock = yf.Ticker(symbol)
+
+            # Log the successful external request to Yahoo Finance (Prometheus)
+            external_requests_total.labels(site="yahoo_finance", result="success").inc()
+
             df = stock.history(start=start_date, end=end_date)
 
             # Reset index to make Date a column
@@ -114,6 +164,9 @@ class DataService(BaseService):
 
         except Exception as e:
             self.logger.error(f"Error collecting stock data for {symbol}: {str(e)}")
+
+            # Log the unsuccessful external request to Yahoo Finance (Prometheus)
+            external_requests_total.labels(site="yahoo_finance", result="error").inc()
             raise
 
     async def collect_news_data(
@@ -174,6 +227,11 @@ class DataService(BaseService):
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
                     if response.status == 200:
+                        # Log the successful external request to Reuters (Prometheus)
+                        external_requests_total.labels(
+                            site="reuters", result="success"
+                        ).inc()
+
                         html = await response.text()
                         soup = BeautifulSoup(html, "html.parser")
 
@@ -209,6 +267,11 @@ class DataService(BaseService):
                         self.logger.warning(
                             f"Failed to fetch Reuters news for {symbol}"
                         )
+
+                        # Log the unsuccessful external request to Reuters (Prometheus)
+                        external_requests_total.labels(
+                            site="reuters", result="error"
+                        ).inc()
                         return []
 
         except Exception as e:
@@ -224,6 +287,11 @@ class DataService(BaseService):
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
                     if response.status == 200:
+                        # Log the successful external request to Yahoo Finance (Prometheus)
+                        external_requests_total.labels(
+                            site="yahoo_finance", result="success"
+                        ).inc()
+
                         html = await response.text()
                         soup = BeautifulSoup(html, "html.parser")
 
@@ -259,6 +327,11 @@ class DataService(BaseService):
                         self.logger.warning(
                             f"Failed to fetch Yahoo Finance news for {symbol}"
                         )
+                        # Log the unsuccessful external request to Yahoo Finance (Prometheus)
+                        external_requests_total.labels(
+                            site="yahoo_finance", result="error"
+                        ).inc()
+
                         return []
 
         except Exception as e:
@@ -491,6 +564,10 @@ class DataService(BaseService):
 
             # Check if we have recent data
             data_file = self.stock_data_dir / f"{symbol}_data.csv"
+
+            # Get the stock_name
+            stock_name = await self.get_stock_name(symbol)
+
             if data_file.exists():
                 df = pd.read_csv(data_file)
                 # Convert dates to timezone-aware UTC
@@ -533,7 +610,7 @@ class DataService(BaseService):
             df = df.sort_values("Date")
 
             self.logger.info(f"Retrieved stock data for {symbol}")
-            return df
+            return df, stock_name
 
         except Exception as e:
             self.logger.error(f"Error getting stock data for {symbol}: {str(e)}")

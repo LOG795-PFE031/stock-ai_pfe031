@@ -124,6 +124,7 @@ class StockDataResponse(BaseModel):
     """Stock data response."""
 
     symbol: str
+    name: str
     data: List[Dict[str, Any]]
     meta: MetaInfo
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())

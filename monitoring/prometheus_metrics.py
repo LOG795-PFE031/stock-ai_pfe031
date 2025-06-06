@@ -1,0 +1,63 @@
+from prometheus_client import Counter, Histogram, Gauge
+
+# ===========================================
+# Data Monitoring
+# ===========================================
+
+external_requests_total = Counter(
+    name="external_requests_total",
+    documentation="Total number of HTTP requests made by this app to external sites",
+    labelnames=["site", "result"],
+)
+
+# ===========================================
+# Prediction Monitoring
+# ===========================================
+
+predictions_total = Counter(
+    name="predictions_total",
+    documentation="Total number of predictions",
+    labelnames=["model_type", "symbol", "result"],
+)
+
+prediction_time_seconds = Histogram(
+    name="prediction_time_seconds",
+    documentation="Time spent to make a prediction in secs",
+    labelnames=["model_type", "symbol"],
+    buckets=[0.5, 1, 3, 5, 10],
+)
+
+prediction_confidence = Gauge(
+    name="prediction_confidence",
+    documentation="Confidence associated to a prediction",
+    labelnames=["model_type", "symbol"],
+)
+
+# ===========================================
+# Traiining Monitoring
+# ===========================================
+
+training_total = Counter(
+    name="training_total",
+    documentation="Total number of trainings",
+    labelnames=["model_type", "symbol", "result"],
+)
+
+training_time_seconds = Histogram(
+    name="training_time_seconds",
+    documentation="Time spent training in secs",
+    labelnames=["model_type", "symbol"],
+    buckets=[5, 10, 30, 60, 150],
+)
+
+training_cpu_usage_percent = Gauge(
+    name="training_cpu_usage_percent",
+    documentation="CPU usage of training process",
+    labelnames=["model_type", "symbol"],
+)
+
+training_memory_mb_usage_percent = Gauge(
+    name="training_memory_mb_usage_percent",
+    documentation="Memory usage of training process",
+    labelnames=["model_type", "symbol"],
+)

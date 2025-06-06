@@ -34,6 +34,7 @@ COPY core/ ./core/
 COPY services/ ./services/
 COPY training/ ./training/
 COPY main.py .
+COPY monitoring/ ./monitoring/
 
 # Create necessary directories
 RUN mkdir -p /app/data /app/models /app/logs

@@ -41,7 +41,19 @@ services:
       - microservices_auth
     depends_on:
       - stock-ai
-      
+
+  prometheus:
+    image: prom/prometheus
+    container_name: stock-ai-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus
+    networks:
+      - microservices_auth
+    depends_on:
+      - stock-ai
+
 networks:
   microservices_auth:
     external: true

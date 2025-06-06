@@ -2,17 +2,17 @@
 Stock prediction service.
 """
 
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, List, Tuple
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta, timezone
-import os
+from datetime import datetime, timedelta
 import random
 import asyncio
 from keras import backend as K  # Replace tensorflow with keras backend
 import joblib
 import json
 from pathlib import Path
+import time
 
 from services.base_service import BaseService
 from services.rabbitmq_service import RabbitMQService
@@ -26,6 +26,11 @@ from core.logging import logger
 from services.model_service import ModelService
 from services.data_service import DataService
 from core.config import config
+from monitoring.prometheus_metrics import (
+    predictions_total,
+    prediction_time_seconds,
+    prediction_confidence,
+)
 
 
 def configure_backend():
@@ -574,6 +579,8 @@ class PredictionService(BaseService):
             last_close = df["Close"].iloc[-1]
             last_scaled = scaled_features[-1, self.config.model.FEATURES.index("Close")]
 
+            start_time = time.perf_counter()  # Start timer
+
             prediction = self._inverse_scale_lstm_prediction(
                 scaled_prediction[0, 0],
                 last_close,
@@ -590,6 +597,11 @@ class PredictionService(BaseService):
                 self.config.model.FEATURES.index("Close"),
             )
 
+            # Log the prediction confidence (Prometheus)
+            prediction_confidence.labels(symbol=symbol, model_type="lstm").set(
+                confidence
+            )
+
             change = prediction - last_close
             change_percent = (change / last_close) * 100
 
@@ -599,6 +611,17 @@ class PredictionService(BaseService):
             )
             self.logger.info(f"Change: ${change:+.2f} ({change_percent:+.2f}%)")
             self.logger.info(f"Confidence: {confidence:.1%}")
+
+            # Log the prediction time (Prometheus)
+            prediction_duration = time.perf_counter() - start_time
+            prediction_time_seconds.labels(model_type="lstm", symbol=symbol).observe(
+                prediction_duration
+            )
+
+            # Log the sucessful prediction count (Prometheus)
+            predictions_total.labels(
+                model_type="lstm", symbol=symbol, result="sucess"
+            ).inc()
 
             prediction_data = {
                 "prediction": float(prediction),
@@ -619,6 +642,11 @@ class PredictionService(BaseService):
 
         except Exception as e:
             self.logger.error(f"Prediction failed for {symbol}: {str(e)}")
+
+            # Log the unsucessful prediction count (prometheus)
+            predictions_total.labels(
+                model_type="lstm", symbol=symbol, result="error"
+            ).inc()
             raise
 
     def _inverse_scale_lstm_prediction(
@@ -786,8 +814,16 @@ class PredictionService(BaseService):
                                 f"Regressor '{regressor}' missing from dataframe"
                             )
 
+            start_time = time.perf_counter()  # Start timer
+
             # Make prediction
             forecast = model.predict(future)
+
+            # Log the prediction time (Prometheus)
+            prediction_duration = time.perf_counter() - start_time
+            prediction_time_seconds.labels(model_type="prophet", symbol=symbol).observe(
+                prediction_duration
+            )
 
             # Get the last prediction
             last_prediction = forecast.iloc[-1]
@@ -822,10 +858,20 @@ class PredictionService(BaseService):
             confidence = round(confidence, 3)
             self.logger.debug(f"  Final confidence: {confidence:.3f}")
 
+            # Log the prediction confidence (Prometheus)
+            prediction_confidence.labels(symbol=symbol, model_type="prophet").set(
+                confidence
+            )
+
             # Convert prediction dates back to original timezone
             prediction_date = pd.to_datetime(forecast["ds"].iloc[-1])
             if original_tz is not None:
                 prediction_date = prediction_date.tz_localize(original_tz)
+
+            # Log the sucessful prediction count (Prometheus)
+            predictions_total.labels(
+                model_type="prophet", symbol=symbol, result="sucess"
+            ).inc()
 
             prediction_data = {
                 "prediction": float(last_prediction["yhat"]),
@@ -849,6 +895,11 @@ class PredictionService(BaseService):
             self.logger.error(
                 f"Error getting Prophet prediction for {symbol}: {str(e)}"
             )
+
+            # Log the unsucessful prediction count (Prometheus)
+            predictions_total.labels(
+                model_type="prophet", symbol=symbol, result="error"
+            ).inc()
             raise
 
     def _get_symbols_for_prediction(self) -> List[str]:
