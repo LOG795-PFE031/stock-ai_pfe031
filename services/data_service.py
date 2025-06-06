@@ -7,20 +7,15 @@ from datetime import datetime, timedelta, timezone, time
 import pandas as pd
 import numpy as np
 import yfinance as yf
-from ta.trend import SMAIndicator, EMAIndicator
-from ta.momentum import RSIIndicator
-from ta.volatility import BollingerBands
-import requests
 from bs4 import BeautifulSoup
 import asyncio
 import aiohttp
-from pathlib import Path
-import os
 
 from services.base_service import BaseService
 from core.config import config
 from core.logging import logger
 from core.utils import calculate_technical_indicators
+from monitoring.prometheus_metrics import external_requests_total
 
 
 class DataService(BaseService):
@@ -85,6 +80,9 @@ class DataService(BaseService):
             # Download data from Yahoo Finance
             stock = yf.Ticker(symbol)
 
+            # Log the successful external request to Yahoo Finance (Prometheus)
+            external_requests_total.labels(site="yahoo_finance", result="success").inc()
+
             # Get the stock name (company)
             name = stock.info.get("shortName")
 
@@ -100,6 +98,9 @@ class DataService(BaseService):
 
         except Exception as e:
             self.logger.error(f"Error collecting stock name for {symbol}: {str(e)}")
+
+            # Log the unsuccessful external request to Yahoo Finance (Prometheuss)
+            external_requests_total.labels(site="yahoo_finance", result="error").inc()
             raise
 
     async def collect_stock_data(
@@ -139,6 +140,10 @@ class DataService(BaseService):
 
             # Download data from Yahoo Finance
             stock = yf.Ticker(symbol)
+
+            # Log the successful external request to Yahoo Finance (Prometheus)
+            external_requests_total.labels(site="yahoo_finance", result="success").inc()
+
             df = stock.history(start=start_date, end=end_date)
 
             # Reset index to make Date a column
@@ -159,6 +164,9 @@ class DataService(BaseService):
 
         except Exception as e:
             self.logger.error(f"Error collecting stock data for {symbol}: {str(e)}")
+
+            # Log the unsuccessful external request to Yahoo Finance (Prometheus)
+            external_requests_total.labels(site="yahoo_finance", result="error").inc()
             raise
 
     async def collect_news_data(
@@ -219,6 +227,11 @@ class DataService(BaseService):
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
                     if response.status == 200:
+                        # Log the successful external request to Reuters (Prometheus)
+                        external_requests_total.labels(
+                            site="reuters", result="success"
+                        ).inc()
+
                         html = await response.text()
                         soup = BeautifulSoup(html, "html.parser")
 
@@ -254,6 +267,11 @@ class DataService(BaseService):
                         self.logger.warning(
                             f"Failed to fetch Reuters news for {symbol}"
                         )
+
+                        # Log the unsuccessful external request to Reuters (Prometheus)
+                        external_requests_total.labels(
+                            site="reuters", result="error"
+                        ).inc()
                         return []
 
         except Exception as e:
@@ -269,6 +287,11 @@ class DataService(BaseService):
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
                     if response.status == 200:
+                        # Log the successful external request to Yahoo Finance (Prometheus)
+                        external_requests_total.labels(
+                            site="yahoo_finance", result="success"
+                        ).inc()
+
                         html = await response.text()
                         soup = BeautifulSoup(html, "html.parser")
 
@@ -304,6 +327,11 @@ class DataService(BaseService):
                         self.logger.warning(
                             f"Failed to fetch Yahoo Finance news for {symbol}"
                         )
+                        # Log the unsuccessful external request to Yahoo Finance (Prometheus)
+                        external_requests_total.labels(
+                            site="yahoo_finance", result="error"
+                        ).inc()
+
                         return []
 
         except Exception as e:
