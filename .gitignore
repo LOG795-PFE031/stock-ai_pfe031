@@ -78,3 +78,6 @@ models/prophet
 models/specific
 
 stock-ai.code-workspace
+
+# Ignore Prometheus persistence data directory
+prometheus/data
