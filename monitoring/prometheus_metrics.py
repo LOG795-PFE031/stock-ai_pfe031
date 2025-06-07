@@ -34,7 +34,7 @@ prediction_confidence = Gauge(
 )
 
 # ===========================================
-# Traiining Monitoring
+# Training Monitoring
 # ===========================================
 
 training_total = Counter(
@@ -60,4 +60,43 @@ training_memory_mb_usage_percent = Gauge(
     name="training_memory_mb_usage_percent",
     documentation="Memory usage of training process",
     labelnames=["model_type", "symbol"],
+)
+
+# ===========================================
+# Preprocessing Monitoring
+# ===========================================
+
+preprocessing_time_seconds = Histogram(
+    name="preprocessing_time_seconds",
+    documentation="Time spent preprocessing in secs",
+    labelnames=["model_type", "symbol"],
+    buckets=[5, 10, 30, 60, 150],
+)
+
+data_points_ingested_total = Counter(
+    name="data_points_ingested_total",
+    documentation="Total number of data points ingested during preprocessing",
+    labelnames=["model_type", "symbol"],
+)
+
+# ===========================================
+# Evaluation Monitoring
+# ===========================================
+
+evaluation_time_seconds = Histogram(
+    name="evaluation_time_seconds",
+    documentation="Time spent evaluating in secs",
+    labelnames=["model_type", "symbol"],
+    buckets=[5, 10, 30, 60, 150],
+)
+
+# ===========================================
+# Model Saving Monitoring
+# ===========================================
+
+model_saving_time_seconds = Histogram(
+    name="model_saving_time_seconds",
+    documentation="Time spent saving model in secs",
+    labelnames=["model_type", "symbol"],
+    buckets=[5, 10, 30, 60, 150],
 )

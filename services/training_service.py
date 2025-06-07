@@ -5,14 +5,13 @@ Training service for model training and evaluation.
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import asyncio
-import time
 
 from services.base_service import BaseService
 from training.lstm_trainer import LSTMTrainer
 from training.prophet_trainer import ProphetTrainer
 from core.utils import validate_stock_symbol
 from core.logging import logger
-from monitoring.prometheus_metrics import training_total, training_time_seconds
+from monitoring.prometheus_metrics import training_total
 from monitoring.utils import monitor_training_cpu_usage, monitor_training_memory_usage
 
 
@@ -112,8 +111,6 @@ class TrainingService(BaseService):
                 monitor_training_memory_usage(model_type, symbol)
             )
 
-            start_time = time.perf_counter()  # Start timer
-
             # Create training task
             task = asyncio.create_task(
                 self.trainers[model_type].train_and_evaluate(
@@ -130,12 +127,6 @@ class TrainingService(BaseService):
 
             # Stop the monitor after training completes
             monitor_task.cancel()
-
-            # Log the training time (Prometheus)
-            training_duration = time.perf_counter() - start_time
-            training_time_seconds.labels(model_type=model_type, symbol=symbol).observe(
-                training_duration
-            )
 
             # Remove completed task
             del self.training_tasks[task_key]
