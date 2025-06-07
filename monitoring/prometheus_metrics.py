@@ -1,3 +1,9 @@
+"""
+Monitoring Metrics for StockAI Using Prometheus Client
+
+This module defines Prometheus metrics to monitor various components of StockAI.
+"""
+
 from prometheus_client import Counter, Histogram, Gauge
 
 # ===========================================
