@@ -100,3 +100,14 @@ model_saving_time_seconds = Histogram(
     labelnames=["model_type", "symbol"],
     buckets=[5, 10, 30, 60, 150],
 )
+
+# ===========================================
+# Sentiment Analysis Monitoring
+# ===========================================
+
+sentiment_analysis_time_seconds = Histogram(
+    name="sentiment_analysis_time_seconds",
+    documentation="Time spent doing sentiment analysis in secs",
+    labelnames=["number_articles"],
+    buckets=[5, 10, 30, 60, 150],
+)
