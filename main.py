@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
         await prediction_service.initialize()  # Depends on data_service and model_service
 
         # Start auto-publishing predictions
-        await prediction_service.start_auto_publishing(interval_minutes=5)
+        await prediction_service.start_auto_publishing(interval_minutes=15)
 
         logger["main"].info("All services initialized successfully")
         yield

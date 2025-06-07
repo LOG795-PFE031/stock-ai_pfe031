@@ -297,7 +297,7 @@ class PredictionService(BaseService):
             raise RuntimeError("Prediction service not initialized")
 
         self._stop_publishing = False
-        self._publish_task = asyncio.create_task(self._publish_loop())
+        self._publish_task = asyncio.create_task(self._publish_loop(interval_minutes))
         self.logger.info(
             f"Started auto-publishing predictions every {interval_minutes} minutes"
         )
@@ -310,7 +310,7 @@ class PredictionService(BaseService):
             self._publish_task = None
             self.logger.info("Stopped auto-publishing predictions")
 
-    async def _publish_loop(self):
+    async def _publish_loop(self, interval_minutes):
         """Main loop for publishing predictions."""
         self.logger.info("✨ Starting prediction publishing loop")
 
@@ -401,11 +401,11 @@ class PredictionService(BaseService):
                         self.logger.info(f"✨    {symbol} ({model_type})")
 
                 # Wait before next iteration
-                await asyncio.sleep(60)  # Wait 1 minute before next batch
+                await asyncio.sleep(interval_minutes * 60)  # Wait before next batch
 
             except Exception as e:
                 self.logger.error(f"❌ Error in publish loop: {str(e)}")
-                await asyncio.sleep(60)  # Wait before retrying
+                await asyncio.sleep(interval_minutes * 60)  # Wait before retrying
 
     async def cleanup(self) -> None:
         """Clean up resources."""
