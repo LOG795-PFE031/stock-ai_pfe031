@@ -3,8 +3,8 @@ Base trainer class for model training.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Tuple
-from datetime import datetime, timedelta
+from typing import Dict, Any, Optional, Tuple
+from datetime import datetime
 import pandas as pd
 import numpy as np
 import json
@@ -14,12 +14,17 @@ from core.config import config
 from core.logging import logger
 from core.utils import calculate_technical_indicators
 from monitoring.prometheus_metrics import (
-    training_time_seconds,
-    preprocessing_time_seconds,
-    evaluation_time_seconds,
-    model_saving_time_seconds,
     data_points_ingested_total,
+    evaluation_time_seconds,
+    evaluation_mae,
+    evaluation_mse,
+    evaluation_r2,
+    evaluation_rmse,
+    model_saving_time_seconds,
+    preprocessing_time_seconds,
+    training_time_seconds,
 )
+from training.schemas import Metrics
 
 
 class BaseTrainer(ABC):
@@ -48,7 +53,7 @@ class BaseTrainer(ABC):
         pass
 
     @abstractmethod
-    async def evaluate(self, model: Any, test_data: pd.DataFrame) -> Dict[str, float]:
+    async def evaluate(self, model: Any, test_data: pd.DataFrame) -> Metrics:
         """Evaluate the model."""
         pass
 
@@ -112,6 +117,23 @@ class BaseTrainer(ABC):
 
             # Evaluate model
             metrics = await self.evaluate(model, test_data)
+
+            # Log the evaluation metrics (Prometheus)
+            evaluation_mae.labels(model_type=self.model_type, symbol=symbol).set(
+                metrics.mae
+            )
+            evaluation_mse.labels(model_type=self.model_type, symbol=symbol).set(
+                metrics.mse
+            )
+            evaluation_r2.labels(model_type=self.model_type, symbol=symbol).set(
+                metrics.r2
+            )
+            evaluation_rmse.labels(model_type=self.model_type, symbol=symbol).set(
+                metrics.rmse
+            )
+
+            # Format the metrics to a dict
+            metrics = metrics.model_dump()
 
             # Log the evaluation time (Prometheus)
             evaluation_duration = time.perf_counter() - start_time
