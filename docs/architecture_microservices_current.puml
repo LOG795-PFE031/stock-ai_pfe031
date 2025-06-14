@@ -1,0 +1,128 @@
+@startuml
+package "services" {
+  class BaseService << abstract >> {
+    +initialize(): None
+    +cleanup(): None
+    +is_initialized(): bool
+    +validate_input(): bool
+    +format_error_response(): Dict
+    +format_success_response(): Dict
+    +health_check(): Dict
+  }
+  
+  class ModelService {
+    -models: Dict
+    -model_metadata: Dict
+    +initialize(): None
+    +cleanup(): None
+    +save_model(): Dict
+    +load_model(): Dict
+    +list_models(): List
+    +delete_model(): bool
+    -_load_models(): None
+    -_load_model_metadata(): None
+    -_save_model_metadata(): None
+  }
+  
+  class DataService {
+    +initialize(): None
+    +cleanup(): None
+    +get_stock_data(): Dict
+    +get_latest_data(): Dict
+  }
+  
+  class PredictionService {
+    +initialize(): None
+    +cleanup(): None
+    +predict(): Dict
+    +start_auto_publishing(): None
+    +stop_auto_publishing(): None
+    -_train_missing_prophet_models(): None
+    -_load_models(): None
+  }
+  
+  class NewsService {
+    -sentiment_analyzer: Any
+    +initialize(): None
+    +cleanup(): None
+    +analyze_news(): Dict
+    +get_news_data(): Dict
+    -_analyze_sentiment(): List
+  }
+  
+  class TrainingService {
+    -trainers: Dict
+    -training_tasks: Dict
+    +initialize(): None
+    +cleanup(): None
+    +train_model(): Dict
+    +get_training_status(): Dict
+    +cancel_training(): Dict
+    +get_active_training_tasks(): List
+  }
+  
+  class VisualizationService {
+    +initialize(): None
+    +cleanup(): None
+    +get_stock_chart(): Dict
+    +get_prediction_chart(): Dict
+    +get_correlation_matrix(): Dict
+  }
+  
+  class RabbitMQService {
+    +initialize(): None
+    +cleanup(): None
+    +publish(): None
+    +subscribe(): None
+  }
+}
+
+package "training" {
+  class BaseTrainer << abstract >> {
+    +prepare_data(): Tuple
+    +train(): Dict
+    +evaluate(): Dict
+    +save_model(): None
+    +train_and_evaluate(): Dict
+    -_prepare_features(): DataFrame
+    -_create_sequences(): Tuple
+    -save_json(): None
+  }
+  
+  class LSTMTrainer {
+    +prepare_data(): Tuple
+    +train(): Tuple
+    +evaluate(): Dict
+    +save_model(): None
+    -_build_model(): Model
+  }
+  
+  class ProphetTrainer {
+    +prepare_data(): Tuple
+    +train(): Tuple
+    +evaluate(): Dict
+    +save_model(): None
+    +load_model(): Prophet
+  }
+}
+
+BaseService <|-- ModelService
+BaseService <|-- DataService
+BaseService <|-- PredictionService
+BaseService <|-- NewsService
+BaseService <|-- TrainingService
+BaseService <|-- VisualizationService
+BaseService <|-- RabbitMQService
+
+BaseTrainer <|-- LSTMTrainer
+BaseTrainer <|-- ProphetTrainer
+
+TrainingService --> LSTMTrainer
+TrainingService --> ProphetTrainer
+PredictionService --> ModelService
+PredictionService --> DataService
+PredictionService --> TrainingService
+PredictionService --> RabbitMQService
+
+VisualizationService --> DataService
+@enduml
