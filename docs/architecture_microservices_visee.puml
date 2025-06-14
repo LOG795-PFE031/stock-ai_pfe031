@@ -1,37 +1,38 @@
 @startuml
+' Group services in packages for clarity
 package "services" {
   class BaseService << abstract >> {
     +initialize(): None
     +cleanup(): None
   }
-  
+
   class ModelService {
     +save_model(): Dict
     +load_model(): Dict
     +list_models(): List
     +delete_model(): bool
   }
-  
+
   class DataService {
     +get_stock_data(): Dict
     +get_latest_data(): Dict
   }
-  
+
   class PredictionService {
     +predict(): Dict
     +start_auto_publishing(): None
   }
-  
+
   class NewsService {
     +analyze_news(): Dict
     +get_news_data(): Dict
   }
-  
+
   class TrainingService {
     +train_model(): Dict
     +get_training_status(): Dict
   }
-  
+
   class VisualizationService {
     +get_stock_chart(): Dict
     +get_prediction_chart(): Dict
@@ -45,26 +46,26 @@ package "training (new microservices)" {
     +handle_missing_values(): Dict
     +normalize_data(): Dict
   }
-  
+
   class ModelTrainingService {
     +train_lstm_model(): Dict
     +train_prophet_model(): Dict
     +get_training_progress(): Dict
     +cancel_training(): Dict
   }
-  
+
   class ModelEvaluationService {
     +evaluate_model(): Dict
     +calculate_metrics(): Dict
     +generate_evaluation_report(): Dict
   }
-  
+
   class ModelDeploymentService {
     +deploy_model(): Dict
     +rollback_deployment(): Dict
     +get_deployment_status(): Dict
   }
-  
+
   class ModelMonitoringService {
     +monitor_model_performance(): Dict
     +detect_model_drift(): Dict
@@ -81,6 +82,7 @@ class OrchestrationService {
   +get_pipeline_status(): Dict
 }
 
+' Inheritance (keep only)
 BaseService <|-- ModelService
 BaseService <|-- DataService
 BaseService <|-- PredictionService
@@ -88,26 +90,21 @@ BaseService <|-- NewsService
 BaseService <|-- TrainingService
 BaseService <|-- VisualizationService
 
-TrainingService --> DataPreprocessingService
-TrainingService --> ModelTrainingService
-TrainingService --> ModelEvaluationService
-TrainingService --> ModelDeploymentService
-ModelMonitoringService --> TrainingService
+' Key orchestration relationships (reduce arrows)
+OrchestrationService --> TrainingService : manages
+OrchestrationService --> PredictionService : manages
+OrchestrationService --> ModelMonitoringService : monitors
 
-PredictionService --> ModelService
-ModelEvaluationService --> ModelService
+' Group training pipeline as a note
+note right of OrchestrationService
+  OrchestrationService coordinates:
+  - DataPreprocessingService
+  - ModelTrainingService
+  - ModelEvaluationService
+  - ModelDeploymentService
+  - ModelMonitoringService
+end note
 
-DataPreprocessingService --> DataService
-
-OrchestrationService --> TrainingService
-OrchestrationService --> DataPreprocessingService
-OrchestrationService --> ModelTrainingService
-OrchestrationService --> ModelEvaluationService
-OrchestrationService --> ModelDeploymentService
-OrchestrationService --> ModelMonitoringService
-OrchestrationService --> PredictionService
-OrchestrationService --> ModelService
-OrchestrationService --> DataService
-
+' Remove most direct arrows, keep only essential ones for readability
 
 @enduml
