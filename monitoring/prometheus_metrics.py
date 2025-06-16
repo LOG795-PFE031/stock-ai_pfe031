@@ -117,3 +117,30 @@ sentiment_analysis_time_seconds = Histogram(
     labelnames=["number_articles"],
     buckets=[5, 10, 30, 60, 150],
 )
+
+# ===========================================
+# The Four Golden Signals
+# ===========================================
+
+# Traffic (number of requests per endpoint)
+http_requests_total = Counter(
+    "http_requests_total",
+    "Total number of HTTP requests",
+    ["method", "endpoint"]
+)
+
+# Latency (duration per endpoint)
+http_request_duration_seconds = Histogram(
+    "http_request_duration_seconds",
+    "Duration of HTTP requests in seconds",
+    ["method", "endpoint"]
+)
+
+# Errors
+http_errors_total = Counter(
+    "http_errors_total",
+    "Total number of HTTP 5xx errors",
+    ["method", "endpoint"]
+)
+
+# Saturation in Training Monitoring above

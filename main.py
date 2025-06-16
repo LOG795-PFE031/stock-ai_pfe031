@@ -10,7 +10,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from api.routes import router
 from core.logging import logger
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, start_http_server
+from starlette.requests import Request
+from starlette.responses import Response
+import time
+from monitoring.prometheus_metrics import (
+    http_requests_total,
+    http_request_duration_seconds,
+    http_errors_total,
+)
 
 # Create necessary directories
 os.makedirs("data/stock", exist_ok=True)
@@ -134,6 +142,30 @@ async def root():
 # Include routers
 app.include_router(router, prefix="/api")  # Add /api prefix to all routes
 
+@app.middleware("http")
+async def prometheus_middleware(request: Request, call_next):
+    method = request.method
+    endpoint = request.url.path
+
+    start_time = time.time()
+
+    try:
+        response: Response = await call_next(request)
+        status = response.status_code
+    except Exception as e:
+        http_errors_total.labels(method=method, endpoint=endpoint).inc()
+        raise e
+
+    duration = time.time() - start_time
+
+    # Record metrics
+    http_requests_total.labels(method=method, endpoint=endpoint).inc()
+    http_request_duration_seconds.labels(method=method, endpoint=endpoint).observe(duration)
+
+    if response.status_code >= 500:
+        http_errors_total.labels(method=method, endpoint=endpoint).inc()
+
+    return response
 
 # Health check endpoint
 @app.get("/health", tags=["System"])
