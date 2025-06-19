@@ -10,6 +10,8 @@ from core.utils import get_next_trading_day
 import pandas as pd
 import numpy as np
 from pydantic import BaseModel
+from monitoring.prometheus_metrics import prediction_time_seconds
+import time
 
 from api.schemas import (
     PredictionResponse,
@@ -286,10 +288,14 @@ async def get_next_day_prediction(symbol: str, model_type: ModelType = ModelType
                 status_code=400, detail=f"Invalid stock symbol: {symbol}"
             )
 
+        start_time = time.time()
+        
         # Get prediction using the new method
         prediction = await prediction_service.get_prediction(
             symbol=symbol, model_type=model_type.value
         )
+        
+        elapsed = time.time() - start_time
 
         # Check if prediction failed
         if prediction.get("status") == "error":
@@ -301,6 +307,9 @@ async def get_next_day_prediction(symbol: str, model_type: ModelType = ModelType
                 status_code=500, detail=f"Prediction failed: {error_msg}"
             )
 
+        # Observe latency in seconds
+        prediction_time_seconds.labels(model_type=model_type.value, symbol=symbol).observe(elapsed)
+        
         # The prediction is already formatted by the service
         prediction["date"] = get_next_trading_day()
         prediction["symbol"] = symbol

@@ -41,7 +41,32 @@ services:
       - microservices_auth
     depends_on:
       - stock-ai
-      
+
+  prometheus:
+    image: prom/prometheus
+    container_name: stock-ai-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      # - ./prometheus/data:/prometheus # Data persistence
+    networks:
+      - microservices_auth
+    depends_on:
+      - stock-ai
+  
+  grafana:
+    image: grafana/grafana
+    container_name: stock-ai-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./monitoring/grafana:/var/lib/grafana
+    networks:
+      - microservices_auth
+    depends_on:
+      - prometheus
+
 networks:
   microservices_auth:
     external: true
