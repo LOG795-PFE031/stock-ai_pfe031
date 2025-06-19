@@ -1,20 +1,45 @@
 stock-ai/
-├── core/                    # Shared core functionality
+├── chatbot/                    # Chatbot functionality
+│   └── chatbot.py           
+├── core/                    # Shared core functionality 
 │   ├── config.py           # Unified configuration
 │   ├── logging.py          # Shared logging setup
+│   ├── progress.py           # Progress indicator utilities using Rich
 │   └── utils.py            # Common utilities
 ├── data/                   # Data management
-│   ├── stock_data/        # Stock price data
-│   └── news_data/         # News articles data
+│   ├── stock/        # Stock price data
+│   └── news/         # News articles data
+│   └── processed/        
+│   └── raw/        
 ├── models/                 # ML models
-│   ├── prediction/        # Stock prediction models
-│   └── sentiment/         # News sentiment models
+│   ├── general/          # general_model.jeras and symbol_encoder.gz
+│   └── news/             # Nothing here right now 
+│   └── prophet/          # Specific stock (with each a _metadata.json and .joblib)
+│   └── specific/         # Specific stock (with .keras, .weights.h5, scaler_metadata.json and _scaler.gz) 
+├── monitoring/              
+│   ├── grafana/          # Holds the dashboards and its config
+│   ├── prometheus_metrics.py
+│   └── utils.py           # Utilities for prometheus_metrics and other monitoring 
+├── prometheus/        
+│   └── prometheus.yml      
 ├── services/              # Business logic services
+│   ├── base_service.py
+│   ├── data_service.py
+│   ├── model_service.py
 │   ├── prediction_service.py
+│   ├── rabbitmq_service.py
+│   ├── training_service.py
+│   ├── visualization_service.py
 │   └── news_service.py
 ├── api/                   # API endpoints
 │   ├── routes/
 │   └── schemas/
-└── inference/            # Inference logic
-    ├── prediction/
-    └── sentiment/
+└── training/            # Training logic
+│   ├── base_trainer.py
+│   ├── lstm_trainer.py
+│   └── prophet_trainer.py
+├── main.py            
+├── monitor_predictions.py            # Monitor prediction events from RabbitMQ
+└── train_prophet_models.py            # Train Prophet models for all symbols that have LSTM models
+    
+    
