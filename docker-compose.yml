@@ -49,7 +49,7 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./prometheus/data:/prometheus # Data persistence
+      # - ./prometheus/data:/prometheus # Data persistence
     networks:
       - microservices_auth
     depends_on:
