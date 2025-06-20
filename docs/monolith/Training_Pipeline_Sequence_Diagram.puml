@@ -62,14 +62,14 @@ activate DeploymentService
 
 DeploymentService -> DeploymentService : model = ModelManager.load_model(model_name, production=False)
 DeploymentService -> DeploymentService : y_pred = Predictor.predict(model, Xtest)
-DeploymentService -> DeploymentService : metrics = Evaluator.predict(model, ytest, y_pred)
+DeploymentService -> DeploymentService : metrics = Evaluator.evaluate(ytest, y_pred)
 DeploymentService -> DeploymentService : ModelManager.update_model_metrics(model_name, metrics, production=False)
 
 DeploymentService -> DeploymentService : production_model = ModelManager.load_model(model_name, production=True)
 
 alt production_model exists
     DeploymentService -> DeploymentService : y_pred = Predictor.predict(production_model, Xtest)
-    DeploymentService -> DeploymentService : production_metrics = ModelManager.predict(production_model, ytest, y_pred)
+    DeploymentService -> DeploymentService : production_metrics = Evaluator.evaluate(production_model, ytest, y_pred)
     DeploymentService -> DeploymentService : ModelManager.update_model_metrics(model_name, production_metrics, production=True)
 
     alt metrics better than production_metrics
@@ -88,7 +88,7 @@ DeploymentService -> OrchestrationService : Return sucess (What can we return?)
 deactivate DeploymentService
 
 
-OrchestrationService -> User : 200 OK Response
+OrchestrationService -> User : 200 OK Response (What can we return?)
 deactivate OrchestrationService
 
 @enduml
