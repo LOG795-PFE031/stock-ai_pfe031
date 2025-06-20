@@ -1,0 +1,73 @@
+@startuml
+
+title Training Pipeline - Sequence Diagram
+
+Actor "ML Developper" as User
+participant OrchestrationService
+participant DataService
+participant PreprocessingService
+participant TrainingService
+participant DeploymentService
+
+
+User -> OrchestrationService : POST /train
+activate OrchestrationService
+
+OrchestrationService -> DataService : get_stock_data(symbol, start_date, end_date)
+activate DataService
+
+alt Data is stale or missing
+    DataService -> DataService : collect_stock_data(symbol, start_date, end_date)
+end
+DataService -> OrchestrationService : Return raw_stock_data
+deactivate DataService
+
+
+OrchestrationService -> PreprocessingService : preprocess(raw_stock_data)
+activate PreprocessingService
+PreprocessingService -> PreprocessingService : DataCleaner.process(raw_stock_data)
+PreprocessingService -> PreprocessingService : FeatureBuilder.process(raw_stock_data)
+PreprocessingService -> PreprocessingService : FeatureSelector.process(raw_stock_data)
+PreprocessingService -> PreprocessingService : DataSplitter.process(raw_stock_data)
+PreprocessingService -> PreprocessingService : Normalizer.process(raw_stock_data)
+PreprocessingService -> OrchestrationService : Return X_train_prepocessed_data, Y_train_prepocessed_data, X_test_prepocessed_data, Y_test_prepocessed_data
+deactivate PreprocessingService
+
+
+OrchestrationService -> TrainingService : train(model_name, X_train_prepocessed_data, Y_train_prepocessed_data)
+activate TrainingService
+
+TrainingService -> TrainingService : model = TrainerRegistry.create(model_name) (MLFlow)
+TrainingService -> TrainingService : model.train(X_train_prepocessed_data, Y_train_prepocessed_data) (MLFlow)
+TrainingService -> TrainingService : model.save() (MLFlow)
+TrainingService -> OrchestrationService : Return sucess (What can we return?)
+deactivate TrainingService
+
+OrchestrationService -> DeploymentService : evaluate(model_name, X_test_prepocessed_data, Y_test_prepocessed_data)
+activate DeploymentService
+
+DeploymentService -> DeploymentService : model = ModelManager.load_model(model_name)
+DeploymentService -> DeploymentService : y_pred = Predictor.predict(model, X_test_prepocessed_data)
+DeploymentService -> DeploymentService : metrics = Evaluator.predict(model, Y_test_prepocessed_data, y_pred)
+DeploymentService -> DeploymentService : ModelManager.update_model_metrics(model_url, metrics, production=False)
+
+alt Production model exists in MLFlow
+
+    DeploymentService -> DeploymentService : production_metrics = ModelManager.get_metrics(model_name, production=True)
+
+    alt metrics better than production_metrics
+        DeploymentService -> DeploymentService : ModelManager.promote(model_name)
+    end
+
+else
+    DeploymentService -> DeploymentService : ModelManager.promote(model_name)
+end
+
+DeploymentService -> OrchestrationService : Return sucess (What can we return?)
+deactivate DeploymentService
+
+
+OrchestrationService -> User : 200 OK Response
+deactivate OrchestrationService
+
+@enduml
