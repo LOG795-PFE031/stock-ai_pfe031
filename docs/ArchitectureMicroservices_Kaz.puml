@@ -1,0 +1,107 @@
+@startuml
+' Group services in packages for clarity
+package "services" {
+  class BaseService << abstract >> {
+    +initialize(): None
+    +cleanup(): None
+  }
+
+  class ModelService {
+    +save_model(): Dict
+    +load_model(): Dict
+    +list_models(): List
+    +delete_model(): bool
+  }
+
+  class DataService {
+    +get_stock_data(): Dict
+    +get_latest_data(): Dict
+  }
+
+  class PredictionService {
+    +predict(): Dict
+    +start_auto_publishing(): None
+  }
+
+  class NewsService {
+    +analyze_news(): Dict
+    +get_news_data(): Dict
+  }
+
+  class TrainingService {
+    +train_model(): Dict
+    +get_training_status(): Dict
+  }
+
+  class VisualizationService {
+    +get_stock_chart(): Dict
+    +get_prediction_chart(): Dict
+  }
+}
+
+' ////////////////////////////////////////////////////////
+package "Stockai (new microservices)" {
+
+  class BaseServiceAI << abstract >> {
+    +initialize(): None
+    +cleanup(): None
+  }
+
+  class DataPreprocessingService {
+    + se service contient des classes
+  }
+
+  class ModelTrainingService {
+    + se service contient des classes
+  }
+
+  class ModelPredictionService {
+    + se service contient des classes
+  }
+
+  class ModelEvaluationService {
+    + se service contient des classes
+  }
+
+  class ModelDeploymentService {
+    + se service contient des classes
+  }
+
+  class ModelMonitoringService {
+    + se service contient des classes
+  }
+}
+
+class OrchestrationService {
+  +initialize(): None
+  +cleanup(): None
+  +start_training_pipeline(): Dict
+  +stop_training_pipeline(): Dict
+  +get_pipeline_status(): Dict
+}
+
+' Heritage des services
+BaseService <|-- ModelService
+BaseService <|-- DataService
+BaseService <|-- PredictionService
+BaseService <|-- NewsService
+BaseService <|-- TrainingService
+BaseService <|-- VisualizationService
+
+' Heritage des services IA
+BaseServiceAI <|-- DataPreprocessingService
+BaseServiceAI <|-- ModelEvaluationService
+BaseServiceAI <|-- ModelDeploymentService
+BaseServiceAI <|-- ModelTrainingService
+BaseServiceAI <|-- ModelMonitoringService
+BaseServiceAI <|-- ModelPredictionService
+
+' Orchestrateur
+OrchestrationService <-- TrainingService
+OrchestrationService <-- PredictionService 
+OrchestrationService --> ModelTrainingService
+OrchestrationService --> ModelPredictionService
+OrchestrationService --> ModelMonitoringService
+
+
+@enduml
