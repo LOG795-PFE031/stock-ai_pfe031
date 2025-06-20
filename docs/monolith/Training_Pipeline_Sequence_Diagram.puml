@@ -25,35 +25,40 @@ deactivate DataService
 
 OrchestrationService -> PreprocessingService : preprocess(raw_stock_data)
 activate PreprocessingService
-PreprocessingService -> PreprocessingService : DataCleaner.process(raw_stock_data)
-PreprocessingService -> PreprocessingService : FeatureBuilder.process(raw_stock_data)
-PreprocessingService -> PreprocessingService : FeatureSelector.process(raw_stock_data)
-PreprocessingService -> PreprocessingService : DataSplitter.process(raw_stock_data)
-PreprocessingService -> PreprocessingService : Normalizer.process(raw_stock_data)
-PreprocessingService -> OrchestrationService : Return X_train_prepocessed_data, Y_train_prepocessed_data, X_test_prepocessed_data, Y_test_prepocessed_data
+PreprocessingService -> PreprocessingService : clean_stock_data = DataCleaner.process(raw_stock_data)
+PreprocessingService -> PreprocessingService : stock_data = FeatureBuilder.process(clean_stock_data)
+PreprocessingService -> PreprocessingService : stock_data = FeatureSelector.process(stock_data)
+PreprocessingService -> PreprocessingService : y = TargetBuilder.process(stock_data)
+PreprocessingService -> PreprocessingService : Xtrain, ytrain, Xtest, ytest = DataSplitter.process(stock_data, y)
+PreprocessingService -> PreprocessingService : Xtrain = Normalizer.process(Xtrain, fit=True)
+PreprocessingService -> PreprocessingService : Xtest = Normalizer.process(Xtest, fit=False)
+PreprocessingService -> OrchestrationService : Return Xtrain, ytrain, Xtest, ytest
 deactivate PreprocessingService
 
 
-OrchestrationService -> TrainingService : train(model_name, X_train_prepocessed_data, Y_train_prepocessed_data)
+OrchestrationService -> TrainingService : train(model_name, Xtrain, ytrain)
 activate TrainingService
 
 TrainingService -> TrainingService : model = TrainerRegistry.create(model_name) (MLFlow)
-TrainingService -> TrainingService : model.train(X_train_prepocessed_data, Y_train_prepocessed_data) (MLFlow)
+TrainingService -> TrainingService : model.train(Xtrain, ytrain) (MLFlow)
 TrainingService -> TrainingService : model.save() (MLFlow)
 TrainingService -> OrchestrationService : Return sucess (What can we return?)
 deactivate TrainingService
 
-OrchestrationService -> DeploymentService : evaluate(model_name, X_test_prepocessed_data, Y_test_prepocessed_data)
+OrchestrationService -> DeploymentService : evaluate(model_name, Xtest, ytest)
 activate DeploymentService
 
-DeploymentService -> DeploymentService : model = ModelManager.load_model(model_name)
-DeploymentService -> DeploymentService : y_pred = Predictor.predict(model, X_test_prepocessed_data)
-DeploymentService -> DeploymentService : metrics = Evaluator.predict(model, Y_test_prepocessed_data, y_pred)
-DeploymentService -> DeploymentService : ModelManager.update_model_metrics(model_url, metrics, production=False)
+DeploymentService -> DeploymentService : model = ModelManager.load_model(model_name, production=False)
+DeploymentService -> DeploymentService : y_pred = Predictor.predict(model, Xtest)
+DeploymentService -> DeploymentService : metrics = Evaluator.predict(model, ytest, y_pred)
+DeploymentService -> DeploymentService : ModelManager.update_model_metrics(model_name, metrics, production=False)
 
-alt Production model exists in MLFlow
+DeploymentService -> DeploymentService : production_model = ModelManager.load_model(model_name, production=True)
 
-    DeploymentService -> DeploymentService : production_metrics = ModelManager.get_metrics(model_name, production=True)
+alt production_model exists
+    DeploymentService -> DeploymentService : y_pred = Predictor.predict(production_model, Xtest)
+    DeploymentService -> DeploymentService : production_metrics = ModelManager.predict(production_model, ytest, y_pred)
+    DeploymentService -> DeploymentService : ModelManager.update_model_metrics(model_name, production_metrics, production=True)
 
     alt metrics better than production_metrics
         DeploymentService -> DeploymentService : ModelManager.promote(model_name)
@@ -61,6 +66,10 @@ alt Production model exists in MLFlow
 
 else
     DeploymentService -> DeploymentService : ModelManager.promote(model_name)
+    note right
+    If there is no production model (in MLFlow), 
+    we promote the trained model
+    end note
 end
 
 DeploymentService -> OrchestrationService : Return sucess (What can we return?)

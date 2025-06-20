@@ -53,6 +53,10 @@ package "ML Pipeline" as mp <<Frame>> {
     Select only the features required by a specific model.
     end note
 
+    class TargetBuilder {
+      +process(data: Dict): Dict
+    }
+
     class DataSplitter {
       +process(data: Dict): Dict
     }
@@ -73,8 +77,8 @@ package "ML Pipeline" as mp <<Frame>> {
     DataProcessor <|.. FeatureBuilder
     DataProcessor <|.. FeatureSelector
     DataProcessor <|.. DataSplitter
+    DataProcessor <|.. TargetBuilder
     DataProcessor <|.. DataNormalizer
-
   }
 
   package Deployment <<Frame>> {
