@@ -121,13 +121,14 @@ package "ML Pipeline" as mp <<Frame>> {
   package Training <<Frame>> {
     class TrainingService <<Service>> {
       +train_model(): Dict
+      +list_trainers(): Dict
       +get_training_status(): Dict
     }
 
     class TrainerRegistry {
       +register(trainer_name: String): None
       +create(trainer_name: String): BaseTrainer
-      +list_models(): BaseTrainer[]
+      +list_trainers(): Dict
     }
 
     TrainingService --> TrainerRegistry : create(trainer_name)

@@ -13,6 +13,18 @@ participant DeploymentService
 User -> OrchestrationService : POST /train
 activate OrchestrationService
 
+
+OrchestrationService -> TrainingService : list_trainers()
+activate TrainingService
+TrainingService -> TrainingService : trainers_names = TrainerRegistry.list_trainers()
+TrainingService -> OrchestrationService : Return trainers_names
+deactivate TrainingService
+
+alt trainer_name is not in  = trainers_names
+    OrchestrationService -> User : 500 Internal Server Error Response
+end
+
+
 OrchestrationService -> DataService : get_stock_data(symbol, start_date, end_date)
 activate DataService
 
