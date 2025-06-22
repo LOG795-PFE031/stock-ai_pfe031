@@ -13,7 +13,7 @@ participant DeploymentService
 User -> OrchestrationService : POST /train
 activate OrchestrationService
 
-
+OrchestrationService -> OrchestrationService : run_training_pipeline(trainer_name, symbol)
 OrchestrationService -> TrainingService : list_trainers()
 activate TrainingService
 TrainingService -> TrainingService : trainers_names = TrainerRegistry.list_trainers()

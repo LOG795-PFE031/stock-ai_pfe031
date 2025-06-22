@@ -12,7 +12,7 @@ participant DeploymentService
 User -> OrchestrationService : GET /predict
 activate OrchestrationService
 
-
+OrchestrationService -> OrchestrationService : run_prediction_pipeline(model_name, symbol)
 OrchestrationService -> DeploymentService : list_models()
 activate DeploymentService
 DeploymentService -> DeploymentService : models_names = ModelManager.list_models()

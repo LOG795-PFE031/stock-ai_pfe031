@@ -12,7 +12,7 @@ participant DeploymentService
 User -> OrchestrationService : POST /evaluate
 activate OrchestrationService
 
-
+OrchestrationService -> OrchestrationService : run_evaluation_pipeline(model_name, symbol)
 OrchestrationService -> DeploymentService : list_models()
 activate DeploymentService
 DeploymentService -> DeploymentService : models_names = ModelManager.list_models()

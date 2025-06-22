@@ -5,7 +5,7 @@ title Target Monolith Architecture -  Class Diagram
 skinparam linetype ortho
 skinparam defaultFontSize 18
 
-class BaseService << abstract >> {
+abstract BaseService {
   +initialize(): None
   +cleanup(): None
 }
@@ -18,13 +18,13 @@ end note
 package "ML Pipeline" as mp <<Frame>> { 
 
   class DataService <<Service>> {
-    +get_stock_data(): Dict
+    +get_stock_data(symbol: str, start_date: str, end_date:str): Dict
   }
 
   package Preprocessing <<Frame>> {
 
     class PreprocessingService <<Service>> {
-      +prepare_data(): Dict
+      +prepare_data(data: Dict): Dict
     }
 
     interface DataProcessor {
@@ -84,16 +84,17 @@ package "ML Pipeline" as mp <<Frame>> {
   package Deployment <<Frame>> {
 
     class DeploymentService <<Service>> {
-      +predict(model_name: String): Dict
+      +predict(model_name: str, data: Dict): Dict
       +list_models(): Dict
-      +promote_model(model_name: String): Dict
+      +promote_model(model_name: str): Dict
     }
 
     class ModelManager {
-      +load_model(model_name: String, production: bool = True)
-      +promote_model(model_name: String)
-      +get_model_metrics(model_name: String, production: bool = True)
-      +update_model_metrics(model_name: String, metrics: Dict, production: bool = True)
+      +load_model(model_name: str, production: bool = True)
+      +promote_model(model_name: str)
+      +get_model_metrics(model_name: str, production: bool = True)
+      +update_model_metrics(model_name: str, metrics: Dict, production: bool = True)
+      +list_models(): Dict
     }
 
     DeploymentService --o ModelManager
@@ -120,39 +121,39 @@ package "ML Pipeline" as mp <<Frame>> {
 
   package Training <<Frame>> {
     class TrainingService <<Service>> {
-      +train_model(): Dict
+      +train_model(model_name: str, Xtrain: Dict, ytrain: Dict): Dict
       +list_trainers(): Dict
       +get_training_status(): Dict
     }
 
     class TrainerRegistry {
-      +register(trainer_name: String): None
-      +create(trainer_name: String): BaseTrainer
+      +register(trainer_name: str): None
+      +create(trainer_name: str): BaseTrainer
       +list_trainers(): Dict
     }
 
     TrainingService --> TrainerRegistry : create(trainer_name)
 
     class BaseTrainer {
-      +train()
-      +predict()
+      +train(model_name: str, Xtrain: Dict, ytrain: Dict)
+      +predict(data: Dict)
     }
 
     TrainerRegistry --> BaseTrainer : creates
 
     class LSTMTrainer {
-      +train(): Tuple
-      +predict(): Dict
+      +train(Xtrain: Dict, ytrain: Dict): Tuple
+      +predict(data: Dict): Dict
     }
 
     class XGBoost {
-      +train(): Tuple
-      +predict(): Dict
+      +train(Xtrain: Dict, ytrain: Dict): Tuple
+      +predict(data: Dict): Dict
     }
 
     class ProphetTrainer {
-      +train(): Tuple
-      +predict(): Dict
+      +train(Xtrain: Dict, ytrain: Dict): Tuple
+      +predict(data: Dict): Dict
     }
 
     ' The models implement the interface BaseTrainer
@@ -162,39 +163,57 @@ package "ML Pipeline" as mp <<Frame>> {
   }
 }
 
-class MonitoringService <<Service>> {
-  +collect_model_metrics(): Dict
-  +collect_sre_metrics(): Dict
-  +monitor_model_accuracy() :Dict
-  +trigger_retraining(): Dict
+package Monitoring <<Frame>> {
+  class MonitoringService <<Service>> {
+    +needs_training(model_name: str, symbol: str): Bool
+    +check_and_trigger_retraining(): Dict
+  }
+
+  class DataDriftMonitor {
+    +detect_data_drift(new_data: Dict, reference_data: Dict): Dict
+  }
+
+  MonitoringService o-- DataDriftMonitor
+
+  note bottom of DataDriftMonitor
+    Detects when the distribution of new data
+    deviates from reference data, indicating data drift.
+  end note
+
+  class PerformanceDriftMonitor {
+    +detect_performance_degradation(model_name: str, symbol: str): Dict
+  }
+
+  MonitoringService o-- PerformanceDriftMonitor
+
+  note bottom of PerformanceDriftMonitor
+    Monitors performance degradation by comparing
+    the model's predictions over time against ground truth (using MAE).
+  end note
 }
 
 package Orchestration <<Frame>> {
   class OrchestrationService <<Service>> {
-    +initialize(): None
-    +cleanup(): None
-    +run_training_pipeline(): Dict
-    +run_prediction_pipeline(): Dict
-    +run_evaluation_pipeline(): Dict
+    +run_training_pipeline(trainer_name: str, symbol: str): Dict
+    +run_prediction_pipeline(model_name: str, symbol: str): Dict
+    +run_evaluation_pipeline(model_name: str, symbol: str): Dict
     +get_pipeline_status(): Dict
   }
 
   class TrainingPipeline <<module>> {
-    +run_training_pipeline(): Dict
+    +run_training_pipeline(trainer_name: str, symbol: str): Dict
   }
-
   
-
   OrchestrationService o-- TrainingPipeline
 
   class PredictionPipeline <<module>> {
-    +run_prediction_pipeline(): Dict
+    +run_prediction_pipeline(model_name: str, symbol: str): Dict
   }
 
   OrchestrationService o-- PredictionPipeline
 
   class EvaluationPipeline <<module>> {
-    +run_evaluation_pipeline(): Dict
+    +run_evaluation_pipeline(model_name: str, symbol: str): Dict
   }
 
   OrchestrationService o-- EvaluationPipeline
@@ -206,11 +225,9 @@ Prefect. Should these pipelines modules call the
 services, or should it be the OrchestrationService class ?
 end note
 
-' Monitoring service relationship
-MonitoringService --> mp : monitors
-Orchestration <-- MonitoringService : notifies
-
-' Key orchestration relationship
-mp <-- Orchestration : triggers
+'mp <-- Monitoring : monitors
+Monitoring --> mp : monitors
+Monitoring -[norank]--> Orchestration : notifies
+Orchestration --> mp : triggers
 
 @enduml
