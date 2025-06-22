@@ -86,13 +86,15 @@ package "ML Pipeline" as mp <<Frame>> {
     class DeploymentService <<Service>> {
       +predict(model_name: str, data: Dict): Dict
       +list_models(): Dict
+      +get_training_data(model_name: str, symbol: str): Dict
       +promote_model(model_name: str): Dict
     }
 
     class ModelManager {
-      +load_model(model_name: str, production: bool = True)
+      +load_model(model_name: str, production: bool = True): MLFlow.PyFuncModel
       +promote_model(model_name: str)
       +get_model_metrics(model_name: str, production: bool = True)
+      +get_training_data(model_name: str, symbol: str): Dict
       +update_model_metrics(model_name: str, metrics: Dict, production: bool = True)
       +list_models(): Dict
     }
@@ -170,7 +172,7 @@ package Monitoring <<Frame>> {
   }
 
   class DataDriftMonitor {
-    +detect_data_drift(new_data: Dict, reference_data: Dict): Dict
+    +detect_data_drift(new_data: Dict, reference_data: Dict): bool
   }
 
   MonitoringService o-- DataDriftMonitor
@@ -181,7 +183,7 @@ package Monitoring <<Frame>> {
   end note
 
   class PerformanceDriftMonitor {
-    +detect_performance_degradation(model_name: str, symbol: str): Dict
+    +detect_performance_degradation(model_name: str, symbol: str): bool
   }
 
   MonitoringService o-- PerformanceDriftMonitor
