@@ -96,6 +96,30 @@ evaluation_time_seconds = Histogram(
     buckets=[5, 10, 30, 60, 150],
 )
 
+evaluation_mae = Gauge(
+    name="evaluation_mae",
+    documentation="Mean Absolute Error of the model",
+    labelnames=["model_type", "symbol"],
+)
+
+evaluation_mse = Gauge(
+    name="model_mse",
+    documentation="Mean Squared Error of the model",
+    labelnames=["model_type", "symbol"],
+)
+
+evaluation_rmse = Gauge(
+    name="model_rmse",
+    documentation="Root Mean Squared Error of the model",
+    labelnames=["model_type", "symbol"],
+)
+
+evaluation_r2 = Gauge(
+    name="model_r2",
+    documentation="R-squared score of the model",
+    labelnames=["model_type", "symbol"],
+)
+
 # ===========================================
 # Model Saving Monitoring
 # ===========================================

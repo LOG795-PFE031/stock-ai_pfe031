@@ -1,0 +1,60 @@
+@startuml
+
+title Evaluation Pipeline - Sequence Diagram
+
+Actor "ML Developper" as User
+participant OrchestrationService
+participant DataService
+participant PreprocessingService
+participant DeploymentService
+
+
+User -> OrchestrationService : POST /evaluate
+activate OrchestrationService
+
+OrchestrationService -> OrchestrationService : run_evaluation_pipeline(model_name, symbol)
+OrchestrationService -> DeploymentService : list_models()
+activate DeploymentService
+DeploymentService -> DeploymentService : models_names = ModelManager.list_models()
+DeploymentService -> OrchestrationService : Return models_names
+deactivate DeploymentService
+
+alt model_name is not in = models_names
+    OrchestrationService -> User : 500 Internal Server Error Response
+end
+
+
+OrchestrationService -> DataService : get_stock_data(symbol, start_date, end_date)
+activate DataService
+
+alt Data is stale or missing
+    DataService -> DataService : collect_stock_data(symbol, start_date, end_date)
+end
+DataService -> OrchestrationService : Return raw_stock_data
+deactivate DataService
+
+OrchestrationService -> PreprocessingService : preprocess(raw_stock_data)
+activate PreprocessingService
+PreprocessingService -> PreprocessingService : clean_stock_data = DataCleaner.process(raw_stock_data)
+PreprocessingService -> PreprocessingService : Xtest = FeatureBuilder.process(clean_stock_data)
+PreprocessingService -> PreprocessingService : Xtest = FeatureSelector.process(Xtest)
+PreprocessingService -> PreprocessingService : ytest = TargetBuilder.process(Xtest)
+PreprocessingService -> PreprocessingService : Xtest = Normalizer.process(Xtest, fit=False)
+PreprocessingService -> OrchestrationService : Return Xtest, ytest
+deactivate PreprocessingService
+
+OrchestrationService -> DeploymentService : evaluate(model_name, Xtest, ytest)
+activate DeploymentService
+
+DeploymentService -> DeploymentService : production_model = ModelManager.load_model(model_name, production=True)
+DeploymentService -> DeploymentService : y_pred = Predictor.predict(production_model, Xtest)
+DeploymentService -> DeploymentService : metrics = Evaluator.evaluate(ytest, y_pred)
+DeploymentService -> DeploymentService : ModelManager.update_model_metrics(model_name, metrics, production=True)
+
+DeploymentService -> OrchestrationService : Return metrics
+deactivate DeploymentService
+
+OrchestrationService -> User : 200 OK Response (metrics)
+deactivate OrchestrationService
+
+@enduml

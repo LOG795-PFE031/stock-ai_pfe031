@@ -1,0 +1,94 @@
+@startuml
+
+title Training Pipeline - Sequence Diagram
+
+Actor "ML Developper" as User
+participant OrchestrationService
+participant DataService
+participant PreprocessingService
+participant TrainingService
+participant DeploymentService
+
+
+User -> OrchestrationService : POST /train
+activate OrchestrationService
+
+OrchestrationService -> OrchestrationService : run_training_pipeline(trainer_name, symbol)
+OrchestrationService -> TrainingService : list_trainers()
+activate TrainingService
+TrainingService -> TrainingService : trainers_names = TrainerRegistry.list_trainers()
+TrainingService -> OrchestrationService : Return trainers_names
+deactivate TrainingService
+
+alt trainer_name is not in  = trainers_names
+    OrchestrationService -> User : 500 Internal Server Error Response
+end
+
+
+OrchestrationService -> DataService : get_stock_data(symbol, start_date, end_date)
+activate DataService
+
+alt Data is stale or missing
+    DataService -> DataService : collect_stock_data(symbol, start_date, end_date)
+end
+DataService -> OrchestrationService : Return raw_stock_data
+deactivate DataService
+
+
+OrchestrationService -> PreprocessingService : preprocess(raw_stock_data)
+activate PreprocessingService
+PreprocessingService -> PreprocessingService : clean_stock_data = DataCleaner.process(raw_stock_data)
+PreprocessingService -> PreprocessingService : stock_data = FeatureBuilder.process(clean_stock_data)
+PreprocessingService -> PreprocessingService : stock_data = FeatureSelector.process(stock_data)
+PreprocessingService -> PreprocessingService : y = TargetBuilder.process(stock_data)
+PreprocessingService -> PreprocessingService : Xtrain, ytrain, Xtest, ytest = DataSplitter.process(stock_data, y)
+PreprocessingService -> PreprocessingService : Xtrain = Normalizer.process(Xtrain, fit=True)
+PreprocessingService -> PreprocessingService : Xtest = Normalizer.process(Xtest, fit=False)
+PreprocessingService -> OrchestrationService : Return Xtrain, ytrain, Xtest, ytest
+deactivate PreprocessingService
+
+
+OrchestrationService -> TrainingService : train(model_name, Xtrain, ytrain)
+activate TrainingService
+
+TrainingService -> TrainingService : model = TrainerRegistry.create(model_name) (MLFlow)
+TrainingService -> TrainingService : model.train(Xtrain, ytrain) (MLFlow)
+TrainingService -> TrainingService : model.save() (MLFlow)
+TrainingService -> OrchestrationService : Return sucess (What can we return?)
+deactivate TrainingService
+
+OrchestrationService -> DeploymentService : evaluate(model_name, Xtest, ytest)
+activate DeploymentService
+
+DeploymentService -> DeploymentService : model = ModelManager.load_model(model_name, production=False)
+DeploymentService -> DeploymentService : y_pred = Predictor.predict(model, Xtest)
+DeploymentService -> DeploymentService : metrics = Evaluator.evaluate(ytest, y_pred)
+DeploymentService -> DeploymentService : ModelManager.update_model_metrics(model_name, metrics, production=False)
+
+DeploymentService -> DeploymentService : production_model = ModelManager.load_model(model_name, production=True)
+
+alt production_model exists
+    DeploymentService -> DeploymentService : y_pred = Predictor.predict(production_model, Xtest)
+    DeploymentService -> DeploymentService : production_metrics = Evaluator.evaluate(production_model, ytest, y_pred)
+    DeploymentService -> DeploymentService : ModelManager.update_model_metrics(model_name, production_metrics, production=True)
+
+    alt metrics better than production_metrics
+        DeploymentService -> DeploymentService : ModelManager.promote(model_name)
+    end
+
+else
+    DeploymentService -> DeploymentService : ModelManager.promote(model_name)
+    note right
+    If there is no production model (in MLFlow), 
+    we promote the trained model
+    end note
+end
+
+DeploymentService -> OrchestrationService : Return sucess (What can we return?)
+deactivate DeploymentService
+
+
+OrchestrationService -> User : 200 OK Response (What can we return?)
+deactivate OrchestrationService
+
+@enduml

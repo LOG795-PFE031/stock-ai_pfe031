@@ -1,0 +1,235 @@
+@startuml
+
+title Target Monolith Architecture -  Class Diagram
+
+skinparam linetype ortho
+skinparam defaultFontSize 18
+
+abstract BaseService {
+  +initialize(): None
+  +cleanup(): None
+}
+
+note right of BaseService
+This is the base interface for all 
+services (identified by <<Service>>).
+end note
+
+package "ML Pipeline" as mp <<Frame>> { 
+
+  class DataService <<Service>> {
+    +get_stock_data(symbol: str, start_date: str, end_date:str): Dict
+  }
+
+  package Preprocessing <<Frame>> {
+
+    class PreprocessingService <<Service>> {
+      +prepare_data(data: Dict): Dict
+    }
+
+    interface DataProcessor {
+      +process(data: Dict): Dict
+    }
+
+    PreprocessingService --o "1..*" DataProcessor
+
+    class DataCleaner {
+      +process(data: Dict): Dict
+    }
+
+    class FeatureBuilder {
+      +process(data: Dict): Dict
+    }
+
+    note bottom of FeatureBuilder
+    Add features (calculate_technical_indicators)
+    end note
+
+    class FeatureSelector {
+      +process(data: Dict): Dict
+    }
+
+    note bottom of FeatureSelector
+    Select only the features required by a specific model.
+    end note
+
+    class TargetBuilder {
+      +process(data: Dict): Dict
+    }
+
+    class DataSplitter {
+      +process(data: Dict): Dict
+    }
+
+    note bottom of DataSplitter
+    Split data into train and test datasets
+    end note
+
+    class DataNormalizer {
+      +process(data: Dict): Dict
+    }
+
+    note bottom of DataNormalizer
+    Scales the data (and fits if in training mode).
+    end note
+
+    DataProcessor <|.. DataCleaner
+    DataProcessor <|.. FeatureBuilder
+    DataProcessor <|.. FeatureSelector
+    DataProcessor <|.. DataSplitter
+    DataProcessor <|.. TargetBuilder
+    DataProcessor <|.. DataNormalizer
+  }
+
+  package Deployment <<Frame>> {
+
+    class DeploymentService <<Service>> {
+      +predict(model_name: str, data: Dict): Dict
+      +list_models(): Dict
+      +get_training_data(model_name: str, symbol: str): Dict
+      +promote_model(model_name: str): Dict
+    }
+
+    class ModelManager {
+      +load_model(model_name: str, production: bool = True): MLFlow.PyFuncModel
+      +promote_model(model_name: str)
+      +get_model_metrics(model_name: str, production: bool = True)
+      +get_training_data(model_name: str, symbol: str): Dict
+      +update_model_metrics(model_name: str, metrics: Dict, production: bool = True)
+      +list_models(): Dict
+    }
+
+    DeploymentService --o ModelManager
+
+    class Evaluator {
+      +evaluate_model(y_true: Dict, y_pred: Dict): Dict
+      +_calculate_metrics(y_true: Dict, y_pred: Dict): Dict
+    }
+
+    DeploymentService --o Evaluator
+
+    class Predicator {
+      +predict(model: MLFlow.PyFuncModel, data: Dict)
+    }
+
+    note bottom of Predicator
+    It may be worth considering prediction directly inside the Deployment service,
+    removing the need for a dedicated Predictor class.
+    end note
+
+    DeploymentService --o Predicator
+
+  }
+
+  package Training <<Frame>> {
+    class TrainingService <<Service>> {
+      +train_model(model_name: str, Xtrain: Dict, ytrain: Dict): Dict
+      +list_trainers(): Dict
+      +get_training_status(): Dict
+    }
+
+    class TrainerRegistry {
+      +register(trainer_name: str): None
+      +create(trainer_name: str): BaseTrainer
+      +list_trainers(): Dict
+    }
+
+    TrainingService --> TrainerRegistry : create(trainer_name)
+
+    class BaseTrainer {
+      +train(model_name: str, Xtrain: Dict, ytrain: Dict)
+      +predict(data: Dict)
+    }
+
+    TrainerRegistry --> BaseTrainer : creates
+
+    class LSTMTrainer {
+      +train(Xtrain: Dict, ytrain: Dict): Tuple
+      +predict(data: Dict): Dict
+    }
+
+    class XGBoost {
+      +train(Xtrain: Dict, ytrain: Dict): Tuple
+      +predict(data: Dict): Dict
+    }
+
+    class ProphetTrainer {
+      +train(Xtrain: Dict, ytrain: Dict): Tuple
+      +predict(data: Dict): Dict
+    }
+
+    ' The models implement the interface BaseTrainer
+    BaseTrainer <|.. ProphetTrainer
+    BaseTrainer <|.. LSTMTrainer
+    BaseTrainer <|.. XGBoost
+  }
+}
+
+package Monitoring <<Frame>> {
+  class MonitoringService <<Service>> {
+    +needs_training(model_name: str, symbol: str): Bool
+    +check_and_trigger_retraining(): Dict
+  }
+
+  class DataDriftMonitor {
+    +detect_data_drift(new_data: Dict, reference_data: Dict): bool
+  }
+
+  MonitoringService o-- DataDriftMonitor
+
+  note bottom of DataDriftMonitor
+    Detects when the distribution of new data
+    deviates from reference data, indicating data drift.
+  end note
+
+  class PerformanceDriftMonitor {
+    +detect_performance_degradation(model_name: str, symbol: str): bool
+  }
+
+  MonitoringService o-- PerformanceDriftMonitor
+
+  note bottom of PerformanceDriftMonitor
+    Monitors performance degradation by comparing
+    the model's predictions over time against ground truth (using MAE).
+  end note
+}
+
+package Orchestration <<Frame>> {
+  class OrchestrationService <<Service>> {
+    +run_training_pipeline(trainer_name: str, symbol: str): Dict
+    +run_prediction_pipeline(model_name: str, symbol: str): Dict
+    +run_evaluation_pipeline(model_name: str, symbol: str): Dict
+    +get_pipeline_status(): Dict
+  }
+
+  class TrainingPipeline <<module>> {
+    +run_training_pipeline(trainer_name: str, symbol: str): Dict
+  }
+  
+  OrchestrationService o-- TrainingPipeline
+
+  class PredictionPipeline <<module>> {
+    +run_prediction_pipeline(model_name: str, symbol: str): Dict
+  }
+
+  OrchestrationService o-- PredictionPipeline
+
+  class EvaluationPipeline <<module>> {
+    +run_evaluation_pipeline(model_name: str, symbol: str): Dict
+  }
+
+  OrchestrationService o-- EvaluationPipeline
+}
+
+note bottom of Orchestration
+All the pipeline are modules if we want to use 
+Prefect. Should these pipelines modules call the 
+services, or should it be the OrchestrationService class ?
+end note
+
+'mp <-- Monitoring : monitors
+Monitoring --> mp : monitors
+Monitoring -[norank]--> Orchestration : notifies
+Orchestration --> mp : triggers
+
+@enduml
