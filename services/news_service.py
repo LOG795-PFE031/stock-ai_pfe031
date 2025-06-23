@@ -2,17 +2,13 @@
 News analysis and sentiment service.
 """
 
-from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta, timezone
-import pandas as pd
+from typing import Dict, Any, List
+from datetime import datetime, timezone
 from transformers import BertTokenizer, BertForSequenceClassification, pipeline
 import os
 from textblob import TextBlob
-import numpy as np
 from huggingface_hub import snapshot_download
-from rich.panel import Panel
 import time
-import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential
 import yfinance as yf
 import logging
@@ -21,12 +17,10 @@ import torch
 from services.base_service import BaseService
 from core.utils import get_date_range
 from core.logging import logger
-from core.progress import (
-    create_spinner,
-    print_status,
-    print_error,
-    create_layout,
-    update_layout,
+from core.progress import create_spinner, print_status, print_error, create_layout
+from monitoring.prometheus_metrics import (
+    external_requests_total,
+    sentiment_analysis_time_seconds,
 )
 
 logger = logging.getLogger(__name__)
@@ -100,12 +94,7 @@ class NewsService(BaseService):
             )
             self.tokenizer = BertTokenizer.from_pretrained("yiyanghkust/finbert-tone")
             self.model.to(self.device)
-            self.pipeline = pipeline(
-                "sentiment-analysis",
-                model=self.model,
-                tokenizer=self.tokenizer,
-                device=device_id,
-            )
+
             logger.info("FinBERT model loaded successfully")
             self._sentiment_analyzer = self._analyze_with_finbert
         except Exception as e:
@@ -422,6 +411,9 @@ class NewsService(BaseService):
             ticker = yf.Ticker(symbol)
             news = ticker.news
 
+            # Log the successful external request to Yahoo Finance (Prometheus)
+            external_requests_total.labels(site="yahoo_finance", result="success").inc()
+
             articles = []
             for item in news:
                 try:
@@ -478,6 +470,11 @@ class NewsService(BaseService):
                         articles.append(article)
                 except Exception as e:
                     self.logger.error(f"Error processing news item: {str(e)}")
+
+                    # Log the unsuccessful external request to Yahoo Finance (Prometheuss)
+                    external_requests_total.labels(
+                        site="yahoo_finance", result="error"
+                    ).inc()
                     continue
 
             return articles
@@ -601,6 +598,8 @@ class NewsService(BaseService):
                 }
 
             # Process and analyze articles
+            start_time = time.perf_counter()  # Start timer
+
             processed_articles = []
             for article in articles:
                 try:
@@ -638,6 +637,12 @@ class NewsService(BaseService):
                 except Exception as e:
                     self.logger.error(f"Error processing article: {str(e)}")
                     continue
+
+            # Log the sentiment analysis time (Prometheus)
+            sentiment_analysis_duration = time.perf_counter() - start_time
+            sentiment_analysis_time_seconds.labels(
+                number_articles=len(processed_articles)
+            ).observe(sentiment_analysis_duration)
 
             self.logger.info(
                 f"Successfully processed {len(processed_articles)} articles"

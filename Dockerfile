@@ -1,5 +1,8 @@
-# Use Python 3.11 slim image
-FROM python:3.11-slim
+# Stage 1: Builder
+FROM python:3.11-slim AS builder
+
+# Set working directory
+WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && \
@@ -10,23 +13,37 @@ RUN apt-get update && \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
-WORKDIR /app
-
 # Copy requirements file
 COPY requirements.txt .
 
 # Install build tools and wheel
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    # Install torch first to ensure availability for xformers
+    pip install --no-cache-dir torch>=2.0.1 && \
+    # Install ta package separately to ensure proper installation
+    pip install --no-cache-dir ta>=0.10.0 && \
+    # Install remaining dependencies
+    pip install --no-cache-dir -r requirements.txt
 
-# Install torch first to ensure availability for xformers
-RUN pip install --no-cache-dir torch>=2.0.1
 
-# Install ta package separately to ensure proper installation
-RUN pip install --no-cache-dir ta>=0.10.0
+# Stage 2: Runtime
+FROM python:3.11-slim
 
-# Install remaining dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Set working directory
+WORKDIR /app  
+
+# Create necessary directories
+RUN mkdir -p /app/data /app/models /app/logs
+
+# Install only runtime dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed Python packages from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY api/ ./api/
@@ -34,23 +51,21 @@ COPY core/ ./core/
 COPY services/ ./services/
 COPY training/ ./training/
 COPY main.py .
-
-# Create necessary directories
-RUN mkdir -p /app/data /app/models /app/logs
+COPY monitoring/ ./monitoring/
 
 # Set environment variables
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
-ENV CUDA_VISIBLE_DEVICES=-1  
-#Ensures no GPU usage, aligns with CPU-only setup
-ENV TF_CPP_MIN_LOG_LEVEL=2  
-#Suppresses TensorFlow logs, though not strictly needed now
-ENV HF_HUB_DOWNLOAD_TIMEOUT=120
-ENV HF_HUB_ENABLE_HF_TRANSFER=1
-ENV HF_HUB_OFFLINE=0
-ENV HF_HUB_DISABLE_TELEMETRY=1
-ENV KERAS_BACKEND="torch" 
-#Sets PyTorch as the Keras backend
+ENV PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1 \
+    CUDA_VISIBLE_DEVICES=-1 \
+    #Ensures no GPU usage, aligns with CPU-only setup
+    TF_CPP_MIN_LOG_LEVEL=2  \
+    #Suppresses TensorFlow logs, though not strictly needed now
+    HF_HUB_DOWNLOAD_TIMEOUT=120 \
+    HF_HUB_ENABLE_HF_TRANSFER=1 \
+    HF_HUB_OFFLINE=0 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    #Sets PyTorch as the Keras backend
+    KERAS_BACKEND="torch" 
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
