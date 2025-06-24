@@ -17,6 +17,7 @@ tenacity>=8.2.3  # For retry logic
 accelerate>=0.20.0  # For optimized model loading
 sentencepiece>=0.1.99  # For tokenization
 protobuf>=3.20.0  # Required by transformers
+prefect>=3.4.6 # Required for the ML Pipeline
 
 # API and web server
 fastapi>=0.68.0
