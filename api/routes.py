@@ -4,11 +4,9 @@ API routes for the Stock AI system.
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from typing import Dict, Any, Optional
+from datetime import datetime
 from core.utils import get_next_trading_day
-import pandas as pd
-import numpy as np
 from pydantic import BaseModel
 from monitoring.prometheus_metrics import prediction_time_seconds
 import time
@@ -16,11 +14,10 @@ import time
 from api.schemas import (
     PredictionResponse,
     PredictionsResponse,
-    NewsAnalysisResponse,
     HealthResponse,
     MetaInfo,
-    ErrorResponse,
     TrainingResponse,
+    TrainingTrainersResponse,
     TrainingStatusResponse,
     TrainingTasksResponse,
     DataUpdateResponse,
@@ -141,7 +138,7 @@ async def update_stock_data(symbol: str):
         return DataUpdateResponse(
             symbol=symbol,
             stock_data_updated=True,
-            news_data_updated=True,
+            news_data_updated=False,
             timestamp=datetime.utcnow().isoformat(),
             stock_records=result["stock_data"]["rows"],
             news_articles=result["news_data"]["articles"],
@@ -289,12 +286,12 @@ async def get_next_day_prediction(symbol: str, model_type: ModelType = ModelType
             )
 
         start_time = time.time()
-        
+
         # Get prediction using the new method
         prediction = await prediction_service.get_prediction(
             symbol=symbol, model_type=model_type.value
         )
-        
+
         elapsed = time.time() - start_time
 
         # Check if prediction failed
@@ -308,8 +305,10 @@ async def get_next_day_prediction(symbol: str, model_type: ModelType = ModelType
             )
 
         # Observe latency in seconds
-        prediction_time_seconds.labels(model_type=model_type.value, symbol=symbol).observe(elapsed)
-        
+        prediction_time_seconds.labels(
+            model_type=model_type.value, symbol=symbol
+        ).observe(elapsed)
+
         # The prediction is already formatted by the service
         prediction["date"] = get_next_trading_day()
         prediction["symbol"] = symbol
@@ -424,12 +423,42 @@ async def get_direct_display(symbol: str, model_type: ModelType = ModelType.LSTM
 
 
 # Training endpoints
+@router.get(
+    "/train/trainers",
+    response_model=TrainingTrainersResponse,
+    tags=["Training Services"],
+)
+async def get_trainers():
+    """
+    Retrieve the list of available training trainers.
+    """
+    try:
+        # Import services from main to avoid circular imports
+        from main import training_service
+
+        # Get the trainers
+        trainers_response = await training_service.get_trainers()
+
+        return TrainingTrainersResponse(
+            status=trainers_response["status"],
+            timestamp=datetime.utcnow().isoformat(),
+            result={"models": trainers_response["result"]},
+        )
+    except Exception as e:
+        api_logger.error(f"Failed to get the trainers: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get the trainers: {str(e)}"
+        )
+
+
 @router.post(
     "/train/{symbol}", response_model=TrainingResponse, tags=["Training Services"]
 )
 async def train_model(
     symbol: str,
-    model_type: ModelType = ModelType.LSTM,
+    model_type: str = ModelType.LSTM,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     epochs: int = 100,
     batch_size: int = 32,
 ):
@@ -444,17 +473,21 @@ async def train_model(
                 status_code=400, detail=f"Invalid stock symbol: {symbol}"
             )
 
+        start, end = get_date_range(start_date, end_date)
+
         # Start training
         result = await training_service.train_model(
             symbol=symbol,
-            model_type=model_type.value,
+            model_type=model_type,
+            start_date=start,
+            end_date=end,
             epochs=epochs,
             batch_size=batch_size,
         )
 
         return TrainingResponse(
             symbol=symbol,
-            model_type=model_type.value,
+            model_type=model_type,
             model_version=result["result"]["model_version"],
             training_history=result["result"]["training_history"],
             metrics=result["result"]["metrics"],

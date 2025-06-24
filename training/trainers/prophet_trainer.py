@@ -11,16 +11,21 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import joblib
 import json
 
-from training.base_trainer import BaseTrainer
 from core.logging import logger
 from training.schemas import Metrics
+from training.trainers.base_trainer import BaseTrainer
+from training.trainer_registry import TrainerRegistry
+
+# Constant for the trainer name
+TRAINER_NAME = "prophet"
 
 
+@TrainerRegistry.register(TRAINER_NAME)
 class ProphetTrainer(BaseTrainer):
     """Trainer for Prophet models."""
 
     def __init__(self):
-        super().__init__("prophet")
+        super().__init__(TRAINER_NAME)
         self.logger = logger["training"]
 
     async def prepare_data(
@@ -170,7 +175,7 @@ class ProphetTrainer(BaseTrainer):
     async def load_model(self, symbol: str) -> Optional[Prophet]:
         """Load Prophet model."""
         try:
-            prophet_dir = self.model_dir / "prophet"
+            prophet_dir = self.model_dir / TRAINER_NAME
             model_file = prophet_dir / f"{symbol}_prophet.joblib"
             metadata_file = prophet_dir / f"{symbol}_prophet_metadata.json"
 

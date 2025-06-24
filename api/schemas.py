@@ -70,6 +70,15 @@ class NewsAnalysisResponse(BaseModel):
     model_version: str
 
 
+class TrainingTrainersResponse(BaseModel):
+    """Trainers getter response schema."""
+
+    status: str
+    timestamp: str
+    result: Dict[str, List[str]] = None
+    error: Optional[str] = None
+
+
 class TrainingResponse(BaseModel):
     """Model training response."""
 
@@ -114,7 +123,6 @@ class DataUpdateResponse(BaseModel):
 
     symbol: str
     stock_data_updated: bool
-    news_data_updated: bool
     timestamp: str
     stock_records: int
     news_articles: int

@@ -2,7 +2,7 @@
 LSTM model trainer.
 """
 
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, Tuple
 from datetime import datetime
 import pandas as pd
 import numpy as np
@@ -13,16 +13,21 @@ import joblib
 import json
 import matplotlib.pyplot as plt
 
-from training.base_trainer import BaseTrainer
 from core.logging import logger
 from training.schemas import Metrics
+from training.trainers.base_trainer import BaseTrainer
+from training.trainer_registry import TrainerRegistry
+
+# Constant for the trainer name
+TRAINER_NAME = "lstm"
 
 
+@TrainerRegistry.register(TRAINER_NAME)
 class LSTMTrainer(BaseTrainer):
     """Trainer for LSTM models."""
 
     def __init__(self):
-        super().__init__("lstm")
+        super().__init__(TRAINER_NAME)
         self.scaler = MinMaxScaler()
         self.logger = logger["training"]
 
@@ -136,7 +141,7 @@ class LSTMTrainer(BaseTrainer):
             symbol_dir.mkdir(parents=True, exist_ok=True)
 
             model_path = symbol_dir / f"{symbol}_model.keras"
-            model.save(str(model_path), save_format="keras_v3")
+            model.save(str(model_path))
 
             scaler_path = symbol_dir / f"{symbol}_scaler.gz"
             joblib.dump(self.scaler, scaler_path)

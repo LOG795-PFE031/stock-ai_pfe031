@@ -3,16 +3,16 @@ Training service for model training and evaluation.
 """
 
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import asyncio
 
-from services.base_service import BaseService
-from training.lstm_trainer import LSTMTrainer
-from training.prophet_trainer import ProphetTrainer
+from .base_service import BaseService
 from core.utils import validate_stock_symbol
 from core.logging import logger
 from monitoring.prometheus_metrics import training_total
 from monitoring.utils import monitor_training_cpu_usage, monitor_training_memory_usage
+from training.trainer_registry import TrainerRegistry
+import training.trainers  # Dynamically imports trainer modules
 
 
 class TrainingService(BaseService):
@@ -21,7 +21,6 @@ class TrainingService(BaseService):
     def __init__(self, model_service, data_service):
         super().__init__()
         self._initialized = False
-        self.trainers = {"lstm": LSTMTrainer(), "prophet": ProphetTrainer()}
         self.training_tasks = {}
         self.scalers = {}
         self.model_version = "0.1.0"
@@ -51,6 +50,16 @@ class TrainingService(BaseService):
             self.logger.info("Training service cleaned up successfully")
         except Exception as e:
             self.logger.error(f"Error during training service cleanup: {str(e)}")
+
+    async def get_trainers(self) -> Dict[str, Any]:
+        """Retrieve the list of available training trainers (from the TrainerFactory)"""
+        try:
+            trainers = TrainerRegistry.list_trainers()
+            return {"status": "success", "result": trainers}
+
+        except Exception as e:
+            self.logger.error(f"Error getting the trainers : {str(e)}")
+            return {"status": "error", "error": str(e)}
 
     async def train_model(
         self,
@@ -91,7 +100,7 @@ class TrainingService(BaseService):
                 "timestamp": datetime.now().isoformat(),
             }
 
-        if model_type not in self.trainers:
+        if model_type not in TrainerRegistry.list_trainers():
             return {
                 "status": "error",
                 "error": f"Unsupported model type: {model_type}",
@@ -101,6 +110,21 @@ class TrainingService(BaseService):
             }
 
         try:
+
+            # Set default date range if not provided
+            if not end_date:
+                end_date = datetime.now(timezone.utc)
+            if not start_date:
+                start_date = end_date - timedelta(
+                    days=self.config.data.STOCK_HISTORY_DAYS
+                )
+
+            # Ensure dates are timezone-aware
+            if start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=timezone.utc)
+            if end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=timezone.utc)
+
             # Begin to monitor cpu usage
             monitor_task = asyncio.create_task(
                 monitor_training_cpu_usage(model_type, symbol)
@@ -113,7 +137,7 @@ class TrainingService(BaseService):
 
             # Create training task
             task = asyncio.create_task(
-                self.trainers[model_type].train_and_evaluate(
+                TrainerRegistry.create(model_type).train_and_evaluate(
                     symbol, start_date, end_date, **kwargs
                 )
             )
