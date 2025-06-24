@@ -5,9 +5,10 @@ Utility functions for the Stock AI system.
 import pandas as pd
 import pandas_market_calendars as mcal
 import numpy as np
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 import logging
+from core.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -178,9 +179,9 @@ def get_date_range(
         start = datetime.fromisoformat(start_date)
         end = datetime.fromisoformat(end_date)
     else:
-        # Use days parameter or default to 7 days
+        # Use days parameter or default to config
         end = datetime.now()
-        days = days or 7
+        days = days or config.data.STOCK_HISTORY_DAYS
         start = end - timedelta(days=days)
 
     return start, end
