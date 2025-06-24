@@ -9,11 +9,25 @@ class FeatureBuilder(BaseDataProcessor):
     def __init__(self, symbol, logger):
         super().__init__(symbol, logger)
 
-    # TODO Implementation
     def process(self, data):
-        return super().process(data)
+        try:
+            # Add returns features
+            data = self._calculate_and_add_returns(data)
 
-    def _calculate_returns(self, data: pd.DataFrame) -> pd.DataFrame:
+            # Add techical indicators features
+            data = self._calculate_and_add_technical_indicators(data)
+
+            # Add temporal features
+            data = self._add_temporal_features(data)
+
+            return data
+        except Exception as e:
+            self.logger.error(
+                f"Error building new features from stock data for symbol {self.symbol}: {e}"
+            )
+            raise
+
+    def _calculate_and_add_returns(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         Calculate the returns and the log returns of the stock data (Close price)
 
@@ -42,7 +56,9 @@ class FeatureBuilder(BaseDataProcessor):
             self.logger.error(f"Error calculating log returns: {str(e)}")
             raise
 
-    def _calculate_technical_indicators(self, data: pd.DataFrame) -> pd.DataFrame:
+    def _calculate_and_add_technical_indicators(
+        self, data: pd.DataFrame
+    ) -> pd.DataFrame:
         """
         Calculate technical indicators for stock data.
 
