@@ -27,12 +27,14 @@ os.makedirs("logs", exist_ok=True)
 os.makedirs("models", exist_ok=True)
 
 # Initialize services
-from services.data_service import DataService
-from services.model_service import ModelService
-from services.news_service import NewsService
-from services.training_service import TrainingService
-from services.prediction_service import PredictionService
-from services.rabbitmq_service import RabbitMQService
+from services import (
+    DataService,
+    ModelService,
+    NewsService,
+    PredictionService,
+    TrainingService,
+    RabbitMQService,
+)
 
 # Create service instances in dependency order
 data_service = DataService()

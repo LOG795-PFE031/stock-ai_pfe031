@@ -14,17 +14,18 @@ import json
 from pathlib import Path
 import time
 
-from services.base_service import BaseService
-from services.rabbitmq_service import RabbitMQService
-from services.training_service import TrainingService
+
+from .base_service import BaseService
+from .data_service import DataService
+from .model_service import ModelService
+from .training_service import TrainingService
+from .rabbitmq_service import RabbitMQService
 from core.utils import (
     calculate_technical_indicators,
     validate_stock_symbol,
     format_prediction_response,
 )
 from core.logging import logger
-from services.model_service import ModelService
-from services.data_service import DataService
 from core.config import config
 from monitoring.prometheus_metrics import (
     predictions_total,
@@ -518,16 +519,7 @@ class PredictionService(BaseService):
             model = model_result["model"]
             scaler = model_result["scaler"]
 
-            data_result = await self.data_service.get_latest_data(symbol)
-            if data_result["status"] != "success":
-                self.logger.error(
-                    f"Data fetch failed for {symbol}: {data_result.get('message', 'Unknown error')}"
-                )
-                raise RuntimeError(
-                    f"Failed to get latest data for {symbol}: {data_result.get('message', 'Unknown error')}"
-                )
-
-            df = data_result["data"]
+            df, _ = await self.data_service.get_stock_data(symbol)
             self.logger.info(f"Data shape for {symbol}: {df.shape}")
             self.logger.info(f"Data columns for {symbol}: {df.columns.tolist()}")
 
