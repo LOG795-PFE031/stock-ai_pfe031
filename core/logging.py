@@ -41,6 +41,7 @@ loggers: Dict[str, logging.Logger] = {
     "prediction": logging.getLogger("prediction"),
     "model": logging.getLogger("model"),
     "data": logging.getLogger("data"),
+    "preprocessing": logging.getLogger("preprocessing"),
     "api": logging.getLogger("api"),
     "training": logging.getLogger("training"),
     "orchestration": logging.getLogger("orchestration"),
