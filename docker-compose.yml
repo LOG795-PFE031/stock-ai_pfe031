@@ -53,6 +53,18 @@ services:
       - microservices_auth
     depends_on:
       - stock-ai
+  
+  grafana:
+    image: grafana/grafana
+    container_name: stock-ai-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./monitoring/grafana:/var/lib/grafana
+    networks:
+      - microservices_auth
+    depends_on:
+      - prometheus
 
 networks:
   microservices_auth:
