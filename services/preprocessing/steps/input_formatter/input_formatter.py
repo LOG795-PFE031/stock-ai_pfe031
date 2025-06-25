@@ -1,4 +1,5 @@
 from services.preprocessing.abstract import BaseDataProcessor
+from services.preprocessing.types import FormattedInput
 from .strategies import InputFormatterStrategy, SequenceFormatter, ProphetFormatter
 
 
@@ -13,7 +14,7 @@ class InputFormatter(BaseDataProcessor):
         self.model_type = model_type
         self.phase = phase
 
-    def process(self, data):
+    def process(self, data) -> FormattedInput:
         """
         Formats the data for the different model types input.
 
@@ -21,15 +22,11 @@ class InputFormatter(BaseDataProcessor):
             data (pd.DataFrame): Input stock data.
 
         Returns:
-            Any: Either X and Y (for training phase) or just X (for prediction phase)
+            FormattedData: Either X and Y (for training phase) or just X (for prediction phase)
         """
         input_formatter = self._get_input_formatter()
 
-        if input_formatter:
-            return input_formatter.format(data, self.phase)
-
-        # Returns the original data if no formatting is applied
-        return data
+        return input_formatter.format(data, self.phase)
 
     def _get_input_formatter(self) -> InputFormatterStrategy:
         if self.model_type == "lstm":

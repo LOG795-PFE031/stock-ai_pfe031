@@ -15,6 +15,8 @@ from .steps import (
     InputFormatter,
 )
 
+from .types import FormattedInput
+
 
 class PreprocessingService(BaseService):
 
@@ -39,7 +41,7 @@ class PreprocessingService(BaseService):
         phase: str,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-    ) -> pd.DataFrame:
+    ) -> FormattedInput:
         """
         Preprocess the stock data for models input.
 
@@ -47,7 +49,7 @@ class PreprocessingService(BaseService):
             data (pd.DataFrame): Raw stock data
 
         Returns:
-            pd.DataFrame: Processed Dataframe
+            FormattedInput: Processed data formatted specifically for input into a model.
         """
 
         # TODO Check existing preproccessed Data (MinIO + Redis ? Or Cache ?)
@@ -82,26 +84,26 @@ class PreprocessingService(BaseService):
                 symbol, self.logger, model_type, phase
             ).process(test_features, fit=False)
 
-            X_train, y_train = InputFormatter(
+            training_dataset = InputFormatter(
                 symbol, self.logger, model_type, phase
             ).process(train_norm_features)
 
-            X_test, y_test = InputFormatter(
+            test_dataset = InputFormatter(
                 symbol, self.logger, model_type, phase
             ).process(test_norm_features)
 
-            return X_train, y_train, X_test, y_test
+            return training_dataset, test_dataset
 
         elif phase == "prediction":
             norm_features = DataNormalizer(
                 symbol, self.logger, model_type, phase
             ).process(features)
 
-            X = InputFormatter(symbol, self.logger, model_type, phase).process(
-                norm_features
-            )
+            prediction_input = InputFormatter(
+                symbol, self.logger, model_type, phase
+            ).process(norm_features)
 
-            return X
+            return prediction_input
 
         # TODO store preproccessed Data (MinIO + Redis ?)
         # Save processed data
