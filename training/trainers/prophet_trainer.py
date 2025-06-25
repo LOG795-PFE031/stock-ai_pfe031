@@ -59,6 +59,9 @@ class ProphetTrainer(BaseTrainer):
                     end_date = end_date.astimezone(timezone.utc).replace(tzinfo=None)
                 df = df[df["Date"] <= end_date]
 
+            # Convert the date to the correct format (YYYY-MM-DD)
+            df["Date"] = df["Date"].dt.date
+
             # Prepare data for Prophet
             prophet_df = pd.DataFrame({"ds": df["Date"], "y": df["Close"]})
 
@@ -93,7 +96,7 @@ class ProphetTrainer(BaseTrainer):
 
             # Add additional regressors
             for feature in self.config.model.FEATURES:
-                if feature not in ["Close", "Date"]:
+                if feature not in ["Close", "Date", "ds", "y"]:
                     model.add_regressor(feature)
 
             # Fit model

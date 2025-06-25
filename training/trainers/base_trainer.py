@@ -93,10 +93,19 @@ class BaseTrainer(ABC):
                 symbol, start_date, end_date
             )
 
-            # Log the preprocessing time (Prometheus)
+            # Log the data points ingested (Prometheus)
+            training_size = (
+                len(train_data[0])
+                if (isinstance(train_data, tuple))
+                else len(train_data)
+            )
+            test_size = (
+                len(test_data[0]) if (isinstance(test_data, tuple)) else len(test_data)
+            )
+
             data_points_ingested_total.labels(
                 model_type=self.model_type, symbol=symbol
-            ).inc(len(train_data[0]) + len(test_data[0]))
+            ).inc(training_size + test_size)
 
             # Log the preprocessing time (Prometheus)
             preprocessing_duration = time.perf_counter() - start_time

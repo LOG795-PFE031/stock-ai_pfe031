@@ -85,7 +85,7 @@ class TrainingResponse(BaseModel):
     symbol: str
     model_type: str
     model_version: str
-    training_history: Dict[str, List[float]]
+    training_history: Dict[str, Any]
     metrics: Dict[str, Any]
     timestamp: str
 
