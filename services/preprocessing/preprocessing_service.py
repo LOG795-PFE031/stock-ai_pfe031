@@ -6,6 +6,14 @@ import pandas as pd
 from core.logging import logger
 from services import BaseService
 from services import DataService
+from .steps import (
+    DataCleaner,
+    DataNormalizer,
+    DataSplitter,
+    FeatureBuilder,
+    FeatureSelector,
+    InputFormatter,
+)
 
 
 class PreprocessingService(BaseService):
@@ -27,6 +35,8 @@ class PreprocessingService(BaseService):
         self,
         symbol: str,
         data: pd.DataFrame,
+        model_type: str,
+        phase: str,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
     ) -> pd.DataFrame:
@@ -49,9 +59,49 @@ class PreprocessingService(BaseService):
             generate preprocessed data
         """
 
-        # TODO Clean the data
-        # TODO Build features
-        # TODO etc..
+        # Clean the data
+        clean_data = DataCleaner(symbol, self.logger).process(data)
+
+        # Build features
+        features = FeatureBuilder(symbol, self.logger).process(clean_data)
+
+        # Select features
+        features = FeatureSelector(symbol, self.logger, model_type).process(features)
+
+        # Split the data
+        if phase == "training":
+            train_features, test_features = DataSplitter(symbol, self.logger).process(
+                features
+            )
+
+            train_norm_features = DataNormalizer(
+                symbol, self.logger, model_type, phase
+            ).process(train_features, fit=True)
+
+            test_norm_features = DataNormalizer(
+                symbol, self.logger, model_type, phase
+            ).process(test_features, fit=False)
+
+            X_train, y_train = InputFormatter(
+                symbol, self.logger, model_type, phase
+            ).process(train_norm_features)
+
+            X_test, y_test = InputFormatter(
+                symbol, self.logger, model_type, phase
+            ).process(test_norm_features)
+
+            return X_train, y_train, X_test, y_test
+
+        elif phase == "prediction":
+            norm_features = DataNormalizer(
+                symbol, self.logger, model_type, phase
+            ).process(features)
+
+            X = InputFormatter(symbol, self.logger, model_type, phase).process(
+                norm_features
+            )
+
+            return X
 
         # TODO store preproccessed Data (MinIO + Redis ?)
         # Save processed data
@@ -59,5 +109,3 @@ class PreprocessingService(BaseService):
         df_processed.to_csv(data_file, index=False)
         return df_processed
         """
-
-        return

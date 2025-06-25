@@ -5,11 +5,18 @@ import pandas as pd
 
 
 class FeatureBuilder(BaseDataProcessor):
+    """
+    Class that processes stock data to generate additional features, including:
+
+    - Returns (percentage and log returns)
+    - Technical indicators (Moving Averages, Volatility, RSI, MACD)
+    - Temporal features (Day of week, Month, Quarter)
+    """
 
     def __init__(self, symbol, logger):
         super().__init__(symbol, logger)
 
-    def process(self, data):
+    def process(self, data: pd.DataFrame) -> pd.DataFrame:
         try:
             # Add returns features
             data = self._calculate_and_add_returns(data)

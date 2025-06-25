@@ -1,5 +1,7 @@
 from ..abstract import BaseDataProcessor
 
+import pandas as pd
+
 
 class DataCleaner(BaseDataProcessor):
     """
@@ -9,7 +11,7 @@ class DataCleaner(BaseDataProcessor):
     def __init__(self, symbol, logger):
         super().__init__(symbol, logger)
 
-    def process(self, data):
+    def process(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         Cleans the data (pd.DataFrame).
 

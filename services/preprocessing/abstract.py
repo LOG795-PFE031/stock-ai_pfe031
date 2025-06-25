@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Dict
+from typing import Dict, Union
 
 import pandas as pd
+import numpy as np
 
 
 class BaseDataProcessor(ABC):
@@ -19,7 +20,9 @@ class BaseDataProcessor(ABC):
         self.logger = logger
 
     @abstractmethod
-    def process(self, data: pd.DataFrame) -> pd.DataFrame:
+    def process(
+        self, data: Union[pd.DataFrame, np.ndarray]
+    ) -> Union[pd.DataFrame, np.ndarray]:
         """
         Process the data.
 
@@ -27,6 +30,6 @@ class BaseDataProcessor(ABC):
             data (pd.DataFrame): Input stock data.
 
         Returns:
-            pd.DataFrame: Processed stock data.
+            pd.DataFrame|np.ndarray: Processed stock data.
         """
         pass
