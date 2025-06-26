@@ -43,21 +43,25 @@ class DataNormalizer(BaseDataProcessor):
         """
         Returns the appropriate scaler based on the model type.
         """
-
         try:
+
+            # Create it
+            scaler = ScalerFactory.create_scaler(self.model_type)
+
+            if scaler is None:
+                self.logger.info(
+                    f"No scaler required for model type '{self.model_type}'."
+                )
+                return None
+
             if fit:
-                # Create it
-                scaler = ScalerFactory.create_scaler(self.model_type)
-
-                if scaler:
-                    # Fit it
-                    scaler.fit(data)
-                    # Save it
-                    self.scaler_manager.save_scaler(scaler)
-
-                return scaler
+                # Fit and save the scaler
+                scaler.fit(data)
+                self.scaler_manager.save_scaler(scaler)
             else:
-                return self.scaler_manager.load_scaler()
+                scaler = self.scaler_manager.load_scaler()
+
+            return scaler
 
         except Exception as e:
             self.logger.error(

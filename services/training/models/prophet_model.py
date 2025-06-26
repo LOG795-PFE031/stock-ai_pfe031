@@ -13,7 +13,6 @@ MODEL_NAME = "prophet"
 class ProphetModel(BaseModel):
     def __init__(
         self,
-        MODEL_NAME,
         symbol,
         saver=JoblibSaver(),
         trainer=ProphetTrainer(),

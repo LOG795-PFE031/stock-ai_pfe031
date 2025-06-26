@@ -35,8 +35,9 @@ class LSTMTrainer(BaseTrainer):
             return model, history.history
 
         except Exception as e:
-            self.logger.error(f"Error training LSTM model for {self.symbol}: {str(e)}")
-            raise
+            raise RuntimeError(
+                f"Error occurred while training the LSTM model: {str(e)}"
+            ) from e
 
     def _build_model(self, input_shape: Tuple[int, ...]) -> Any:
         """Build LSTM model architecture."""

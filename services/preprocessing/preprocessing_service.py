@@ -22,10 +22,18 @@ from core.types import FormattedInput
 
 class PreprocessingService(BaseService):
 
-    def __init__(self, data_service: DataService):
+    def __init__(self):
         super().__init__()
-        self.data_service = data_service
         self.logger = logger["preprocessing"]
+
+    async def initialize(self) -> None:
+        """Initialize the preprocessing service."""
+        try:
+            self._initialized = True
+            self.logger.info("Preprocessing service initialized successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize prereprocessing service: {str(e)}")
+            raise
 
     async def fetch_scaler_path(
         self,
@@ -79,7 +87,6 @@ class PreprocessingService(BaseService):
         """
 
         try:
-
             # Clean the data
             clean_data = DataCleaner(symbol, self.logger).process(data)
 
@@ -167,3 +174,11 @@ class PreprocessingService(BaseService):
         df_processed.to_csv(data_file, index=False)
         return df_processed
         """
+
+    async def cleanup(self) -> None:
+        """Clean up resources."""
+        try:
+            self._initialized = False
+            self.logger.info("Preprocessing service cleaned up successfully")
+        except Exception as e:
+            self.logger.error(f"Error during data service cleanup: {str(e)}")

@@ -15,7 +15,7 @@ class SequenceFormatter(InputFormatterStrategy):
 
         if phase == "training":
             return FormattedInput(X=X, y=y)
-        elif phase == "predicttion":
+        elif phase == "prediction":
             # Returns the last sequence (for next day prediction)
             return FormattedInput(X=X[-1])
         else:
@@ -27,6 +27,11 @@ class SequenceFormatter(InputFormatterStrategy):
         """Create sequences for time series data."""
 
         sequence_length = config.preprocessing.SEQUENCE_LENGTH
+
+        if sequence_length > len(data):
+            raise ValueError(
+                f"Sequence length ({sequence_length}) is greater than the length of the data ({len(data)})."
+            )
 
         X, y = [], []
         for i in range(len(data) - sequence_length):

@@ -73,9 +73,7 @@ sandbox/lstm-stock-price-prediction/models/
 data/news/
 data/stock/
 
-models/general
-models/prophet
-models/specific
+models/
 
 stock-ai.code-workspace
 

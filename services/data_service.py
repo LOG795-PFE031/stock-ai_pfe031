@@ -10,7 +10,7 @@ import yfinance as yf
 from .base_service import BaseService
 from core.config import config
 from core.logging import logger
-from core.utils import calculate_technical_indicators
+from core.utils import get_start_date_from_trading_days
 from monitoring.prometheus_metrics import external_requests_total
 
 
@@ -117,9 +117,7 @@ class DataService(BaseService):
             if not end_date:
                 end_date = datetime.now(timezone.utc)
             if not start_date:
-                start_date = end_date - timedelta(
-                    days=self.config.data.STOCK_HISTORY_DAYS
-                )
+                start_date = get_start_date_from_trading_days(end_date)
 
             # Ensure dates are timezone-aware
             if start_date.tzinfo is None:
@@ -142,15 +140,8 @@ class DataService(BaseService):
             # data_file = self.stock_data_dir / f"raw_{symbol}.csv"
             # df.to_csv(data_file, index=False)
 
-            # TODO We need to separate this preprocessing step (DataCleaner)
             # Reset index to make Date a column
             df = df.reset_index()
-            # Ensure Date column is timezone-aware UTC
-            df["Date"] = pd.to_datetime(df["Date"], format="mixed", utc=True)
-
-            # Calculate technical indicators
-            # TODO We need to separate this preprocessing step (FeatureBuilder)
-            df = calculate_technical_indicators(df)
 
             # Save data
             data_file = self.stock_data_dir / f"{symbol}_data.csv"
@@ -252,7 +243,8 @@ class DataService(BaseService):
             else:
                 # Recalculate technical indicators
                 # TODO We need to separate the preprocessing step
-                df = calculate_technical_indicators(df)
+                # df = calculate_technical_indicators(df)
+                pass
 
             # Get enough data for technical indicators (60 days + max lookback period)
             # MA_20 needs 20 days, so we need at least 80 days to get 60 complete sequences
@@ -339,8 +331,11 @@ class DataService(BaseService):
             if not end_date:
                 end_date = datetime.now(timezone.utc)
             if not start_date:
-                start_date = end_date - timedelta(
-                    days=self.config.data.STOCK_HISTORY_DAYS
+                business_days = pd.bdate_range(
+                    end=end_date, periods=self.config.data.LOOKBACK_PERIOD_DAYS
+                )
+                start_date = (
+                    business_days[0].to_pydatetime().replace(tzinfo=timezone.utc)
                 )
 
             # Ensure dates are timezone-aware

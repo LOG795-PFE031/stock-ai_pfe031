@@ -13,20 +13,16 @@ from core.logging import logger
 from monitoring.prometheus_metrics import training_total
 from monitoring.utils import monitor_training_cpu_usage, monitor_training_memory_usage
 from .model_registry import ModelRegistry
-import training.models  # Dynamically imports models modules
+import services.training.models  # Dynamically imports models modules
 
 
 class TrainingService(BaseService):
     """Service for model training and evaluation."""
 
-    def __init__(self, model_service, data_service):
+    def __init__(self):
         super().__init__()
         self._initialized = False
         self.training_tasks = {}
-        self.scalers = {}
-        self.model_version = "0.1.0"
-        self.model_service = model_service
-        self.data_service = data_service
         self.logger = logger["training"]
 
         # days=self.config.data.STOCK_HISTORY_DAYS
@@ -111,7 +107,7 @@ class TrainingService(BaseService):
                 "timestamp": datetime.now().isoformat(),
             }
 
-        if not data or not data.X:
+        if not data or data.X is None:
             return {
                 "status": "error",
                 "error": f"No valid data for model training for {symbol}",
@@ -132,7 +128,7 @@ class TrainingService(BaseService):
             )
 
             # Create the model
-            model = ModelRegistry.create(model_type, symbol=symbol)
+            model = ModelRegistry.create(name=model_type, symbol=symbol)
 
             # Create training task
             task = asyncio.create_task(model.train_and_save(data))
@@ -157,10 +153,8 @@ class TrainingService(BaseService):
 
             return {
                 "status": "success",
-                "symbol": symbol,
-                "model_type": model_type,
-                "result": result,
                 "timestamp": datetime.now().isoformat(),
+                **result,
             }
 
         except Exception as e:

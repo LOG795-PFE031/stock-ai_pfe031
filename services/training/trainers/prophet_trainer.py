@@ -23,7 +23,7 @@ class ProphetTrainer(BaseTrainer):
             )
 
             # Add additional regressors
-            for feature in data.X.columns:
+            for feature in data.columns:
                 if feature not in ["Close", "Date", "ds", "y"]:
                     model.add_regressor(feature)
 
@@ -46,7 +46,6 @@ class ProphetTrainer(BaseTrainer):
             return model, history
 
         except Exception as e:
-            self.logger.error(
-                f"Error training Prophet model for {self.symbol}: {str(e)}"
-            )
-            raise
+            raise RuntimeError(
+                f"Error occurred while training the Prophet model: {str(e)}"
+            ) from e

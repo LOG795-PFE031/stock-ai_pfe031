@@ -13,7 +13,7 @@ class DataConfig(BaseModel):
     STOCK_DATA_DIR: Path = Path("data/stock")
     NEWS_DATA_DIR: Path = Path("data/news")
     LOGS_DIR: Path = Path("logs")
-    STOCK_HISTORY_DAYS: int = 365
+    LOOKBACK_PERIOD_DAYS: int = 365
     NEWS_HISTORY_DAYS: int = 7
     MAX_NEWS_ARTICLES: int = 100
     UPDATE_INTERVAL: int = 60  # minutes

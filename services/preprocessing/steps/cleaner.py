@@ -23,8 +23,8 @@ class DataCleaner(BaseDataProcessor):
 
         """
         try:
-            data = data.reset_index()
-            data["Date"] = data.to_datetime(data["Date"], format="mixed", utc=True)
+            # data = data.reset_index()
+            data["Date"] = pd.to_datetime(data["Date"], format="mixed", utc=True)
             data = data.ffill().bfill()
 
             return data

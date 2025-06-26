@@ -181,7 +181,7 @@ def get_date_range(
     else:
         # Use days parameter or default to config
         end = datetime.now()
-        days = days or config.data.STOCK_HISTORY_DAYS
+        days = days or config.data.LOOKBACK_PERIOD_DAYS
         start = end - timedelta(days=days)
 
     return start, end
@@ -205,3 +205,38 @@ def get_next_trading_day():
     # Return the first valid trading day after today
     next_day = schedule.index[0]
     return next_day.strftime("%Y-%m-%d")
+
+
+def get_start_date_from_trading_days(
+    end_date: datetime, lookback_days: int = config.data.LOOKBACK_PERIOD_DAYS
+) -> datetime:
+    """
+    Calculate the start date that is a specified number of NYSE trading days before a given end date.
+
+    Args:
+        end_date (datetime): The end date of the trading period (inclusive).
+        lookback_days (int, optional): The number of trading days to look back from
+            the end date. Defaults to config.data.STOCK_HISTORY_DAYS.
+
+    Returns:
+        datetime: The start date that is `lookback_days` NYSE trading sessions before `end_date`.
+    """
+    nyse = mcal.get_calendar("NYSE")
+
+    # Estimate a large enough date range to capture the required number of trading days
+    estimated_range_days = lookback_days * 2
+    rough_start = end_date - timedelta(days=estimated_range_days)
+
+    # Get valid NYSE trading days between the rough start and end date
+    sessions = nyse.valid_days(rough_start, end_date)
+
+    # Ensure we have at least the desired number of trading days
+    if len(sessions) < lookback_days:
+        raise ValueError(
+            f"Only {len(sessions)} trading days available, need {lookback_days}."
+        )
+
+    # Select the start date that is exactly `lookback_days` trading sessions before the end date
+    start_date = sessions[-lookback_days]
+
+    return start_date

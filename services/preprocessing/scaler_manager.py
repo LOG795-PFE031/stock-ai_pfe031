@@ -47,10 +47,15 @@ class ScalerManager:
             Path: Path to the scaler file.
         """
         # Directory of the scaler
-        scaler_dir = config.preprocessing.SCALERS_DIR / self.model_type / self.symbol
+        scaler_dir = (
+            config.preprocessing.SCALERS_DIR
+            / self.model_type
+            / self.phase
+            / self.symbol
+        )
         scaler_dir.mkdir(parents=True, exist_ok=True)
 
         # Full scaler path (with the corresponding phase)
-        scaler_path = scaler_dir / f"{self.phase}_scaler.gz"
+        scaler_path = scaler_dir / "scaler.gz"
 
         return scaler_path

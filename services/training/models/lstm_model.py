@@ -13,7 +13,6 @@ MODEL_NAME = "lstm"
 class LSTMModel(BaseModel):
     def __init__(
         self,
-        MODEL_NAME,
         symbol,
         saver=KerasSaver(),
         trainer=LSTMTrainer(),

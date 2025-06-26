@@ -68,7 +68,7 @@ class BaseModel(ABC, PythonModel):
                 mlflow.pyfunc.log_model(
                     python_model=self.predictor,
                     artifact_path=self.model_name,
-                    input_example=data,
+                    # input_example=data.X,
                     registered_model_name=self.model_name,
                     artifacts={"model": str(saved_training_model_path)},
                 )
@@ -95,4 +95,4 @@ class BaseModel(ABC, PythonModel):
 
     def _get_training_model_dir(self) -> Path:
         """Return the path to the model training directory"""
-        return self.model_root_dir / self.symbol / "training"
+        return self.model_root_dir / self.model_type / "training" / self.symbol
