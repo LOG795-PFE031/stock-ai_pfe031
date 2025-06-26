@@ -27,14 +27,6 @@ class PreprocessingService(BaseService):
         self.data_service = data_service
         self.logger = logger["preprocessing"]
 
-    async def collect_preprocessed_data(
-        self,
-        symbol: str,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-    ) -> pd.DataFrame:
-        pass
-
     async def fetch_scaler_path(
         self,
         symbol: str,
@@ -86,56 +78,88 @@ class PreprocessingService(BaseService):
             generate preprocessed data
         """
 
-        # Clean the data
-        clean_data = DataCleaner(symbol, self.logger).process(data)
+        try:
 
-        # Build features
-        features = FeatureBuilder(symbol, self.logger).process(clean_data)
+            # Clean the data
+            clean_data = DataCleaner(symbol, self.logger).process(data)
 
-        # Select features
-        features = FeatureSelector(symbol, self.logger, model_type).process(features)
+            # Build features
+            features = FeatureBuilder(symbol, self.logger).process(clean_data)
 
-        # Split the data
-        if phase == "training":
-            train_features, test_features = DataSplitter(symbol, self.logger).process(
+            # Select features
+            features = FeatureSelector(symbol, self.logger, model_type).process(
                 features
             )
 
-            # Normalize the training data
-            train_norm_features = DataNormalizer(
-                symbol, self.logger, model_type, phase
-            ).process(train_features, fit=True)
+            # Split the data
+            if phase == "training":
+                train_features, test_features = DataSplitter(
+                    symbol, self.logger
+                ).process(features)
 
-            # Normalize the test data
-            test_norm_features = DataNormalizer(
-                symbol, self.logger, model_type, phase
-            ).process(test_features, fit=False)
+                # Normalize the training data
+                train_norm_features = DataNormalizer(
+                    symbol, self.logger, model_type, phase
+                ).process(train_features, fit=True)
 
-            # Format the data to create the training input
-            training_dataset = InputFormatter(
-                symbol, self.logger, model_type, phase
-            ).process(train_norm_features)
+                # Normalize the test data
+                test_norm_features = DataNormalizer(
+                    symbol, self.logger, model_type, phase
+                ).process(test_features, fit=False)
 
-            # Format the data to create the test input
-            test_dataset = InputFormatter(
-                symbol, self.logger, model_type, phase
-            ).process(test_norm_features)
+                # Format the data to create the training input
+                training_dataset = InputFormatter(
+                    symbol, self.logger, model_type, phase
+                ).process(train_norm_features)
 
-            return training_dataset, test_dataset
+                # Format the data to create the test input
+                test_dataset = InputFormatter(
+                    symbol, self.logger, model_type, phase
+                ).process(test_norm_features)
 
-        elif phase == "prediction":
+                return training_dataset, test_dataset
 
-            # Normalize the data
-            norm_features = DataNormalizer(
-                symbol, self.logger, model_type, phase
-            ).process(features)
+            elif phase == "prediction":
 
-            # Format the data to create the prediction input
-            prediction_input = InputFormatter(
-                symbol, self.logger, model_type, phase
-            ).process(norm_features)
+                # Normalize the data
+                norm_features = DataNormalizer(
+                    symbol, self.logger, model_type, phase
+                ).process(features)
 
-            return prediction_input
+                # Format the data to create the prediction input
+                prediction_input = InputFormatter(
+                    symbol, self.logger, model_type, phase
+                ).process(norm_features)
+
+                return prediction_input
+
+            elif phase == "evaluation":
+                train_features, test_features = DataSplitter(
+                    symbol, self.logger
+                ).process(features)
+
+                # Normalize the test data with prediction-phase scaler
+                test_norm_features = DataNormalizer(
+                    symbol, self.logger, model_type, "prediction"
+                ).process(test_features, fit=False)
+
+                # Format input using training-phase logic (expects X and y)
+                eval_dataset = InputFormatter(
+                    symbol, self.logger, model_type, "training"
+                ).process(test_norm_features)
+
+                return eval_dataset
+
+            else:
+                raise ValueError(
+                    f"Unknown phase '{phase}'. Expected one of: 'training', 'prediction', or 'evaluation'."
+                )
+
+        except Exception as e:
+            self.logger.error(
+                f"Error preprocessing the stock data for model {model_type} for {symbol} during {phase} phase: {str(e)}"
+            )
+            raise
 
         # TODO store preproccessed Data (MinIO + Redis ?)
         # Save processed data
