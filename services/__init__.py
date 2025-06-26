@@ -8,6 +8,7 @@ from .model_service import ModelService
 from .news_service import NewsService
 from .prediction_service import PredictionService
 from .rabbitmq_service import RabbitMQService
-from .training_service import TrainingService
+from .training import TrainingService
 from .visualization_service import VisualizationService
-from .preprocessing.preprocessing_service import PreprocessingService
+from .preprocessing import PreprocessingService
+from .orchestration import OrchestrationService

@@ -1,7 +1,7 @@
 from core.logging import logger
 from services import BaseService
 
-from .pipelines import (
+from .flows import (
     run_evaluation_pipeline,
     run_prediction_pipeline,
     run_training_pipeline,
@@ -38,13 +38,13 @@ class OrchestrationService(BaseService):
         start_date: str = None,
         end_date: str = None,
     ):
-        # TODO What parameters
+        # TODO What parameters + What to return ?
         run_training_pipeline()
 
     async def run_prediction_pipeline(self, symbol: str, model_type: str):
-        # TODO What parameters
-        run_prediction_pipeline()
+        # TODO What parameters + What to return ?
+        run_prediction_pipeline(self.prediction_service)
 
     async def run_evaluation_pipeline(self, symbol: str, model_type: str):
-        # TODO What parameters
+        # TODO What parameters + What to return ?
         run_evaluation_pipeline()

@@ -1,5 +1,5 @@
 from services.preprocessing.abstract import BaseDataProcessor
-from services.preprocessing.types import FormattedInput
+from core.types import FormattedInput
 from .strategies import InputFormatterStrategy, SequenceFormatter, ProphetFormatter
 
 

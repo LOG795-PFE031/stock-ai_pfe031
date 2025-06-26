@@ -1,7 +1,7 @@
-from prefect import Flow, Task
+from prefect import flow
 
 
 # TODO What parameters for the training pipeline
-@Flow
+@flow
 def run_training_pipeline():
     pass

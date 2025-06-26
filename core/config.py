@@ -20,7 +20,7 @@ class DataConfig(BaseModel):
 
 
 class PreprocessingConfig(BaseModel):
-    """Preprocessing configuration"""
+    """Preprocessing service configuration"""
 
     SCALERS_DIR: Path = Path("scalers")
     TRAINING_SPLIT_RATIO: float = 0.8
@@ -30,6 +30,7 @@ class PreprocessingConfig(BaseModel):
 class ModelConfig(BaseModel):
     """Model configuration."""
 
+    MODELS_ROOT_DIR: Path = Path("models")
     PREDICTION_MODELS_DIR: Path = Path("models/specific")
     PROPHET_MODELS_DIR: Path = Path("models/prophet")
     NEWS_MODELS_DIR: Path = Path("models/news")

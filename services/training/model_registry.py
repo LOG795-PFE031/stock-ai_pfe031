@@ -2,10 +2,10 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from training.trainers.base_trainer import BaseTrainer
+    from training.models.base_model import BaseModel
 
 
-class TrainerRegistry:
+class ModelRegistry:
     _registry = {}
 
     @classmethod
@@ -17,16 +17,16 @@ class TrainerRegistry:
         return inner_wrapper
 
     @classmethod
-    def create(cls, name, **kwargs) -> "BaseTrainer":
+    def create(cls, name, **kwargs) -> "BaseModel":
         if name not in cls._registry:
-            available = cls.list_trainers()
+            available = cls.list_models()
             raise ValueError(
-                f"Model '{name}' not found in registry. Available trainers: {available}"
+                f"Model '{name}' not found in registry. Available models: {available}"
             )
         return cls._registry[name](**kwargs)
 
     @classmethod
-    def list_trainers(cls):
+    def list_models(cls):
         return list(cls._registry.keys())
 
     @classmethod

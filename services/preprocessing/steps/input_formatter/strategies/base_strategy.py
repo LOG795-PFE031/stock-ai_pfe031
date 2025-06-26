@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import pandas as pd
 
-from services.preprocessing.types import FormattedInput
+from core.types import FormattedInput
 
 
 class InputFormatterStrategy(ABC):

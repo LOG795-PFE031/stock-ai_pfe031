@@ -18,7 +18,7 @@ import time
 from .base_service import BaseService
 from .data_service import DataService
 from .model_service import ModelService
-from .training_service import TrainingService
+from .training import TrainingService
 from .rabbitmq_service import RabbitMQService
 from core.utils import (
     calculate_technical_indicators,

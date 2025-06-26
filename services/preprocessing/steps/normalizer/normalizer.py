@@ -1,5 +1,5 @@
-from .scaler_manager import ScalerManager
 from .scaler_factory import ScalerFactory
+from services.preprocessing.scaler_manager import ScalerManager
 from services.preprocessing.abstract import BaseDataProcessor
 
 import numpy as np

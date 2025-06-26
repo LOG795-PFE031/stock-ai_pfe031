@@ -1,5 +1,6 @@
 from datetime import datetime
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union, Tuple
 
 import pandas as pd
 
@@ -14,8 +15,9 @@ from .steps import (
     FeatureSelector,
     InputFormatter,
 )
+from .scaler_manager import ScalerManager
 
-from .types import FormattedInput
+from core.types import FormattedInput
 
 
 class PreprocessingService(BaseService):
@@ -33,6 +35,29 @@ class PreprocessingService(BaseService):
     ) -> pd.DataFrame:
         pass
 
+    async def fetch_scaler_path(
+        self,
+        symbol: str,
+        model_type: str,
+        phase: str,
+    ) -> Path:
+        """
+        Fetch the path to the saved scaler for a given symbol, model type, and phase.
+
+        Returns:
+            Path: Path to the saved scaler file.
+        """
+
+        scaler_path = ScalerManager(
+            model_type=model_type, symbol=symbol, phase=phase
+        ).get_scaler_path()
+
+        if scaler_path.exists():
+            return scaler_path
+        else:
+            self.logger.error(f"Scaler file not found at path: {scaler_path}")
+            raise FileNotFoundError()
+
     async def get_preprocessed_data(
         self,
         symbol: str,
@@ -41,7 +66,7 @@ class PreprocessingService(BaseService):
         phase: str,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-    ) -> FormattedInput:
+    ) -> Union[FormattedInput, Tuple[FormattedInput, FormattedInput]]:
         """
         Preprocess the stock data for models input.
 
@@ -76,18 +101,22 @@ class PreprocessingService(BaseService):
                 features
             )
 
+            # Normalize the training data
             train_norm_features = DataNormalizer(
                 symbol, self.logger, model_type, phase
             ).process(train_features, fit=True)
 
+            # Normalize the test data
             test_norm_features = DataNormalizer(
                 symbol, self.logger, model_type, phase
             ).process(test_features, fit=False)
 
+            # Format the data to create the training input
             training_dataset = InputFormatter(
                 symbol, self.logger, model_type, phase
             ).process(train_norm_features)
 
+            # Format the data to create the test input
             test_dataset = InputFormatter(
                 symbol, self.logger, model_type, phase
             ).process(test_norm_features)
@@ -95,10 +124,13 @@ class PreprocessingService(BaseService):
             return training_dataset, test_dataset
 
         elif phase == "prediction":
+
+            # Normalize the data
             norm_features = DataNormalizer(
                 symbol, self.logger, model_type, phase
             ).process(features)
 
+            # Format the data to create the prediction input
             prediction_input = InputFormatter(
                 symbol, self.logger, model_type, phase
             ).process(norm_features)

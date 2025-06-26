@@ -1,3 +1,4 @@
+from pathlib import Path
 import joblib
 
 from core.config import config
@@ -17,7 +18,7 @@ class ScalerManager:
             scaler: A fitted scikit-learn scaler to be saved.
         """
         try:
-            joblib.dump(scaler, self._get_scaler_path())
+            joblib.dump(scaler, self.get_scaler_path())
         except Exception as e:
             raise e
 
@@ -28,7 +29,7 @@ class ScalerManager:
         Returns:
             Any (sklearn scalers): The loaded scaler instance.
         """
-        scaler_path = self._get_scaler_path()
+        scaler_path = self.get_scaler_path()
 
         if not scaler_path.exists:
             raise FileNotFoundError(
@@ -37,7 +38,14 @@ class ScalerManager:
 
         return joblib.load(scaler_path)
 
-    def _get_scaler_path(self):
+    def get_scaler_path(self) -> Path:
+        """
+        Returns the full path to the scaler file based on model type, symbol, and phase.
+        Creates the directory if it doesn't exist.
+
+        Returns:
+            Path: Path to the scaler file.
+        """
         # Directory of the scaler
         scaler_dir = config.preprocessing.SCALERS_DIR / self.model_type / self.symbol
         scaler_dir.mkdir(parents=True, exist_ok=True)

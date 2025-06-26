@@ -6,13 +6,14 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta, timezone
 import asyncio
 
-from .base_service import BaseService
+from ..base_service import BaseService
 from core.utils import validate_stock_symbol
+from core.types import FormattedInput
 from core.logging import logger
 from monitoring.prometheus_metrics import training_total
 from monitoring.utils import monitor_training_cpu_usage, monitor_training_memory_usage
-from training.trainer_registry import TrainerRegistry
-import training.trainers  # Dynamically imports trainer modules
+from .model_registry import ModelRegistry
+import training.models  # Dynamically imports models modules
 
 
 class TrainingService(BaseService):
@@ -27,6 +28,8 @@ class TrainingService(BaseService):
         self.model_service = model_service
         self.data_service = data_service
         self.logger = logger["training"]
+
+        # days=self.config.data.STOCK_HISTORY_DAYS
 
     async def initialize(self) -> None:
         """Initialize the training service."""
@@ -54,7 +57,7 @@ class TrainingService(BaseService):
     async def get_trainers(self) -> Dict[str, Any]:
         """Retrieve the list of available training trainers (from the TrainerFactory)"""
         try:
-            trainers = TrainerRegistry.list_trainers()
+            trainers = ModelRegistry.list_models()
             return {"status": "success", "result": trainers}
 
         except Exception as e:
@@ -65,8 +68,7 @@ class TrainingService(BaseService):
         self,
         symbol: str,
         model_type: str,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        data: FormattedInput,
         **kwargs,
     ) -> Dict[str, Any]:
         """
@@ -100,7 +102,7 @@ class TrainingService(BaseService):
                 "timestamp": datetime.now().isoformat(),
             }
 
-        if model_type not in TrainerRegistry.list_trainers():
+        if model_type not in ModelRegistry.list_models():
             return {
                 "status": "error",
                 "error": f"Unsupported model type: {model_type}",
@@ -109,22 +111,16 @@ class TrainingService(BaseService):
                 "timestamp": datetime.now().isoformat(),
             }
 
+        if not data or not data.X:
+            return {
+                "status": "error",
+                "error": f"No valid data for model training for {symbol}",
+                "symbol": symbol,
+                "model_type": model_type,
+                "timestamp": datetime.now().isoformat(),
+            }
+
         try:
-
-            # Set default date range if not provided
-            if not end_date:
-                end_date = datetime.now(timezone.utc)
-            if not start_date:
-                start_date = end_date - timedelta(
-                    days=self.config.data.STOCK_HISTORY_DAYS
-                )
-
-            # Ensure dates are timezone-aware
-            if start_date.tzinfo is None:
-                start_date = start_date.replace(tzinfo=timezone.utc)
-            if end_date.tzinfo is None:
-                end_date = end_date.replace(tzinfo=timezone.utc)
-
             # Begin to monitor cpu usage
             monitor_task = asyncio.create_task(
                 monitor_training_cpu_usage(model_type, symbol)
@@ -135,18 +131,17 @@ class TrainingService(BaseService):
                 monitor_training_memory_usage(model_type, symbol)
             )
 
+            # Create the model
+            model = ModelRegistry.create(model_type, symbol=symbol)
+
             # Create training task
-            task = asyncio.create_task(
-                TrainerRegistry.create(model_type).train_and_evaluate(
-                    symbol, start_date, end_date, **kwargs
-                )
-            )
+            task = asyncio.create_task(model.train_and_save(data))
 
             # Store task
             task_key = f"{symbol}_{model_type}"
             self.training_tasks[task_key] = task
 
-            # Wait for completion
+            # Wait for training completion
             result = await task
 
             # Stop the monitor after training completes
