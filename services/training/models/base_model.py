@@ -11,6 +11,7 @@ from mlflow.pyfunc import PythonModel
 from .saving_strategies import BaseSaver
 from core.config import config
 from core.types import FormattedInput
+from core.utils import get_model_name
 from core.logging import logger
 from services.training.trainers import BaseTrainer
 
@@ -36,7 +37,7 @@ class BaseModel(ABC, PythonModel):
         self.config = config
         self.logger = logger["training"]
         self.model_root_dir = self.config.model.MODELS_ROOT_DIR
-        self.model_name = self._get_model_name()
+        self.model_name = get_model_name(model_type, symbol)
 
     async def train_and_save(self, data: FormattedInput) -> str:
         """
@@ -61,8 +62,9 @@ class BaseModel(ABC, PythonModel):
                 model, training_history = await self.trainer.train(data)
 
                 # Save the model (locally)
-                saved_training_model_path = self.get_save_path()
-                await self.saver.save(model, saved_training_model_path)
+                saved_training_model_path = await self.saver.save(
+                    model, base_path=self._get_training_model_dir()
+                )
 
                 # Register the model to MLFlow
                 mlflow.pyfunc.log_model(
@@ -84,14 +86,6 @@ class BaseModel(ABC, PythonModel):
             raise RuntimeError(
                 f"Failed to train and save model '{self.model_name}': {e}"
             ) from e
-
-    @abstractmethod
-    def get_save_path(self) -> Path:
-        """Return the full path where the trained model should be saved."""
-        pass
-
-    def _get_model_name(self):
-        return f"{self.model_type}_{self.symbol}"
 
     def _get_training_model_dir(self) -> Path:
         """Return the path to the model training directory"""

@@ -240,3 +240,17 @@ def get_start_date_from_trading_days(
     start_date = sessions[-lookback_days]
 
     return start_date
+
+
+def get_model_name(model_type: str, symbol: str):
+    """
+    Generate a standardized model name by combining the model type and stock symbol.
+
+    Args:
+        model_type (str): The model type
+        symbol (str): The stock ticker symbol
+
+    Returns:
+        str: A string representing the model name
+    """
+    return f"{model_type}_{symbol}"

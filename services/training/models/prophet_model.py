@@ -19,6 +19,3 @@ class ProphetModel(BaseModel):
         predictor=ProphetPredictor(),
     ):
         super().__init__(MODEL_NAME, symbol, saver, trainer, predictor)
-
-    def get_save_path(self):
-        return self._get_training_model_dir() / f"{self.model_name}.joblib"
