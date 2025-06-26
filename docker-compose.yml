@@ -41,6 +41,16 @@ services:
       - microservices_auth
     depends_on:
       - stock-ai
+  
+  mlflow:
+    build:
+      context: .
+      dockerfile: deployment/Dockerfile
+    image: mlflow/mlflow:latest
+    container_name: Deployment-MlFlow
+    ports : 
+      - "5000:5000"
+    
       
 networks:
   microservices_auth:
