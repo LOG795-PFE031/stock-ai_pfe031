@@ -8,7 +8,7 @@ from .flows import (
     run_data_pipeline,
 )
 from services import BaseService
-from services import PredictionService
+from services import DeploymentService
 from services import TrainingService
 from services import PreprocessingService
 from services import DataService
@@ -22,14 +22,13 @@ class OrchestrationService(BaseService):
         data_service: DataService,
         preprocessing_service: PreprocessingService,
         training_service: TrainingService,
-        prediction_service: PredictionService,
+        deployment_service: DeploymentService,
     ):
         super().__init__()
-        self._initialized = False
         self.data_service = data_service
         self.preprocessing_service = preprocessing_service
         self.training_service = training_service
-        self.prediction_service = prediction_service
+        self.deployment_service = deployment_service
         self.logger = logger["orchestration"]
 
     async def initialize(self) -> None:
@@ -60,7 +59,7 @@ class OrchestrationService(BaseService):
             self.data_service,
             self.preprocessing_service,
             self.training_service,
-            None,
+            self.deployment_service,
         )
 
     async def run_prediction_pipeline(self, model_type: str, symbol: str):
@@ -72,7 +71,11 @@ class OrchestrationService(BaseService):
     async def run_evaluation_pipeline(self, model_type: str, symbol: str):
         # TODO Complete this :
         return await run_evaluation_pipeline(
-            model_type, symbol, self.data_service, self.preprocessing_service, None
+            model_type,
+            symbol,
+            self.data_service,
+            self.preprocessing_service,
+            self.deployment_service,
         )
 
     async def cleanup(self) -> None:

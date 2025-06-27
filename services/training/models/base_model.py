@@ -37,7 +37,7 @@ class BaseModel(ABC, PythonModel):
         self.config = config
         self.logger = logger["training"]
         self.model_root_dir = self.config.model.MODELS_ROOT_DIR
-        self.model_name = get_model_name(model_type, symbol)
+        self.model_name = get_model_name(model_type, symbol, "training")
 
     async def train_and_save(self, data: FormattedInput) -> str:
         """
@@ -77,8 +77,7 @@ class BaseModel(ABC, PythonModel):
 
             return {
                 "model_name": self.model_name,
-                "model_type": self.model_type,
-                "symbol": self.symbol,
+                "run_info": run.info,
                 "training_history": training_history,
             }
 
