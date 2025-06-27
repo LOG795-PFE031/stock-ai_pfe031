@@ -70,3 +70,4 @@ newsapi-python>=0.2.6
 
 # deployment dependencies
 mlflow
+tensorflow
