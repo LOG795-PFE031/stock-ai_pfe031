@@ -242,15 +242,17 @@ def get_start_date_from_trading_days(
     return start_date
 
 
-def get_model_name(model_type: str, symbol: str):
+def get_model_name(model_type: str, symbol: str, phase: str):
     """
-    Generate a standardized model name by combining the model type and stock symbol.
+    Generate a standardized model name by combining the model type
+    and stock symbol for a given phase (training and prediction).
 
     Args:
         model_type (str): The model type
         symbol (str): The stock ticker symbol
+        phase (str): The phase of
 
     Returns:
         str: A string representing the model name
     """
-    return f"{model_type}_{symbol}"
+    return f"{model_type}_{symbol}_{phase}"

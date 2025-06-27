@@ -12,3 +12,4 @@ from .training import TrainingService
 from .visualization_service import VisualizationService
 from .preprocessing import PreprocessingService
 from .orchestration import OrchestrationService
+from .deployment import DeploymentService
