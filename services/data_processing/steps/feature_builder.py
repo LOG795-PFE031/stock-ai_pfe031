@@ -13,9 +13,6 @@ class FeatureBuilder(BaseDataProcessor):
     - Temporal features (Day of week, Month, Quarter)
     """
 
-    def __init__(self, symbol, logger):
-        super().__init__(symbol, logger)
-
     def process(self, data: pd.DataFrame) -> pd.DataFrame:
         try:
             # Add returns features
@@ -29,10 +26,7 @@ class FeatureBuilder(BaseDataProcessor):
 
             return data
         except Exception as e:
-            self.logger.error(
-                f"Error building new features from stock data for symbol {self.symbol}: {e}"
-            )
-            raise
+            raise RuntimeError(f"Error building new features from stock data") from e
 
     def _calculate_and_add_returns(self, data: pd.DataFrame) -> pd.DataFrame:
         """
@@ -60,8 +54,7 @@ class FeatureBuilder(BaseDataProcessor):
             return data
 
         except Exception as e:
-            self.logger.error(f"Error calculating log returns: {str(e)}")
-            raise
+            raise RuntimeError(f"Error calculating log returns.") from e
 
     def _calculate_and_add_technical_indicators(
         self, data: pd.DataFrame
@@ -109,8 +102,7 @@ class FeatureBuilder(BaseDataProcessor):
             return data
 
         except Exception as e:
-            self.logger.error(f"Error calculating technical indicators: {str(e)}")
-            raise
+            raise RuntimeError(f"Error calculating technical indicators.") from e
 
     def _add_temporal_features(self, data: pd.DataFrame) -> pd.DataFrame:
         """
@@ -141,5 +133,4 @@ class FeatureBuilder(BaseDataProcessor):
             return data
 
         except Exception as e:
-            self.logger.error(f"Error adding the temporal features: {str(e)}")
-            raise
+            raise RuntimeError(f"Error adding the temporal features.") from e

@@ -8,7 +8,7 @@ import asyncio
 
 from ..base_service import BaseService
 from core.utils import validate_stock_symbol
-from core.types import FormattedInput
+from core.types import PreprocessedData
 from core.logging import logger
 from monitoring.prometheus_metrics import training_total
 from monitoring.utils import monitor_training_cpu_usage, monitor_training_memory_usage
@@ -53,7 +53,11 @@ class TrainingService(BaseService):
     async def get_trainers(self) -> Dict[str, Any]:
         """Retrieve the list of available training trainers (from the TrainerFactory)"""
         try:
+            self.logger.info("Starting to retrieve the list of available trainers.")
             trainers = ModelRegistry.list_models()
+            self.logger.info(
+                f"Successfully retrieved {len(trainers)} trainers from ModelRegistry."
+            )
             return {"status": "success", "result": trainers}
 
         except Exception as e:
@@ -64,7 +68,7 @@ class TrainingService(BaseService):
         self,
         symbol: str,
         model_type: str,
-        data: FormattedInput,
+        data: PreprocessedData,
         **kwargs,
     ) -> Dict[str, Any]:
         """
@@ -81,6 +85,7 @@ class TrainingService(BaseService):
             Dictionary containing training results
         """
         if not self._initialized:
+            self.logger.error("Training service not initialized.")
             return {
                 "status": "error",
                 "error": "Training service not initialized",
@@ -90,6 +95,7 @@ class TrainingService(BaseService):
             }
 
         if not validate_stock_symbol(symbol):
+            self.logger.error(f"Invalid stock symbol: {symbol}")
             return {
                 "status": "error",
                 "error": f"Invalid stock symbol: {symbol}",
@@ -99,6 +105,7 @@ class TrainingService(BaseService):
             }
 
         if model_type not in ModelRegistry.list_models():
+            self.logger.error(f"Unsupported model type: {model_type}")
             return {
                 "status": "error",
                 "error": f"Unsupported model type: {model_type}",
@@ -108,6 +115,7 @@ class TrainingService(BaseService):
             }
 
         if not data or data.X is None:
+            self.logger.error(f"No valid data for model training for {symbol}.")
             return {
                 "status": "error",
                 "error": f"No valid data for model training for {symbol}",
@@ -132,6 +140,9 @@ class TrainingService(BaseService):
 
             # Create training task
             task = asyncio.create_task(model.train_and_save(data))
+            self.logger.debug(
+                f"Training task for {model_type} model for {symbol} has started."
+            )
 
             # Store task
             task_key = f"{symbol}_{model_type}"
@@ -139,6 +150,7 @@ class TrainingService(BaseService):
 
             # Wait for training completion
             result = await task
+            self.logger.info(f"Training completed for {model_type} model for {symbol}.")
 
             # Stop the monitor after training completes
             monitor_task.cancel()
@@ -150,6 +162,10 @@ class TrainingService(BaseService):
             training_total.labels(
                 model_type=model_type, symbol=symbol, result="sucess"
             ).inc()
+
+            self.logger.info(
+                f"Training successful for {model_type} model for {symbol}."
+            )
 
             return {
                 "status": "success",

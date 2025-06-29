@@ -1,0 +1,51 @@
+import numpy as np
+
+from services.data_processing.abstract import BaseDataProcessor
+from .output_strategies import (
+    ProphetOutputFormatter,
+    NumpyOutputFormatter,
+    OutputFormatterStrategy,
+)
+from core.types import PreprocessedData
+
+
+class OutputFormatter(BaseDataProcessor):
+    """
+    Class that formats model output data for different
+    model types using the appropriate strategy.
+    """
+
+    def __init__(self, model_type: str):
+        self.model_type = model_type
+
+    def process(self, data) -> np.ndarray:
+        """
+        Formats model output data
+
+        Args:
+            data (Any): Model output data
+
+        Returns:
+            np.ndarray: Formatted model output data
+        """
+        try:
+
+            # Extract the targets
+            y = data.y
+
+            if isinstance(y, list) or isinstance(y, np.ndarray):
+                y = np.array(y)  # Convert to numpy array (for list instance)
+                data_formatter = NumpyOutputFormatter()
+            else:
+                data_formatter = self._get_data_formatter()
+
+            formatted_y = data_formatter.format(y)
+            return PreprocessedData(y=formatted_y)
+        except Exception as e:
+            raise RuntimeError("Error while formatting (output) the data") from e
+
+    def _get_data_formatter(self) -> OutputFormatterStrategy:
+        if self.model_type == "prophet":
+            return ProphetOutputFormatter()
+        else:
+            raise NotImplemented(f"No output formatter for model {self.model_type}")

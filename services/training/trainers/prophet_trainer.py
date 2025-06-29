@@ -3,12 +3,12 @@ import pandas as pd
 from typing import Any, Tuple, Dict
 
 from .base_trainer import BaseTrainer
-from core.types import FormattedInput
+from core.types import PreprocessedData
 
 
 class ProphetTrainer(BaseTrainer):
     async def train(
-        self, data: FormattedInput[pd.DataFrame, pd.DataFrame], **kwargs
+        self, data: PreprocessedData[pd.DataFrame], **kwargs
     ) -> Tuple[Prophet, Dict[str, Any]]:
         try:
             # Extract the features (only X, since the Prophet model is trained using a DataFrame)

@@ -1,18 +1,15 @@
 from dataclasses import dataclass
 from typing import Generic, Optional, TypeVar
-import pandas as pd
 import numpy as np
 
-TX = TypeVar("TX")  # Type of X
-TY = TypeVar("TY")  # Type of y
+TX = TypeVar("TX")  # Type of X (Usually a numpy array or a pandas DataFrame)
 
 
-# Represents the processed output from the preprocessing service.
-# This is also used as the input to the training service for model training.
+# Represents the processed output from the processing service.
 @dataclass
-class FormattedInput(Generic[TX, TY]):
+class PreprocessedData(Generic[TX]):
     X: Optional[TX] = None
-    y: Optional[TY] = None
+    y: Optional[np.ndarray] = None
 
 
 # Represents the evaluation metrics expected from a model

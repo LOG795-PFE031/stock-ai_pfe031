@@ -1,5 +1,4 @@
 from core.logging import logger
-from services import BaseService
 
 from .flows import (
     run_evaluation_pipeline,
@@ -7,11 +6,12 @@ from .flows import (
     run_training_pipeline,
     run_data_pipeline,
 )
-from services import BaseService
-from services import DeploymentService
-from services import TrainingService
-from services import PreprocessingService
-from services import DataService
+from ..base_service import BaseService
+from ..deployment import DeploymentService
+from ..training import TrainingService
+from ..data_processing import DataProcessingService
+from ..evaluation_service import EvaluationService
+from ..data_service import DataService
 from core.logging import logger
 
 
@@ -20,15 +20,17 @@ class OrchestrationService(BaseService):
     def __init__(
         self,
         data_service: DataService,
-        preprocessing_service: PreprocessingService,
+        preprocessing_service: DataProcessingService,
         training_service: TrainingService,
         deployment_service: DeploymentService,
+        evaluation_service: EvaluationService,
     ):
         super().__init__()
         self.data_service = data_service
         self.preprocessing_service = preprocessing_service
         self.training_service = training_service
         self.deployment_service = deployment_service
+        self.evaluation_service = evaluation_service
         self.logger = logger["orchestration"]
 
     async def initialize(self) -> None:
@@ -52,36 +54,118 @@ class OrchestrationService(BaseService):
         start_date: str = None,
         end_date: str = None,
     ):
-        # TODO Complete this :
-        return await run_training_pipeline(
-            model_type,
-            symbol,
-            self.data_service,
-            self.preprocessing_service,
-            self.training_service,
-            self.deployment_service,
-        )
+        """
+        Run the full training pipeline for the specified model and symbol.
+
+        Args:
+            model_type (str): The type of model to be used (e.g., 'LSTM', 'Prophet').
+            symbol (str): The stock symbol for which the model is being trained.
+
+        Returns:
+            result: The result of the training pipeline execution.
+        """
+
+        try:
+            self.logger.info(
+                f"Starting training pipeline for {model_type} model for {symbol}."
+            )
+
+            # Run the training pipeline
+            result = await run_training_pipeline(
+                model_type,
+                symbol,
+                self.data_service,
+                self.preprocessing_service,
+                self.training_service,
+                self.deployment_service,
+                self.evaluation_service,
+            )
+
+            self.logger.info(
+                f"Training pipeline completed successfully for {model_type} model for {symbol}."
+            )
+
+            return result
+        except Exception as e:
+            self.logger.error(
+                f"Error running the training pipeline for model {model_type} for {symbol}: {str(e)}"
+            )
+            raise
 
     async def run_prediction_pipeline(self, model_type: str, symbol: str):
-        # TODO Complete this :
-        return await run_prediction_pipeline(
-            model_type, symbol, self.data_service, self.preprocessing_service
-        )
+        """
+        Run the full prediction pipeline for the specified model and symbol.
+
+        Args:
+            model_type (str): The type of model to be used (e.g., 'LSTM', 'Prophet').
+            symbol (str): The stock symbol for which the model is being used for prediction.
+
+        Returns:
+            result: The result of the prediction pipeline execution.
+        """
+        try:
+            self.logger.info(
+                f"Starting prediction pipeline for {model_type} model for {symbol}."
+            )
+
+            # Run the prediction pipeline
+            result = await run_prediction_pipeline(
+                model_type, symbol, self.data_service, self.preprocessing_service
+            )
+
+            self.logger.info(
+                f"Prediction pipeline completed successfully for {model_type} model for {symbol}."
+            )
+
+            return result
+        except Exception as e:
+            self.logger.error(
+                f"Error running the prediction pipeline for model {model_type} for {symbol}: {str(e)}"
+            )
+            raise
 
     async def run_evaluation_pipeline(self, model_type: str, symbol: str):
-        # TODO Complete this :
-        return await run_evaluation_pipeline(
-            model_type,
-            symbol,
-            self.data_service,
-            self.preprocessing_service,
-            self.deployment_service,
-        )
+        """
+        Run the full evaluation pipeline for the specified model and symbol.
+
+        Args:
+            model_type (str): The type of model to be used (e.g., 'LSTM', 'Prophet').
+            symbol (str): The stock symbol for which the model is being evaluated.
+
+        Returns:
+            result: The result of the evaluation pipeline execution.
+        """
+
+        try:
+            self.logger.info(
+                f"Starting evaluation pipeline for {model_type} model for {symbol}."
+            )
+
+            # Run the evaluation pipeline
+            result = await run_evaluation_pipeline(
+                model_type,
+                symbol,
+                self.data_service,
+                self.preprocessing_service,
+                self.deployment_service,
+            )
+
+            # Log the successful completion of the pipeline
+            self.logger.info(
+                f"Evaluation pipeline completed successfully for {model_type} model for {symbol}."
+            )
+
+            return result
+        except Exception as e:
+            self.logger.error(
+                f"Error running the evaluation pipeline for model {model_type} for {symbol}: {str(e)}"
+            )
+            raise
 
     async def cleanup(self) -> None:
         """Clean up resources."""
         try:
             self._initialized = False
-            self.logger.info("Preprocessing service cleaned up successfully")
+            self.logger.info("Orchestration service cleaned up successfully")
         except Exception as e:
-            self.logger.error(f"Error during data service cleanup: {str(e)}")
+            self.logger.error(f"Error during orchestration service cleanup: {str(e)}")

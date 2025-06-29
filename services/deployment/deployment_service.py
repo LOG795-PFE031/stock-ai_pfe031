@@ -1,10 +1,7 @@
-from .evaluator import Evaluator
 from .mlflow_model_manager import MLflowModelManager
-from .predictor import Predictor
 from services.base_service import BaseService
 from core.logging import logger
 from core.utils import get_model_name
-from core.types import Metrics
 
 
 class DeploymentService(BaseService):
@@ -12,7 +9,6 @@ class DeploymentService(BaseService):
         super().__init__()
         self.logger = logger["deployment"]
         self.mlflow_model_manager = None
-        self.predictor = None
         self.evaluator = None
         self._initialized = False
 
@@ -21,8 +17,6 @@ class DeploymentService(BaseService):
         try:
             await self._load_models()
             self.mlflow_model_manager = MLflowModelManager()
-            self.predictor = Predictor()
-            self.evaluator = Evaluator()
             self._initialized = True
             self.logger.info("Deployment service initialized successfully")
         except Exception as e:
@@ -32,33 +26,6 @@ class DeploymentService(BaseService):
     async def _load_models(self) -> None:
         """Load all models from disk."""
         pass
-
-    async def evaluate(self, model_name: str, X, y) -> Metrics:
-        """
-        Run predictions and evaluate the model.
-
-        Args:
-            model_name (str): The name of the model to use.
-            X: Input features.
-            y: Ground truth.
-
-        Returns:
-            Metrics: Computed evaluation metrics.
-        """
-        try:
-            # Prediction
-            y_pred = await self.predict(model_name, X)
-
-            # Evaluation
-            metrics = self.evaluator.evaluate(y, y_pred)
-
-            # Logs the metrics to MLFlow
-            self.mlflow_model_manager.log_metrics(model_name, metrics.__dict__)
-
-            return metrics
-        except Exception as e:
-            self.logger.error(f"Failed to evaluate with model {model_name} : {str(e)}")
-            raise
 
     async def predict(self, model_name: str, X):
         """
@@ -72,8 +39,22 @@ class DeploymentService(BaseService):
             Any: Predicted values from the model.
         """
         try:
+            self.logger.info(f"Starting prediction using model {model_name}.")
+
+            # Load the model
             model = await self.mlflow_model_manager.load_model(model_name)
-            return self.predictor.predict(model, X)
+
+            # Log the successful loading of the model
+            self.logger.debug(f"Model {model_name} successfully loaded.")
+
+            # Perform prediction
+            predictions = model.predict(X)
+
+            # Log the completion of the prediction
+            self.logger.info(f"Prediction completed for model {model_name}.")
+
+            return predictions
+
         except Exception as e:
             self.logger.error(f"Failed to predict with model {model_name} : {str(e)}")
             raise

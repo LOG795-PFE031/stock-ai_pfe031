@@ -1,18 +1,17 @@
 from prefect import task
-import pandas as pd
 
 from services.data_processing import DataProcessingService
 from core.types import PreprocessedData
 
 
 @task
-async def preprocess_data(
+async def postprocess_data(
     service: DataProcessingService,
     symbol: str,
-    data: pd.DataFrame,
+    targets,
     model_type: str,
     phase: str,
 ) -> PreprocessedData:
-    return await service.preprocess_data(
-        symbol=symbol, data=data, model_type=model_type, phase=phase
+    return await service.postprocess_data(
+        symbol=symbol, targets=targets, model_type=model_type, phase=phase
     )

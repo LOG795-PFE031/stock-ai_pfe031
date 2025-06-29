@@ -1,4 +1,4 @@
-from services.preprocessing.abstract import BaseDataProcessor
+from services.data_processing.abstract import BaseDataProcessor
 from .strategies import (
     AllFeatureSelector,
     OHLCVFeatureSelector,
@@ -17,13 +17,18 @@ class FeatureSelector(BaseDataProcessor):
     appropriate feature selection strategies.
     """
 
-    def __init__(self, symbol, logger, model_type: str):
-        super().__init__(symbol, logger)
+    def __init__(self, model_type: str):
         self.model_type = model_type
 
     def process(self, data: pd.DataFrame) -> pd.DataFrame:
-        feature_selector = self._get_feature_selector()
-        return feature_selector.select(data)
+        try:
+            feature_selector = self._get_feature_selector()
+            data_selected = feature_selector.select(data)
+            return data_selected
+        except Exception as e:
+            raise RuntimeError(
+                f"Error selecting features for {self.model_type} model"
+            ) from e
 
     def _get_feature_selector(self) -> FeatureSelectionStrategy:
         """
