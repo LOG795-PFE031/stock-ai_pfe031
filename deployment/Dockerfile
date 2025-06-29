@@ -14,9 +14,15 @@ COPY deployment/deployment.py .
 
 # # Par défaut, servir le modèle 'model_a' (ou celui que tu veux)
 # ENV MODEL_NAME=specific
+COPY deployment/script.sh .
+
 
 EXPOSE 5000
 # Exécuter le script
-CMD ["python", "deployment.py"]
+# CMD ["python", "deployment.py"]
 
-# ENTRYPOINT ["sh", "-c", "mlflow models serve -m /opt/ml/models/$MODEL_NAME -h 0.0.0.0 -p 5000"]
+# CMD ["mlflow ui --backend-store-uri /mlruns --host 0.0.0.0 --port 5000"]
+
+RUN chmod +x ./script.sh
+
+CMD ["./script.sh"]
