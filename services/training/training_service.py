@@ -2,9 +2,13 @@
 Training service for model training and evaluation.
 """
 
-from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta, timezone
+from typing import Dict, Any, List
+from datetime import datetime
 import asyncio
+import os
+import random
+import numpy as np
+import tensorflow as tf
 
 from ..base_service import BaseService
 from core.utils import validate_stock_symbol
@@ -30,6 +34,7 @@ class TrainingService(BaseService):
     async def initialize(self) -> None:
         """Initialize the training service."""
         try:
+            self._enable_full_reproducibility()
             self._initialized = True
             self.logger.info("Training service initialized successfully")
         except Exception as e:
@@ -294,3 +299,15 @@ class TrainingService(BaseService):
             }
             for task_key, task in self.training_tasks.items()
         ]
+
+    def _enable_full_reproducibility(self, seed: int = 42):
+        os.environ["PYTHONHASHSEED"] = str(seed)
+        os.environ["TF_DETERMINISTIC_OPS"] = "1"
+        os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+
+        random.seed(seed)
+        np.random.seed(seed)
+        tf.random.set_seed(seed)
+
+        tf.config.threading.set_inter_op_parallelism_threads(1)
+        tf.config.threading.set_intra_op_parallelism_threads(1)
