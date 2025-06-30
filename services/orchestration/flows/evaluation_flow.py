@@ -1,55 +1,65 @@
 from prefect import flow
 from .data_flow import run_data_pipeline
 from .inference_flow import run_inference_pipeline
-from .tasks import evaluate, postprocess_data
+from .evaluate_and_log_flow import run_evaluate_and_log_flow
+from .tasks import postprocess_data, model_exist
+from core.utils import get_model_name
 
-PHASE = "evaluation"
 
-
-@flow(name="Evaluation Pipeline", retries=2, retry_delay_seconds=10)
+@flow(name="Evaluation Pipeline")
 async def run_evaluation_pipeline(
     model_type: str,
     symbol: str,
     data_service,
     processing_service,
     deployment_service,
+    evaluation_service,
 ):
-    # Run the data pipeline (Data Ingestion + Preprocessing)
-    eval_data = await run_data_pipeline(
-        symbol=symbol,
-        model_type=model_type,
-        data_service=data_service,
-        processing_service=processing_service,
-        phase=PHASE,
-    )
+    # Get the live model name
+    live_model_name = get_model_name(model_type, symbol, "prediction")
 
-    # Make inference (prediction)
-    y_pred = await run_inference_pipeline(
-        model_type=model_type,
-        symbol=symbol,
-        phase=PHASE,
-        X=eval_data.X,
-        processing_service=processing_service,
-        deployment_service=deployment_service,
-    )
+    # Checks if the live model exists
+    live_model_exist = await model_exist(live_model_name, deployment_service)
 
-    # Unnormalize (unscale) the ground truth values
-    y_true = await postprocess_data(
-        service=processing_service,
-        symbol=symbol,
-        model_type=model_type,
-        phase=PHASE,
-        targets=eval_data.y,
-    )
+    if live_model_exist:
+        # Run the data pipeline (Data Ingestion + Preprocessing)
+        eval_data = await run_data_pipeline(
+            symbol=symbol,
+            model_type=model_type,
+            data_service=data_service,
+            processing_service=processing_service,
+            phase="evaluation",
+        )
 
-    """metrics = evaluate(
-        symbol=symbol,
-        model_type=model_type,
-        Xtest=eval_data.X,
-        ytest=eval_data.y,
-        deployment_service=deployment_service
-        production=True,
-    )"""
+        # Make inference (prediction) using live model
+        pred_target = await run_inference_pipeline(
+            model_type=model_type,
+            symbol=symbol,
+            phase="prediction",
+            X=eval_data.X,
+            processing_service=processing_service,
+            deployment_service=deployment_service,
+        )
 
-    # return metrics
-    return eval_data
+        # Unnormalize (unscale) the ground truth values
+        true_target = await postprocess_data(
+            service=processing_service,
+            symbol=symbol,
+            model_type=model_type,
+            phase="prediction",
+            targets=eval_data.y,
+        )
+
+        # Evaluate the training model
+        metrics = await run_evaluate_and_log_flow(
+            model_name=live_model_name,
+            true_target=true_target,
+            pred_target=pred_target,
+            evaluation_service=evaluation_service,
+            deployment_service=deployment_service,
+        )
+
+        return metrics
+
+    # No live model available
+    return None

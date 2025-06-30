@@ -157,6 +157,7 @@ class OrchestrationService(BaseService):
                 self.data_service,
                 self.preprocessing_service,
                 self.deployment_service,
+                self.evaluation_service,
             )
 
             # Log the successful completion of the pipeline
