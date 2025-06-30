@@ -1,6 +1,7 @@
 from pathlib import Path
 import joblib
 from sklearn.preprocessing import MinMaxScaler
+import shutil
 
 from core.config import config
 
@@ -87,9 +88,6 @@ class ScalerManager:
                     "training", self.TARGETS_SCALER_TYPE
                 )
 
-                # Switch the phase to get the prediction scalers paths
-                self.phase = "prediction"
-
                 dst_features_scaler_path = self.get_scaler_path(
                     "prediction", self.FEATURES_SCALER_TYPE
                 )
@@ -104,12 +102,8 @@ class ScalerManager:
                     raise FileNotFoundError(f"Missing scaler to promote")
 
                 # Copy the training scalers to prediction scalers
-                dst_features_scaler_path.write_bytes(
-                    src_features_scaler_path.read_bytes()
-                )
-                dst_targets_scaler_path.write_bytes(
-                    src_targets_scaler_path.read_bytes()
-                )
+                shutil.copyfile(src_features_scaler_path, dst_features_scaler_path)
+                shutil.copyfile(src_targets_scaler_path, dst_targets_scaler_path)
 
                 return True
             else:
