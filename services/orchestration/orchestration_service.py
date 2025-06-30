@@ -42,11 +42,6 @@ class OrchestrationService(BaseService):
             self.logger.error(f"Failed to initialize orchestration service: {str(e)}")
             raise
 
-    async def run_data_pipeline(self, symbol: str, model_type: str, phase: str):
-        return await run_data_pipeline(
-            symbol, model_type, phase, self.data_service, self.preprocessing_service
-        )
-
     async def run_training_pipeline(
         self,
         model_type: str,
