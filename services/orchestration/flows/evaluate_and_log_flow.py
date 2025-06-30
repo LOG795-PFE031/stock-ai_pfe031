@@ -2,9 +2,7 @@ from prefect import flow
 from .tasks import evaluate, log_metrics
 
 
-@flow(
-    name="Evaluate and logs metrics (Sub-Pipeline)", retries=2, retry_delay_seconds=10
-)
+@flow(name="Evaluate and logs metrics (Sub-Pipeline)")
 async def run_evaluate_and_log_flow(
     model_name, true_target, pred_target, evaluation_service, deployment_service
 ):

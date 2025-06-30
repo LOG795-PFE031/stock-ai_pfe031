@@ -33,7 +33,7 @@ async def run_prediction_pipeline(
             deployment_service=deployment_service,
         )
 
-        return pred_target
+        return pred_target.y
 
     # No live model available
     return None

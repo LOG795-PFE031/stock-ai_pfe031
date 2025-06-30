@@ -5,7 +5,7 @@ from services.data_processing import DataProcessingService
 from core.types import PreprocessedData
 
 
-@task
+@task(retries=2, retry_delay_seconds=5)
 async def preprocess_data(
     service: DataProcessingService,
     symbol: str,
@@ -18,7 +18,7 @@ async def preprocess_data(
     )
 
 
-@task
+@task(retries=2, retry_delay_seconds=5)
 async def postprocess_data(
     service: DataProcessingService,
     symbol: str,
@@ -31,7 +31,7 @@ async def postprocess_data(
     )
 
 
-@task
+@task(retries=2, retry_delay_seconds=5)
 async def promote_scaler(service: DataProcessingService, model_type: str, symbol: str):
     await service.promote_scaler(model_type=model_type, symbol=symbol)
     return

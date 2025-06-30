@@ -3,7 +3,7 @@ from .tasks import predict, postprocess_data
 from core.utils import get_model_name
 
 
-@flow(name="Inference Pipeline", retries=2, retry_delay_seconds=5)
+@flow(name="Inference Pipeline")
 async def run_inference_pipeline(
     model_type, symbol, phase, X, processing_service, deployment_service
 ):

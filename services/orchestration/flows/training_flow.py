@@ -15,7 +15,7 @@ from .evaluate_and_log_flow import run_evaluate_and_log_flow
 PHASE = "training"
 
 
-@flow(name="Training Pipeline", retries=2, retry_delay_seconds=10)
+@flow(name="Training Pipeline")
 async def run_training_pipeline(
     model_type,
     symbol,
@@ -94,7 +94,7 @@ async def run_training_pipeline(
     }
 
 
-@flow(name="Deployment Pipeline", retries=2, retry_delay_seconds=5)
+@flow(name="Deployment Pipeline")
 async def run_deployment_pipeline(
     model_type: str,
     symbol: str,

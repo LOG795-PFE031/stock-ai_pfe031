@@ -3,7 +3,7 @@ from prefect import task
 from services import EvaluationService
 
 
-@task
+@task(retries=2, retry_delay_seconds=5)
 async def evaluate(
     model_name: str, true_target, pred_target, service: EvaluationService
 ):
@@ -12,7 +12,7 @@ async def evaluate(
     )
 
 
-@task
+@task(retries=2, retry_delay_seconds=5)
 async def should_deploy_model(
     candidate_metrics, live_metrics, service: EvaluationService
 ):
