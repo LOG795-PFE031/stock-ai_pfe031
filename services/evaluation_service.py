@@ -48,6 +48,47 @@ class EvaluationService(BaseService):
             self.logger.error(f"Evaluation failed for {model_name} model: {str(e)}")
             raise
 
+    async def should_deploy_model(
+        self, candidate_metrics: Metrics, live_metrics: Metrics
+    ) -> bool:
+        """
+        Determines whether the candidate model should be deployed by comparing it
+        to the currently deployed (live) model.
+
+        Args:
+            candidate_metrics (Metrics): Metrics for the candidate model.
+            live_metrics (Metrics): Metrics for the current live model.
+
+        Returns:
+            bool: True if the candidate should be deployed, False otherwise.
+        """
+        try:
+            self.logger.info(f"Evaluating deployment decision based on metrics")
+
+            # Check if deployment is needed
+            deploy = self._has_better_metrics(candidate_metrics, live_metrics)
+
+            # Log the result
+            if deploy:
+                self.logger.info(
+                    "Candidate model performs better. Ready for deployment."
+                )
+            else:
+                self.logger.info("Candidate model does not outperform live model.")
+
+            return deploy
+        except Exception as e:
+            self.logger.error(f"Error during deployment evaluation: {e}")
+            raise
+
+    def _has_better_metrics(
+        self, candidate_metrics: Metrics, live_metrics: Metrics
+    ) -> bool:
+        """
+        Returns True if the candidate model has a lower MAE than the live model.
+        """
+        return candidate_metrics.mae < live_metrics.mae
+
     def _calculate_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Metrics:
         mse = mean_squared_error(y_true, y_pred)
         mae = mean_absolute_error(y_true, y_pred)

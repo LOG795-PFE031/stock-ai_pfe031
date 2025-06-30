@@ -10,3 +10,10 @@ async def evaluate(
     return await service.evaluate(
         model_name=model_name, y_true=true_target, y_pred=pred_target
     )
+
+
+@task
+async def should_deploy_model(
+    candidate_metrics, live_metrics, service: EvaluationService
+):
+    return await service.should_deploy_model(candidate_metrics, live_metrics)

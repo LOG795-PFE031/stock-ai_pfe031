@@ -27,6 +27,39 @@ class DeploymentService(BaseService):
         """Load all models from disk."""
         pass
 
+    async def model_exists(self, model_name: str) -> bool:
+        """
+        Checks whether a model with the given name exists in the MLflow registry.
+
+        Args:
+            model_name (str): The name of the model to check.
+
+        Returns:
+            bool: True if the model exists, False otherwise.
+        """
+        try:
+            models = await self.list_models()
+            return model_name in models
+        except Exception as e:
+            self.logger.error(f"Failed to check if {model_name} model exists: {str(e)}")
+            raise
+
+    async def list_models(self):
+        """
+        Retrieves and returns a list of all available model names from the MLflow model registry.
+
+        Returns:
+            List[str]: A list of model names
+        """
+        try:
+            self.logger.info("Listing all avalaible models (in MLFlow).")
+            available_models_names = await self.mlflow_model_manager.list_models()
+
+            return available_models_names
+        except Exception as e:
+            self.logger.error(f"Failed to list the models: {str(e)}")
+            raise
+
     async def predict(self, model_name: str, X):
         """
         Run prediction on input data
@@ -59,7 +92,21 @@ class DeploymentService(BaseService):
             self.logger.error(f"Failed to predict with model {model_name} : {str(e)}")
             raise
 
-    async def promote_model(self, model_type: str, symbol: str, X, y):
+    async def log_metrics(self, model_name: str, metrics):
+        try:
+            self.mlflow_model_manager.log_metrics(model_name, metrics.__dict__)
+            self.logger.info(
+                f"Metrics successfully logged to MLflow for model {model_name}"
+            )
+
+            return True
+        except Exception as e:
+            self.logger.error(
+                f"Failed to log metrics to MLFlow with model {model_name} : {str(e)}"
+            )
+            raise
+
+    async def promote_model(self, model_type: str, symbol: str):
         """
         Promote a logged training model to the production model registry.
 
@@ -69,38 +116,21 @@ class DeploymentService(BaseService):
         Parameters:
             model_type (str): The model type to promote
             symbol (str): The stock symbol
-            X: Input features.
-            y: Ground truth.
         """
         try:
             training_model_name = get_model_name(model_type, symbol, "training")
-
-            if not self.mlflow_model_manager.model_exists(training_model_name):
-                self.logger.info(
-                    f"No training model to promote for {model_type} model for symbol {symbol}"
-                )
-                return False
-
             prod_model_name = get_model_name(model_type, symbol, "prediction")
 
-            # Prod model Evaluation
-            if self.mlflow_model_manager.model_exists(prod_model_name):
-                metrics = await self.evaluate(prod_model_name, X, y)
-
-                prod_mae = metrics.mae
-                training_mae = self.mlflow_model_manager.get_metrics(
-                    training_model_name
-                )["mae"]
-
-                if prod_mae < training_mae:
-                    self.logger.info(
-                        f"Promotion not needed: trained model has higher MAE ({training_mae}) than production model ({prod_mae})."
-                    )
-                    return False
-
             # Promotion
-            self.mlflow_model_manager.promote(training_model_name, prod_model_name)
-            return True
+            mv = self.mlflow_model_manager.promote(training_model_name, prod_model_name)
+            self.logger.info(f"Successfully promoted {mv.name} model to MLflow")
+
+            return {
+                "deployed": True,
+                "model_name": mv.name,
+                "version": mv.version,
+                "run_id": mv.run_id,
+            }
 
         except Exception as e:
             self.logger.error(

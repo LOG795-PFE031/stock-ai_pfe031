@@ -75,6 +75,9 @@ data/stock/
 
 /models/
 
+# Ignore MlFlow files
+mlruns/
+
 stock-ai.code-workspace
 
 # Ignore Grafana DB and plugins

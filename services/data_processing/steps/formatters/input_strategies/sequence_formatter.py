@@ -17,11 +17,11 @@ class SequenceInputFormatter(InputFormatterStrategy):
 
         X, y = self._create_sequences(data_np, target_index)
 
-        if phase == "training" or "evaluation":
+        if phase == "training" or phase == "evaluation":
             return PreprocessedData(X=X, y=y)
         elif phase == "prediction":
             # Returns the last sequence (for next day prediction)
-            return PreprocessedData(X=X[-1])
+            return PreprocessedData(X=X[-1:])
         else:
             raise ValueError(
                 f"Invalid phase '{phase}'. Expected 'training' or 'prediction'."

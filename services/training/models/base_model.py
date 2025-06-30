@@ -88,4 +88,4 @@ class BaseModel(ABC, PythonModel):
 
     def _get_training_model_dir(self) -> Path:
         """Return the path to the model training directory"""
-        return self.model_root_dir / self.model_type / "training" / self.symbol
+        return self.model_root_dir / self.model_type / self.symbol

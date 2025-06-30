@@ -14,7 +14,8 @@ class DataNormalizer(BaseDataProcessor):
     def __init__(self, symbol, model_type: str, phase: str):
         self.symbol = symbol
         self.model_type = model_type
-        self.scaler_manager = ScalerManager(model_type, symbol, phase)
+        self.phase = phase
+        self.scaler_manager = ScalerManager(model_type, symbol)
 
     def process(self, data: PreprocessedData, fit=False) -> PreprocessedData:
         """
@@ -35,40 +36,42 @@ class DataNormalizer(BaseDataProcessor):
                 X = data.X
                 y = data.y
 
-                original_X_shape = X.shape
-                original_y_shape = y.shape
+                results = []
 
-                # Reshape for scaler
-                if isinstance(X, np.ndarray):
-                    if X.ndim == 3:
-                        X = X.reshape(-1, X.shape[-1])
-                    if X.ndim == 1:
-                        X = X.reshape(-1, 1)
+                for scaler_type, data in {"features": X, "targets": y}.items():
 
-                if isinstance(y, np.ndarray):
-                    if y.ndim == 3:
-                        y = y.reshape(-1, y.shape[-1])
-                    if y.ndim == 1:
-                        y = y.reshape(-1, 1)
+                    if data is not None:
+                        # Keep the origianl shape of the data
+                        original_shape = data.shape
 
-                # Load (or create) the scaler
-                X_scaler = self._load_or_fit_scaler("features", fit=fit, data=X)
-                y_scaler = self._load_or_fit_scaler("targets", fit=fit, data=y)
+                        # Reshape for scaler
+                        if data.ndim == 3:
+                            data = data.reshape(-1, data.shape[-1])
+                        if data.ndim == 1:
+                            data = data.reshape(-1, 1)
 
-                # Scale the data
-                scaled_X = X_scaler.transform(X)
-                scaled_y = y_scaler.transform(y)
+                        # Load (or create) the scaler
+                        scaler = self._load_or_fit_scaler(
+                            scaler_type, fit=fit, data=data
+                        )
 
-                # RESHAPE BACK AFTER SCALING
-                if len(original_X_shape) == 3:
-                    scaled_X = scaled_X.reshape(original_X_shape)
+                        # Scale the data
+                        scaled_data = scaler.transform(data)
 
-                if len(original_y_shape) == 3:
-                    scaled_y = scaled_y.reshape(original_y_shape)
-                elif len(original_y_shape) == 1:
-                    scaled_y = scaled_y.reshape(-1)  # Flatten y back to 1D if it was 1D
+                        # RESHAPE BACK AFTER SCALING
+                        if len(original_shape) == 3:
+                            scaled_data = scaled_data.reshape(original_shape)
 
-                return PreprocessedData(X=scaled_X, y=scaled_y)
+                        elif len(original_shape) == 1:
+                            scaled_data = scaled_data.reshape(
+                                -1
+                            )  # Flatten y back to 1D if it was 1D
+
+                        results.append(scaled_data)
+                    else:
+                        results.append(None)
+
+                return PreprocessedData(X=results[0], y=results[1])
 
             else:
                 # No Normalization needed
@@ -107,7 +110,7 @@ class DataNormalizer(BaseDataProcessor):
 
             # Load the targets scaler
             y_scaler = self.scaler_manager.load_scaler(
-                ScalerManager.TARGETS_SCALER_TYPE
+                self.phase, ScalerManager.TARGETS_SCALER_TYPE
             )
 
             # Unscale the targets
@@ -133,9 +136,9 @@ class DataNormalizer(BaseDataProcessor):
                 scaler = self.scaler_manager.create_scaler()
                 # Fit and save the scaler
                 scaler.fit(data)
-                self.scaler_manager.save_scaler(scaler, scaler_type)
+                self.scaler_manager.save_scaler(scaler, self.phase, scaler_type)
             else:
-                scaler = self.scaler_manager.load_scaler(scaler_type)
+                scaler = self.scaler_manager.load_scaler(self.phase, scaler_type)
 
             return scaler
 

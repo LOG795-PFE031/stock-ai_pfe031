@@ -10,8 +10,7 @@ class ProphetInputFormatter(InputFormatterStrategy):
         if phase == "prediction":
 
             # Get the latest data
-            latest_data = data.tail(1)
-            latest_data.reset_index()
+            latest_data = data.tail(1).reset_index(drop=True)
 
             # Get the next available business date and update it (in the ds column)
             latest_data.at[0, "ds"] = self._get_next_business_day()

@@ -109,15 +109,24 @@ class OrchestrationService(BaseService):
             )
 
             # Run the prediction pipeline
-            result = await run_prediction_pipeline(
-                model_type, symbol, self.data_service, self.preprocessing_service
+            prediction = await run_prediction_pipeline(
+                model_type,
+                symbol,
+                self.data_service,
+                self.preprocessing_service,
+                self.deployment_service,
             )
 
-            self.logger.info(
-                f"Prediction pipeline completed successfully for {model_type} model for {symbol}."
-            )
+            if prediction:
+                self.logger.info(
+                    f"Prediction pipeline completed successfully for {model_type} model for {symbol}."
+                )
+            else:
+                self.logger.info(
+                    f"No live model available to make prediction with {model_type} model for {symbol}."
+                )
 
-            return result
+            return prediction
         except Exception as e:
             self.logger.error(
                 f"Error running the prediction pipeline for model {model_type} for {symbol}: {str(e)}"

@@ -6,6 +6,16 @@ class MLflowModelManager:
     def __init__(self):
         self.client = MlflowClient()
 
+    async def list_models(self):
+        """
+        Lists all registered MLflow models
+        """
+        try:
+            models = self.client.search_registered_models()
+            return [model.name for model in models]
+        except Exception as e:
+            raise RuntimeError(f"Error listing the models: {str(e)}") from e
+
     async def load_model(self, model_name: str):
         """
         Load the latest MLflow model
@@ -55,10 +65,11 @@ class MLflowModelManager:
             train_run_id = self._get_run_id_for_model(train_model_name)
 
             # Generate the training model uri
-            train_model_uri = f"runs:/{train_run_id}/model"
+            train_model_uri = f"runs:/{train_run_id}/{train_model_name}"
 
             # Promote the model (training to prediction (prod))
-            mlflow.register_model(train_model_uri, prod_model_name)
+            mv = mlflow.register_model(train_model_uri, prod_model_name)
+            return mv
         except Exception as e:
             raise RuntimeError(f"Error promoting training model : {str(e)}") from e
 
@@ -111,12 +122,17 @@ class MLflowModelManager:
             str: The run ID associated with the latest version of the model.
         """
         try:
-            latest_versions = self.client.get_latest_versions(model_name)
+            versions = self.client.search_model_versions(f"name='{model_name}'")
 
-            if not latest_versions:
+            if not versions:
                 raise RuntimeError(f"No versions found for model '{model_name}'.")
 
-            return latest_versions[0].run_id
+            # Sort by version number (descending, most recent first)
+            sorted_versions = sorted(
+                versions, key=lambda v: int(v.version), reverse=True
+            )
+
+            return sorted_versions[0].run_id
 
         except Exception as e:
             raise RuntimeError(

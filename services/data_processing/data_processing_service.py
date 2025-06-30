@@ -35,29 +35,35 @@ class DataProcessingService(BaseService):
             self.logger.error(f"Failed to initialize data processing service: {str(e)}")
             raise
 
-    async def fetch_scaler_path(
-        self,
-        symbol: str,
-        model_type: str,
-        phase: str,
-        scaler_type=ScalerManager.FEATURES_SCALER_TYPE,
-    ) -> Path:
+    async def promote_scaler(self, symbol: str, model_type: str):
         """
-        Fetch the path to the saved scaler for a given symbol, model type, and phase.
+        Promote the training scalers to the prediction phase for a specific model and symbol.
 
-        Returns:
-            Path: Path to the saved scaler file.
+        This copies both the features and targets scalers from the 'training' directory
+        to the 'prediction' directory, if the model requires scaling.
+
+        Args:
+            symbol (str): The stock symbol
+            model_type (str): The type of model
         """
+        try:
+            # Promote the scaler
+            scaler_manager = ScalerManager(model_type=model_type, symbol=symbol)
+            promoted = scaler_manager.promote_scaler()
 
-        scaler_path = ScalerManager(
-            model_type=model_type, symbol=symbol, phase=phase
-        ).get_scaler_path(scaler_type)
-
-        if scaler_path.exists():
-            return scaler_path
-        else:
-            self.logger.error(f"Scaler file not found at path: {scaler_path}")
-            raise FileNotFoundError()
+            if promoted:
+                self.logger.info(
+                    f"Successfully promoted scalers for model '{model_type}' and symbol '{symbol}'."
+                )
+            else:
+                self.logger.info(
+                    f"No scaler promotion needed for model '{model_type}' and symbol '{symbol}'."
+                )
+        except Exception as e:
+            self.logger.error(
+                f"Failed to promote the scalers for {model_type} model for {symbol} : {str(e)}"
+            )
+            raise
 
     async def preprocess_data(
         self,
