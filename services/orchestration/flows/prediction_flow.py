@@ -36,4 +36,4 @@ async def run_prediction_pipeline(
         return {"y_pred": pred_target.y, "confidence": confidence}
 
     # No live model available
-    return {"y_pred": None, "confidence": None}
+    return None
