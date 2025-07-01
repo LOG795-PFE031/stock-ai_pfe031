@@ -34,6 +34,7 @@ from services import (
     PredictionService,
     TrainingService,
     RabbitMQService,
+    MonitoringService,
 )
 
 # Create service instances in dependency order
@@ -47,7 +48,24 @@ prediction_service = PredictionService(
     model_service=model_service, data_service=data_service
 )
 rabbitmq_service = RabbitMQService()
+monitoring_service = MonitoringService(
+    model_service=model_service,
+    data_service=data_service,
+    training_service=training_service,
+    check_interval_seconds=60, 
+    latency_threshold=1.0,
+    confidence_threshold=1.1,
+    mae_threshold=2.0,
+    degradation_tolerance=1,
+)
 
+scheduler_task = None
+
+async def scheduler_loop():
+    logger["monitoring"].info("Monitoring scheduler loop started")
+    while True:
+        await monitoring_service.check_all_models()
+        await asyncio.sleep(monitoring_service.check_interval)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -62,10 +80,14 @@ async def lifespan(app: FastAPI):
         await news_service.initialize()  # Depends on data_service
         await training_service.initialize()  # Depends on data_service and model_service
         await prediction_service.initialize()  # Depends on data_service and model_service
+        await monitoring_service.initialize()
 
         # Start auto-publishing predictions
         await prediction_service.start_auto_publishing(interval_minutes=15)
 
+        global scheduler_task
+        scheduler_task = asyncio.create_task(scheduler_loop())
+        
         logger["main"].info("All services initialized successfully")
         yield
 
@@ -77,8 +99,16 @@ async def lifespan(app: FastAPI):
         # Shutdown
         try:
             logger["main"].info("Shutting down services...")
-
+            
             # Cleanup in reverse order of initialization
+            if scheduler_task:
+                scheduler_task.cancel()
+                try:
+                    await scheduler_task
+                except asyncio.CancelledError:
+                    logger["monitoring"].info("Scheduler task cancelled cleanly")
+            await monitoring_service.cleanup()
+
             await prediction_service.cleanup()  # This will also stop auto-publishing
             await training_service.cleanup()
             await news_service.cleanup()

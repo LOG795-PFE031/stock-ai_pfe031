@@ -11,3 +11,4 @@ from .rabbitmq_service import RabbitMQService
 from .training_service import TrainingService
 from .visualization_service import VisualizationService
 from .preprocessing.preprocessing_service import PreprocessingService
+from .monitoring.monitoring_service import MonitoringService
