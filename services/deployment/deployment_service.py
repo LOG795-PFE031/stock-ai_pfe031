@@ -30,7 +30,7 @@ class DeploymentService(BaseService):
 
     async def model_exists(self, model_name: str) -> bool:
         """
-        Checks whether a model with the given name exists in the MLflow registry.
+        Checks whether a live model with the given name exists in the MLflow registry.
 
         Args:
             model_name (str): The name of the model to check.
@@ -47,7 +47,9 @@ class DeploymentService(BaseService):
 
     async def list_models(self):
         """
-        Retrieves and returns a list of all available model names from the MLflow model registry.
+        Retrieves and returns a list of all available live model names from the MLflow model registry.
+
+        A "live model" is defined here as any model whose name contains the word "prediction".
 
         Returns:
             List[str]: A list of model names
@@ -56,7 +58,12 @@ class DeploymentService(BaseService):
             self.logger.info("Listing all avalaible models (in MLFlow).")
             available_models_names = await self.mlflow_model_manager.list_models()
 
-            return available_models_names
+            # Filter for live models
+            live_model_names = [
+                name for name in available_models_names if "prediction" in name.lower()
+            ]
+
+            return live_model_names
         except Exception as e:
             self.logger.error(f"Failed to list the models: {str(e)}")
             raise
@@ -71,12 +78,13 @@ class DeploymentService(BaseService):
 
         Returns:
             Any: Predicted values from the model.
+            int: Version of the model
         """
         try:
             self.logger.info(f"Starting prediction using model {model_name}.")
 
             # Load the model
-            model = await self.mlflow_model_manager.load_model(model_name)
+            model, version = await self.mlflow_model_manager.load_model(model_name)
 
             # Log the successful loading of the model
             self.logger.debug(f"Model {model_name} successfully loaded.")
@@ -87,7 +95,7 @@ class DeploymentService(BaseService):
             # Log the completion of the prediction
             self.logger.info(f"Prediction completed for model {model_name}.")
 
-            return predictions
+            return predictions, version
 
         except Exception as e:
             self.logger.error(f"Failed to predict with model {model_name} : {str(e)}")

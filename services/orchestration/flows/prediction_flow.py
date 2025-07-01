@@ -24,7 +24,7 @@ async def run_prediction_pipeline(
         )
 
         # Make prediction (prediction and confidence included)
-        pred_target, confidence = await run_inference_pipeline(
+        pred_target, confidence, model_version = await run_inference_pipeline(
             model_type=model_type,
             symbol=symbol,
             phase=PHASE,
@@ -33,7 +33,11 @@ async def run_prediction_pipeline(
             deployment_service=deployment_service,
         )
 
-        return {"y_pred": pred_target.y, "confidence": confidence}
+        return {
+            "y_pred": pred_target.y,
+            "confidence": confidence,
+            "model_version": model_version,
+        }
 
     # No live model available
     return None

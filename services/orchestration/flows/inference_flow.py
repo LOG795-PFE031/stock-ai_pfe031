@@ -11,7 +11,7 @@ async def run_inference_pipeline(
     model_name = get_model_name(model_type=model_type, symbol=symbol, phase=phase)
 
     # Prediction
-    y_pred = await predict(
+    y_pred, model_version = await predict(
         model_name=model_name,
         X=prediction_input.X,
         service=deployment_service,
@@ -37,4 +37,4 @@ async def run_inference_pipeline(
         else None
     )
 
-    return processed_y_pred, confidence
+    return processed_y_pred, confidence, model_version

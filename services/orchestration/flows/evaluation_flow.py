@@ -32,7 +32,7 @@ async def run_evaluation_pipeline(
         )
 
         # Make inference (prediction) using live model
-        pred_target, _ = await run_inference_pipeline(
+        pred_target, _, _ = await run_inference_pipeline(
             model_type=model_type,
             symbol=symbol,
             phase="prediction",

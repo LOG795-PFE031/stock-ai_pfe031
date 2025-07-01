@@ -25,15 +25,21 @@ class MLflowModelManager:
 
         Returns:
             mlflow.pyfunc.PythonModel: The loaded MLflow model
+            int: Version of the loaded MLflow model
         """
         try:
+
+            # This gets the latest registered version
+            latest_versions = self.client.get_latest_versions(model_name)
+            latest_version = latest_versions[0].version if latest_versions else None
+
             # Path to the model
-            model_uri = f"models:/{model_name}/latest"
+            model_uri = f"models:/{model_name}/{latest_version}"
 
             # Load the model
             model = mlflow.pyfunc.load_model(model_uri)
 
-            return model
+            return model, latest_version
 
         except Exception as e:
             raise RuntimeError(f"Error loading the model {model_name}: {str(e)}") from e

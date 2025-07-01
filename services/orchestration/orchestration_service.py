@@ -1,5 +1,7 @@
-from core.logging import logger
+from datetime import datetime
 
+from core.logging import logger
+from core.utils import format_prediction_response
 from .flows import (
     run_evaluation_pipeline,
     run_prediction_pipeline,
@@ -104,7 +106,7 @@ class OrchestrationService(BaseService):
             )
 
             # Run the prediction pipeline
-            prediction = await run_prediction_pipeline(
+            prediction_result = await run_prediction_pipeline(
                 model_type,
                 symbol,
                 self.data_service,
@@ -112,16 +114,35 @@ class OrchestrationService(BaseService):
                 self.deployment_service,
             )
 
-            if prediction:
+            if prediction_result:
                 self.logger.info(
                     f"Prediction pipeline completed successfully for {model_type} model for {symbol}."
                 )
+
+                # Extract the prediction results
+                prediction = prediction_result["y_pred"][0]
+                confidence = prediction_result["confidence"][0]
+                model_version = prediction_result["model_version"]
+
+                return format_prediction_response(
+                    prediction=prediction,
+                    confidence=confidence,
+                    model_type=model_type,
+                    symbol=symbol,
+                    model_version=model_version,
+                )
+
             else:
                 self.logger.info(
                     f"No live model available to make prediction with {model_type} model for {symbol}."
                 )
-
-            return prediction
+                return {
+                    "status": "error",
+                    "error": f"No live model available to make prediction with {model_type} model for {symbol}.",
+                    "symbol": symbol,
+                    "model_type": model_type,
+                    "timestamp": datetime.now().isoformat(),
+                }
         except Exception as e:
             self.logger.error(
                 f"Error running the prediction pipeline for model {model_type} for {symbol}: {str(e)}"
