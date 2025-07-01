@@ -39,6 +39,7 @@ tqdm>=4.62.3
 ta>=0.10.0  # Technical analysis library
 rich>=13.0.0  # For beautiful terminal output and progress bars
 pandas_market_calendars # Get the market calendars
+pytz # Timezone calculations 
 
 # Financial data
 yfinance>=0.1.63

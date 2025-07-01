@@ -4,8 +4,10 @@ Data service for fetching and processing stock data.
 
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta, timezone, time
+import pytz
 import pandas as pd
 import yfinance as yf
+import pandas_market_calendars as mcal
 
 from .base_service import BaseService
 from core.config import config
@@ -327,15 +329,18 @@ class DataService(BaseService):
             DataFrame containing stock data
         """
         try:
-            # Set default date range if not provided
-            if not end_date:
-                end_date = datetime.now(timezone.utc)
+            # Get the eastern timezone
+            eastern_timezone = pytz.timezone("America/New_York")
+
+            # Set end_date if not provided
+            end_date = end_date or datetime.now(eastern_timezone)
+
             if not start_date:
                 business_days = pd.bdate_range(
                     end=end_date, periods=self.config.data.LOOKBACK_PERIOD_DAYS
                 )
                 start_date = (
-                    business_days[0].to_pydatetime().replace(tzinfo=timezone.utc)
+                    business_days[0].to_pydatetime().astimezone(eastern_timezone)
                 )
 
             # Ensure dates are timezone-aware
@@ -364,18 +369,18 @@ class DataService(BaseService):
                     latest_date.date() < (current_date - timedelta(days=1)).date()
                 )
 
-                # Get all the dates (business days) within start_date and end_date
-                expected_dates = set(
-                    pd.date_range(start=start_date, end=end_date, freq="B").date
-                )
+                # Get the trading days within start_date and end_date
+                nyse = mcal.get_calendar("NYSE")
+                schedule = nyse.schedule(start_date=start_date, end_date=end_date)
+                trading_dates = set(schedule["market_open"].dt.date)
 
                 # Extract the dates present in the data
                 df_dates = set(df["Date"].dt.date)
 
                 # Check if all expected dates are present
-                missing_data = not expected_dates.issubset(df_dates)
+                missing_dates = trading_dates - df_dates
 
-                if data_is_stale or missing_data:
+                if data_is_stale or missing_dates:
                     # Update data
                     df = await self.collect_stock_data(symbol, start_date, end_date)
             else:
