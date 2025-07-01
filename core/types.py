@@ -10,6 +10,7 @@ TX = TypeVar("TX")  # Type of X (Usually a numpy array or a pandas DataFrame)
 class PreprocessedData(Generic[TX]):
     X: Optional[TX] = None
     y: Optional[np.ndarray] = None
+    feature_index_map: Optional[dict[str, int]] = None
 
 
 # Represents the evaluation metrics expected from a model

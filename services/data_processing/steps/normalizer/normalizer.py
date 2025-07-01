@@ -38,25 +38,25 @@ class DataNormalizer(BaseDataProcessor):
 
                 results = []
 
-                for scaler_type, data in {"features": X, "targets": y}.items():
+                for scaler_type, inputs in {"features": X, "targets": y}.items():
 
-                    if data is not None:
+                    if inputs is not None:
                         # Keep the origianl shape of the data
-                        original_shape = data.shape
+                        original_shape = inputs.shape
 
                         # Reshape for scaler
-                        if data.ndim == 3:
-                            data = data.reshape(-1, data.shape[-1])
-                        if data.ndim == 1:
-                            data = data.reshape(-1, 1)
+                        if inputs.ndim == 3:
+                            inputs = inputs.reshape(-1, inputs.shape[-1])
+                        if inputs.ndim == 1:
+                            inputs = inputs.reshape(-1, 1)
 
                         # Load (or create) the scaler
                         scaler = self._load_or_fit_scaler(
-                            scaler_type, fit=fit, data=data
+                            scaler_type, fit=fit, data=inputs
                         )
 
                         # Scale the data
-                        scaled_data = scaler.transform(data)
+                        scaled_data = scaler.transform(inputs)
 
                         # RESHAPE BACK AFTER SCALING
                         if len(original_shape) == 3:
@@ -71,7 +71,9 @@ class DataNormalizer(BaseDataProcessor):
                     else:
                         results.append(None)
 
-                return PreprocessedData(X=results[0], y=results[1])
+                return PreprocessedData(
+                    X=results[0], y=results[1], feature_index_map=data.feature_index_map
+                )
 
             else:
                 # No Normalization needed

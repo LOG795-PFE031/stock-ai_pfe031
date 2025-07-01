@@ -116,25 +116,31 @@ class DataProcessingService(BaseService):
                 f"Features selected for symbol={symbol}, model_type={model_type}"
             )
 
+            # Capture the column-to-index map right after feature selection
+            feature_index_map = {col: idx for idx, col in enumerate(features.columns)}
+
             # Format the data
-            features = InputFormatter(model_type, phase).process(features)
+            input_data = InputFormatter(model_type, phase).process(features)
             self.logger.debug(
                 f"Data formatted for symbol={symbol}, model_type={model_type}, phase={phase}"
             )
 
+            # Add the column-to-index map to the input data
+            input_data.feature_index_map = feature_index_map
+
             if phase == "training":
                 return await self._preprocess_training_phase(
-                    features, symbol, model_type
+                    input_data, symbol, model_type
                 )
 
             elif phase == "prediction":
                 return await self._preprocess_prediction_phase(
-                    features, symbol, model_type
+                    input_data, symbol, model_type
                 )
 
             elif phase == "evaluation":
                 return await self._preprocess_evaluation_phase(
-                    features, symbol, model_type
+                    input_data, symbol, model_type
                 )
 
             else:

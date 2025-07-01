@@ -31,8 +31,12 @@ class DataSplitter(BaseDataProcessor):
             )
 
             return (
-                PreprocessedData(X=X_train, y=y_train),
-                PreprocessedData(X=X_test, y=y_test),
+                PreprocessedData(
+                    X=X_train, y=y_train, feature_index_map=data.feature_index_map
+                ),
+                PreprocessedData(
+                    X=X_test, y=y_test, feature_index_map=data.feature_index_map
+                ),
             )
         except Exception as e:
             raise RuntimeError("Error while splitting the data") from e
