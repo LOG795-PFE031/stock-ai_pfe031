@@ -72,19 +72,21 @@ async def health_check():
     try:
         # Import services from main to avoid circular imports
         from main import (
-            prediction_service,
+            deployment_service,
             news_service,
             training_service,
             data_service,
-            model_service,
+            preprocessing_service,
+            evaluation_service,
         )
 
         # Check each service's health
-        prediction_health = await prediction_service.health_check()
+        deployment_health = await deployment_service.health_check()
         news_health = await news_service.health_check()
         training_health = await training_service.health_check()
         data_health = await data_service.health_check()
-        model_health = await model_service.health_check()
+        preprocessing_health = await preprocessing_service.health_check()
+        evaluation_health = await evaluation_service.health_check()
 
         # Create response with boolean values
         return HealthResponse(
@@ -93,21 +95,23 @@ async def health_check():
                 if all(
                     h["status"] == "healthy"
                     for h in [
-                        prediction_health,
+                        deployment_health,
                         news_health,
                         training_health,
                         data_health,
-                        model_health,
+                        preprocessing_health,
+                        evaluation_health,
                     ]
                 )
                 else "unhealthy"
             ),
             components={
-                "prediction_service": prediction_health["status"] == "healthy",
+                "deployment_health": deployment_health["status"] == "healthy",
                 "news_service": news_health["status"] == "healthy",
                 "training_service": training_health["status"] == "healthy",
                 "data_service": data_health["status"] == "healthy",
-                "model_service": model_health["status"] == "healthy",
+                "preprocessing_health": preprocessing_health["status"] == "healthy",
+                "evaluation_health": evaluation_health["status"] == "healthy",
             },
             timestamp=datetime.utcnow().isoformat(),
         )
@@ -240,9 +244,9 @@ async def get_models():
     """List all available ML models."""
     try:
         # Import services from main to avoid circular imports
-        from main import model_service
+        from main import deployment_service
 
-        models = await model_service.get_models()
+        models = await deployment_service.list_models()
         return ModelListResponse(models=models)
     except Exception as e:
         api_logger.error(f"Failed to get models: {str(e)}")
@@ -277,7 +281,7 @@ async def get_next_day_prediction(symbol: str, model_type: ModelType = ModelType
     """Get stock price prediction for the next day."""
     try:
         # Import services from main to avoid circular imports
-        from main import prediction_service
+        from main import orchestation_service
 
         # Validate symbol
         if not validate_stock_symbol(symbol):
@@ -288,8 +292,8 @@ async def get_next_day_prediction(symbol: str, model_type: ModelType = ModelType
         start_time = time.time()
 
         # Get prediction using the new method
-        prediction = await prediction_service.get_prediction(
-            symbol=symbol, model_type=model_type.value
+        prediction = await orchestation_service.run_prediction_pipeline(
+            model_type=model_type, symbol=symbol
         )
 
         elapsed = time.time() - start_time
@@ -298,8 +302,6 @@ async def get_next_day_prediction(symbol: str, model_type: ModelType = ModelType
         if prediction.get("status") == "error":
             error_msg = prediction.get("error", "Unknown error")
             api_logger.error(f"Prediction failed for {symbol}: {error_msg}")
-            if "No Prophet model available" in error_msg:
-                raise HTTPException(status_code=404, detail=error_msg)
             raise HTTPException(
                 status_code=500, detail=f"Prediction failed: {error_msg}"
             )
@@ -308,10 +310,6 @@ async def get_next_day_prediction(symbol: str, model_type: ModelType = ModelType
         prediction_time_seconds.labels(
             model_type=model_type.value, symbol=symbol
         ).observe(elapsed)
-
-        # The prediction is already formatted by the service
-        prediction["date"] = get_next_trading_day()
-        prediction["symbol"] = symbol
 
         return prediction
 
