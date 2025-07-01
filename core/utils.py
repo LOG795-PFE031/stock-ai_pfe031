@@ -13,57 +13,6 @@ from core.config import config
 logger = logging.getLogger(__name__)
 
 
-def calculate_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculate technical indicators for stock data.
-
-    Args:
-        df: DataFrame with OHLCV data
-
-    Returns:
-        DataFrame with additional technical indicators
-    """
-    try:
-        # Create a copy of the DataFrame to avoid modifying the original
-        df = df.copy()
-
-        # Calculate Returns (percentage change)
-        df["Returns"] = df["Close"].pct_change()
-
-        # Calculate Moving Averages
-        df["MA_5"] = df["Close"].rolling(window=5).mean()
-        df["MA_20"] = df["Close"].rolling(window=20).mean()
-
-        # Calculate Volatility (20-day standard deviation of returns)
-        df["Volatility"] = df["Returns"].rolling(window=20).std()
-
-        # Calculate RSI
-        delta = df["Close"].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        df["RSI"] = 100 - (100 / (1 + rs))
-
-        # Calculate MACD
-        exp1 = df["Close"].ewm(span=12, adjust=False).mean()
-        exp2 = df["Close"].ewm(span=26, adjust=False).mean()
-        df["MACD"] = exp1 - exp2
-        df["MACD_Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
-
-        # Ensure Adj Close exists (if not, use Close)
-        if "Adj Close" not in df.columns:
-            df["Adj Close"] = df["Close"]
-
-        # Replace NaN values with forward fill then backward fill
-        df = df.ffill().bfill()
-
-        return df
-
-    except Exception as e:
-        logger.error(f"Error calculating technical indicators: {str(e)}")
-        raise
-
-
 def validate_stock_symbol(symbol: str) -> bool:
     """
     Validate a stock symbol.
@@ -120,42 +69,6 @@ def format_prediction_response(
         "model_version": model_version,
         "timestamp": datetime.now().isoformat(),
     }
-
-
-def create_sequence_data(data: np.ndarray, sequence_length: int) -> tuple:
-    """
-    Create sequences for time series data.
-
-    Args:
-        data: Input data array
-        sequence_length: Length of each sequence
-
-    Returns:
-        Tuple of (X, y) arrays
-    """
-    X, y = [], []
-    for i in range(len(data) - sequence_length):
-        X.append(data[i : (i + sequence_length)])
-        y.append(data[i + sequence_length])
-    return np.array(X), np.array(y)
-
-
-def calculate_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
-    """
-    Calculate prediction metrics.
-
-    Args:
-        y_true: True values
-        y_pred: Predicted values
-
-    Returns:
-        Dictionary of metrics
-    """
-    mse = np.mean((y_true - y_pred) ** 2)
-    mae = np.mean(np.abs(y_true - y_pred))
-    rmse = np.sqrt(mse)
-
-    return {"mse": float(mse), "mae": float(mae), "rmse": float(rmse)}
 
 
 def get_date_range(
