@@ -16,7 +16,7 @@ from .steps import (
 )
 from .scaler_manager import ScalerManager
 
-from core.types import PreprocessedData
+from core.types import ProcessedData
 
 
 class DataProcessingService(BaseService):
@@ -72,7 +72,7 @@ class DataProcessingService(BaseService):
         phase: str,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-    ) -> Union[PreprocessedData, Tuple[PreprocessedData, PreprocessedData]]:
+    ) -> Union[ProcessedData, Tuple[ProcessedData, ProcessedData]]:
         """
         Preprocess the stock data for models input.
 
@@ -157,10 +157,10 @@ class DataProcessingService(BaseService):
     async def postprocess_data(
         self,
         symbol: str,
-        targets: pd.DataFrame,
+        prediction: pd.DataFrame,
         model_type: str,
         phase: str,
-    ) -> PreprocessedData:
+    ) -> ProcessedData:
         """
         Postprocess the predictions by reversing the scaling applied during preprocessing.
 
@@ -178,7 +178,7 @@ class DataProcessingService(BaseService):
                 f"Starting postprocessing for {symbol} symbol for {model_type} model during {phase} phase"
             )
 
-            data = PreprocessedData(y=targets)
+            data = ProcessedData(y=prediction)
 
             data = DataNormalizer(
                 symbol=symbol, model_type=model_type, phase=phase
@@ -204,7 +204,7 @@ class DataProcessingService(BaseService):
             raise
 
     async def _preprocess_training_phase(
-        self, features: PreprocessedData, symbol: str, model_type: str
+        self, features: ProcessedData, symbol: str, model_type: str
     ):
         """Handle the preprocessing steps for training."""
 
@@ -239,7 +239,7 @@ class DataProcessingService(BaseService):
         return norm_train_data, norm_test_data
 
     async def _preprocess_evaluation_phase(
-        self, features: PreprocessedData, symbol: str, model_type: str
+        self, features: ProcessedData, symbol: str, model_type: str
     ):
         """Handle the preprocessing steps for evaluation"""
 
@@ -265,7 +265,7 @@ class DataProcessingService(BaseService):
         return norm_eval_data
 
     async def _preprocess_prediction_phase(
-        self, features: PreprocessedData, symbol: str, model_type: str
+        self, features: ProcessedData, symbol: str, model_type: str
     ):
         """Handle the preprocessing steps for prediction."""
 

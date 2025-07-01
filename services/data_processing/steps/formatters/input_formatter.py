@@ -1,5 +1,5 @@
 from services.data_processing.abstract import BaseDataProcessor
-from core.types import PreprocessedData
+from core.types import ProcessedData
 
 from .input_strategies import (
     InputFormatterStrategy,
@@ -18,7 +18,7 @@ class InputFormatter(BaseDataProcessor):
         self.model_type = model_type
         self.phase = phase
 
-    def process(self, data) -> PreprocessedData:
+    def process(self, data) -> ProcessedData:
         """
         Formats the data for the different model types input.
 

@@ -2,7 +2,7 @@ from typing import Tuple
 import numpy as np
 
 from .base_strategy import InputFormatterStrategy
-from core.types import PreprocessedData
+from core.types import ProcessedData
 from core.config import config
 
 
@@ -22,10 +22,10 @@ class SequenceInputFormatter(InputFormatterStrategy):
 
         if phase == "training" or phase == "evaluation":
             X, y = self._create_sequences(data_np, target_index)
-            return PreprocessedData(X=X, y=y)
+            return ProcessedData(X=X, y=y)
         elif phase == "prediction":
             # Returns the last sequence (for next day prediction)
-            return PreprocessedData(X=self._get_last_sequence(data))
+            return ProcessedData(X=self._get_last_sequence(data))
         else:
             raise ValueError(
                 f"Invalid phase '{phase}'. Expected 'training' or 'prediction'."

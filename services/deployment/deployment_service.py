@@ -1,4 +1,5 @@
 from .mlflow_model_manager import MLflowModelManager
+from .confidence import ConfidenceCalculator
 from services.base_service import BaseService
 from core.logging import logger
 from core.utils import get_model_name
@@ -92,7 +93,51 @@ class DeploymentService(BaseService):
             self.logger.error(f"Failed to predict with model {model_name} : {str(e)}")
             raise
 
+    async def calculate_prediction_confidence(
+        self, model_type: str, prediction_input, y_pred
+    ):
+        """
+        Calculates the prediction confidence score for the specified model type.
+
+        Args:
+            model_type (str): The type of the model (e.g., "lstm", "prophet").
+            prediction_input: The input data used for the prediction.
+            y_pred: The model's predicted output.
+
+        Returns:
+            float | None: The confidence score between 0 and 1, or None if unsupported.
+        """
+        try:
+            self.logger.info(
+                f"Starting prediction confidence calculation with {model_type} model."
+            )
+            # Confidence calculation
+            confidence = ConfidenceCalculator(model_type).calculate_confidence(
+                y_pred, prediction_input
+            )
+
+            self.logger.info(
+                f"Prediction confidence calculation doned with {model_type} model."
+            )
+            return confidence
+
+        except Exception as e:
+            self.logger.error(
+                f"Failed to calculate prediction confidence score with model {model_type} : {str(e)}"
+            )
+            raise
+
     async def log_metrics(self, model_name: str, metrics):
+        """
+        Logs evaluation metrics to MLflow for the specified model.
+
+        Args:
+            model_name (str): The name of the model in MLflow.
+            metrics: An object containing evaluation metrics to log.
+
+        Returns:
+            bool: True if the metrics were logged successfully.
+        """
         try:
             self.mlflow_model_manager.log_metrics(model_name, metrics.__dict__)
             self.logger.info(

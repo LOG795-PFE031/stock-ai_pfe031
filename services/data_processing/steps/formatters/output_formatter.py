@@ -6,7 +6,7 @@ from .output_strategies import (
     NumpyOutputFormatter,
     OutputFormatterStrategy,
 )
-from core.types import PreprocessedData
+from core.types import ProcessedData
 
 
 class OutputFormatter(BaseDataProcessor):
@@ -40,7 +40,7 @@ class OutputFormatter(BaseDataProcessor):
                 data_formatter = self._get_data_formatter()
 
             formatted_y = data_formatter.format(y)
-            return PreprocessedData(y=formatted_y)
+            return ProcessedData(y=formatted_y)
         except Exception as e:
             raise RuntimeError("Error while formatting (output) the data") from e
 

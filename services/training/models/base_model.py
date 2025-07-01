@@ -10,7 +10,7 @@ from mlflow.pyfunc import PythonModel
 
 from .saving_strategies import BaseSaver
 from core.config import config
-from core.types import PreprocessedData
+from core.types import ProcessedData
 from core.utils import get_model_name
 from core.logging import logger
 from services.training.trainers import BaseTrainer
@@ -39,7 +39,7 @@ class BaseModel(ABC, PythonModel):
         self.model_root_dir = self.config.model.MODELS_ROOT_DIR
         self.model_name = get_model_name(model_type, symbol, "training")
 
-    async def train_and_save(self, data: PreprocessedData) -> str:
+    async def train_and_save(self, data: ProcessedData) -> str:
         """
         Trains the model, saves it locally, and logs it to MLflow.
 

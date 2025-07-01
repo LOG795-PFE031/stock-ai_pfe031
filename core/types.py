@@ -7,7 +7,7 @@ TX = TypeVar("TX")  # Type of X (Usually a numpy array or a pandas DataFrame)
 
 # Represents the processed output from the processing service.
 @dataclass
-class PreprocessedData(Generic[TX]):
+class ProcessedData(Generic[TX]):
     X: Optional[TX] = None
     y: Optional[np.ndarray] = None
     feature_index_map: Optional[dict[str, int]] = None

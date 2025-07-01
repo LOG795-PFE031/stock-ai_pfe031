@@ -12,7 +12,7 @@ import tensorflow as tf
 
 from ..base_service import BaseService
 from core.utils import validate_stock_symbol
-from core.types import PreprocessedData
+from core.types import ProcessedData
 from core.logging import logger
 from monitoring.prometheus_metrics import training_total
 from monitoring.utils import monitor_training_cpu_usage, monitor_training_memory_usage
@@ -73,7 +73,7 @@ class TrainingService(BaseService):
         self,
         symbol: str,
         model_type: str,
-        data: PreprocessedData,
+        data: ProcessedData,
         **kwargs,
     ) -> Dict[str, Any]:
         """

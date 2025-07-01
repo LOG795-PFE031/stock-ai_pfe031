@@ -2,7 +2,7 @@ from keras import Sequential, layers, callbacks  # Replace tensorflow import
 from typing import Any, Tuple, Dict
 import numpy as np
 
-from core.types import PreprocessedData
+from core.types import ProcessedData
 from .base_trainer import BaseTrainer
 
 
@@ -10,7 +10,7 @@ class LSTMTrainer(BaseTrainer):
     """Trainer for LSTM models."""
 
     async def train(
-        self, data: PreprocessedData[np.ndarray], **kwargs
+        self, data: ProcessedData[np.ndarray], **kwargs
     ) -> Tuple[Any, Dict[str, Any]]:
         try:
             X_train, y_train = data.X, data.y

@@ -1,5 +1,5 @@
 from .base_strategy import InputFormatterStrategy
-from core.types import PreprocessedData
+from core.types import ProcessedData
 
 from pandas.tseries.offsets import BDay
 import pandas as pd
@@ -15,12 +15,12 @@ class ProphetInputFormatter(InputFormatterStrategy):
             # Get the next available business date and update it (in the ds column)
             latest_data.at[0, "ds"] = self._get_next_business_day()
 
-            return PreprocessedData(X=latest_data)
+            return ProcessedData(X=latest_data)
 
         elif phase == "training" or "evaluation":
             # Return the training data as-is (already in Prophet format)
             y = data["y"].values
-            return PreprocessedData(X=data, y=y)
+            return ProcessedData(X=data, y=y)
         else:
             raise ValueError(
                 f"Invalid phase '{phase}'. Expected 'training' or 'prediction'."

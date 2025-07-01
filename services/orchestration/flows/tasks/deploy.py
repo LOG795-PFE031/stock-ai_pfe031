@@ -20,3 +20,12 @@ async def model_exist(model_name: str, service: DeploymentService) -> bool:
 @task(retries=3, retry_delay_seconds=5)
 async def log_metrics(model_name: str, metrics, service: DeploymentService):
     return await service.log_metrics(model_name=model_name, metrics=metrics)
+
+
+@task(retries=3, retry_delay_seconds=5)
+async def calculate_prediction_confidence(
+    model_type: str, y_pred, prediction_input, service: DeploymentService
+):
+    return await service.calculate_prediction_confidence(
+        model_type=model_type, prediction_input=prediction_input, y_pred=y_pred
+    )

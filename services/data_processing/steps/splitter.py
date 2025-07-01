@@ -3,14 +3,12 @@ from sklearn.model_selection import train_test_split
 
 from ..abstract import BaseDataProcessor
 from core.config import config
-from core.types import PreprocessedData
+from core.types import ProcessedData
 
 
 class DataSplitter(BaseDataProcessor):
 
-    def process(
-        self, data: PreprocessedData
-    ) -> Tuple[PreprocessedData, PreprocessedData]:
+    def process(self, data: ProcessedData) -> Tuple[ProcessedData, ProcessedData]:
         """
         Split the preprocessed data into training and test datasets.
 
@@ -31,10 +29,10 @@ class DataSplitter(BaseDataProcessor):
             )
 
             return (
-                PreprocessedData(
+                ProcessedData(
                     X=X_train, y=y_train, feature_index_map=data.feature_index_map
                 ),
-                PreprocessedData(
+                ProcessedData(
                     X=X_test, y=y_test, feature_index_map=data.feature_index_map
                 ),
             )

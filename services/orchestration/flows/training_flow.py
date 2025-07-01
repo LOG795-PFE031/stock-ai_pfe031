@@ -46,11 +46,11 @@ async def run_training_pipeline(
     )
 
     # Make inference (prediction)
-    pred_target = await run_inference_pipeline(
+    pred_target, _ = await run_inference_pipeline(
         model_type=model_type,
         symbol=symbol,
         phase=PHASE,
-        X=test_data.X,
+        prediction_input=test_data,
         processing_service=processing_service,
         deployment_service=deployment_service,
     )
@@ -61,7 +61,7 @@ async def run_training_pipeline(
         symbol=symbol,
         model_type=model_type,
         phase=PHASE,
-        targets=test_data.y,
+        prediction=test_data.y,
     )
 
     # Get the training model name
@@ -127,11 +127,11 @@ async def run_deployment_pipeline(
         )
 
         # Make inference on the test data with the live model
-        pred_target = await run_inference_pipeline(
+        pred_target, _ = await run_inference_pipeline(
             model_type=model_type,
             symbol=symbol,
             phase=live_phase,
-            X=test_data.X,
+            prediction_input=test_data,
             processing_service=processing_service,
             deployment_service=deployment_service,
         )
@@ -142,7 +142,7 @@ async def run_deployment_pipeline(
             symbol=symbol,
             model_type=model_type,
             phase=live_phase,
-            targets=test_data.y,
+            prediction=test_data.y,
         )
 
         # Evaluate the live model

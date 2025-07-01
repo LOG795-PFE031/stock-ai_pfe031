@@ -1,6 +1,6 @@
 from services.data_processing.scaler_manager import ScalerManager
 from services.data_processing.abstract import BaseDataProcessor
-from core.types import PreprocessedData
+from core.types import ProcessedData
 
 import numpy as np
 
@@ -17,7 +17,7 @@ class DataNormalizer(BaseDataProcessor):
         self.phase = phase
         self.scaler_manager = ScalerManager(model_type, symbol)
 
-    def process(self, data: PreprocessedData, fit=False) -> PreprocessedData:
+    def process(self, data: ProcessedData, fit=False) -> ProcessedData:
         """
         Process the data by applying normalization if required.
 
@@ -71,7 +71,7 @@ class DataNormalizer(BaseDataProcessor):
                     else:
                         results.append(None)
 
-                return PreprocessedData(
+                return ProcessedData(
                     X=results[0], y=results[1], feature_index_map=data.feature_index_map
                 )
 
@@ -82,7 +82,7 @@ class DataNormalizer(BaseDataProcessor):
         except Exception as e:
             raise RuntimeError(f"Error while scaling data.") from e
 
-    def unprocess(self, data: PreprocessedData):
+    def unprocess(self, data: ProcessedData):
         """
         Reverse the normalization applied to the targets included in the data.
 
@@ -123,7 +123,7 @@ class DataNormalizer(BaseDataProcessor):
             elif len(original_y_shape) == 1:
                 unscaled_y = unscaled_y.reshape(-1)  # Flatten y back to 1D if it was 1D
 
-            return PreprocessedData(y=unscaled_y)
+            return ProcessedData(y=unscaled_y)
         else:
             # No Unnormalize needed
             return data
