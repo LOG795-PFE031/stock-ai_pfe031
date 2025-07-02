@@ -9,6 +9,8 @@ services:
     volumes:
       - ./data:/app/data
       - ./models:/app/models
+      - ./mlruns:/app/mlruns
+      - ./scalers:/app/scalers
       - ./logs:/app/logs
     environment:
       - RABBITMQ_HOST=rabbitmq
@@ -53,7 +55,7 @@ services:
       - microservices_auth
     depends_on:
       - stock-ai
-  
+
   grafana:
     image: grafana/grafana
     container_name: stock-ai-grafana
