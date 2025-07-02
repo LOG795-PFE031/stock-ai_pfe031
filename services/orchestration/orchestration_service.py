@@ -6,7 +6,6 @@ from .flows import (
     run_evaluation_pipeline,
     run_prediction_pipeline,
     run_training_pipeline,
-    run_data_pipeline,
 )
 from ..base_service import BaseService
 from ..deployment import DeploymentService
@@ -44,13 +43,7 @@ class OrchestrationService(BaseService):
             self.logger.error(f"Failed to initialize orchestration service: {str(e)}")
             raise
 
-    async def run_training_pipeline(
-        self,
-        model_type: str,
-        symbol: str,
-        start_date: str = None,
-        end_date: str = None,
-    ):
+    async def run_training_pipeline(self, model_type: str, symbol: str):
         """
         Run the full training pipeline for the specified model and symbol.
 
@@ -63,6 +56,9 @@ class OrchestrationService(BaseService):
         """
 
         try:
+            # Enforce upper case for the symbol
+            symbol = symbol.upper()
+
             self.logger.info(
                 f"Starting training pipeline for {model_type} model for {symbol}."
             )
@@ -82,12 +78,21 @@ class OrchestrationService(BaseService):
                 f"Training pipeline completed successfully for {model_type} model for {symbol}."
             )
 
+            # Add a success status to the result
+            result["status"] = "success"
+
             return result
         except Exception as e:
             self.logger.error(
                 f"Error running the training pipeline for model {model_type} for {symbol}: {str(e)}"
             )
-            raise
+            return {
+                "status": "error",
+                "error": str(e),
+                "symbol": symbol,
+                "model_type": model_type,
+                "timestamp": datetime.now().isoformat(),
+            }
 
     async def run_prediction_pipeline(self, model_type: str, symbol: str):
         """
@@ -101,6 +106,9 @@ class OrchestrationService(BaseService):
             result: The result of the prediction pipeline execution.
         """
         try:
+            # Enforce upper case for the symbol
+            symbol = symbol.upper()
+
             self.logger.info(
                 f"Starting prediction pipeline for {model_type} model for {symbol}."
             )
@@ -115,14 +123,15 @@ class OrchestrationService(BaseService):
             )
 
             if prediction_result:
-                self.logger.info(
-                    f"Prediction pipeline completed successfully for {model_type} model for {symbol}."
-                )
 
                 # Extract the prediction results
                 prediction = prediction_result["y_pred"][0]
                 confidence = prediction_result["confidence"][0]
                 model_version = prediction_result["model_version"]
+
+                self.logger.info(
+                    f"Prediction pipeline completed successfully for {model_type} model for {symbol}."
+                )
 
                 return format_prediction_response(
                     prediction=prediction,
@@ -147,7 +156,13 @@ class OrchestrationService(BaseService):
             self.logger.error(
                 f"Error running the prediction pipeline for model {model_type} for {symbol}: {str(e)}"
             )
-            raise
+            return {
+                "status": "error",
+                "error": str(e),
+                "symbol": symbol,
+                "model_type": model_type,
+                "timestamp": datetime.now().isoformat(),
+            }
 
     async def run_evaluation_pipeline(self, model_type: str, symbol: str):
         """
@@ -162,6 +177,9 @@ class OrchestrationService(BaseService):
         """
 
         try:
+            # Enforce upper case for the symbol
+            symbol = symbol.upper()
+
             self.logger.info(
                 f"Starting evaluation pipeline for {model_type} model for {symbol}."
             )
@@ -186,7 +204,13 @@ class OrchestrationService(BaseService):
             self.logger.error(
                 f"Error running the evaluation pipeline for model {model_type} for {symbol}: {str(e)}"
             )
-            raise
+            return {
+                "status": "error",
+                "error": str(e),
+                "symbol": symbol,
+                "model_type": model_type,
+                "timestamp": datetime.now().isoformat(),
+            }
 
     async def cleanup(self) -> None:
         """Clean up resources."""

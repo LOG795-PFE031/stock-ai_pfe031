@@ -61,6 +61,7 @@ def format_prediction_response(
         return float(np.clip(value, -1e10, 1e10))  # Clip to reasonable range
 
     return {
+        "status": "success",
         "symbol": symbol,
         "date": date or (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d"),
         "predicted_price": safe_float(prediction),

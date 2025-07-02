@@ -135,7 +135,7 @@ class DeploymentService(BaseService):
             )
             raise
 
-    async def log_metrics(self, model_name: str, metrics):
+    async def log_metrics(self, model_name: str, metrics: dict):
         """
         Logs evaluation metrics to MLflow for the specified model.
 
@@ -147,7 +147,7 @@ class DeploymentService(BaseService):
             bool: True if the metrics were logged successfully.
         """
         try:
-            self.mlflow_model_manager.log_metrics(model_name, metrics.__dict__)
+            self.mlflow_model_manager.log_metrics(model_name, metrics)
             self.logger.info(
                 f"Metrics successfully logged to MLflow for model {model_name}"
             )

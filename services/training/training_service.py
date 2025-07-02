@@ -29,8 +29,6 @@ class TrainingService(BaseService):
         self.training_tasks = {}
         self.logger = logger["training"]
 
-        # days=self.config.data.STOCK_HISTORY_DAYS
-
     async def initialize(self) -> None:
         """Initialize the training service."""
         try:
@@ -63,11 +61,20 @@ class TrainingService(BaseService):
             self.logger.info(
                 f"Successfully retrieved {len(trainers)} trainers from ModelRegistry."
             )
-            return {"status": "success", "result": trainers}
+            return {
+                "status": "success",
+                "trainers": trainers,
+                "count": len(trainers),
+                "timestamp": datetime.now().isoformat(),
+            }
 
         except Exception as e:
             self.logger.error(f"Error getting the trainers : {str(e)}")
-            return {"status": "error", "error": str(e)}
+            return {
+                "status": "error",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+            }
 
     async def train_model(
         self,
@@ -301,6 +308,9 @@ class TrainingService(BaseService):
         ]
 
     def _enable_full_reproducibility(self, seed: int = 42):
+        """
+        Ensures reproducibility by setting random seeds and configuring TensorFlow.
+        """
         os.environ["PYTHONHASHSEED"] = str(seed)
         os.environ["TF_DETERMINISTIC_OPS"] = "1"
         os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"

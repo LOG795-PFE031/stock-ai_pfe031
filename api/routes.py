@@ -7,7 +7,6 @@ from fastapi.responses import RedirectResponse
 from typing import Dict, Any, Optional
 from datetime import datetime
 from core.utils import get_next_trading_day
-from pydantic import BaseModel
 from monitoring.prometheus_metrics import prediction_time_seconds
 import time
 
@@ -25,7 +24,6 @@ from api.schemas import (
     NewsDataResponse,
     ModelListResponse,
     ModelMetadataResponse,
-    ModelType,
 )
 from core.config import config
 from core.logging import logger
@@ -277,7 +275,7 @@ async def get_model_metadata(model_id: str):
 @router.get(
     "/predict/{symbol}", response_model=PredictionResponse, tags=["Prediction Services"]
 )
-async def get_next_day_prediction(symbol: str, model_type: ModelType = ModelType.LSTM):
+async def get_next_day_prediction(symbol: str, model_type: str = "lstm"):
     """Get stock price prediction for the next day."""
     try:
         # Import services from main to avoid circular imports
@@ -298,20 +296,20 @@ async def get_next_day_prediction(symbol: str, model_type: ModelType = ModelType
 
         elapsed = time.time() - start_time
 
-        # Check if prediction failed
-        if prediction.get("status") == "error":
+        if prediction.get("status") == "success":
+            # Observe latency in seconds
+            prediction_time_seconds.labels(
+                model_type=model_type, symbol=symbol
+            ).observe(elapsed)
+
+            return prediction
+
+        else:
             error_msg = prediction.get("error", "Unknown error")
             api_logger.error(f"Prediction failed for {symbol}: {error_msg}")
             raise HTTPException(
                 status_code=500, detail=f"Prediction failed: {error_msg}"
             )
-
-        # Observe latency in seconds
-        prediction_time_seconds.labels(
-            model_type=model_type.value, symbol=symbol
-        ).observe(elapsed)
-
-        return prediction
 
     except Exception as e:
         api_logger.error(f"Prediction failed: {str(e)}")
@@ -327,7 +325,7 @@ async def get_historical_predictions(
     symbol: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    model_type: ModelType = ModelType.LSTM,
+    model_type: str = "lstm",
 ):
     """Get historical predictions for a symbol."""
     try:
@@ -345,7 +343,7 @@ async def get_historical_predictions(
 
         # Get predictions
         predictions = await prediction_service.get_historical_predictions(
-            symbol=symbol, start_date=start, end_date=end, model_type=model_type.value
+            symbol=symbol, start_date=start, end_date=end, model_type=model_type
         )
 
         # Format each prediction
@@ -369,7 +367,7 @@ async def get_historical_predictions(
             meta=MetaInfo(
                 start_date=start.isoformat(),
                 end_date=end.isoformat(),
-                model_type=model_type.value,
+                model_type=model_type,
             ),
         )
     except Exception as e:
@@ -384,7 +382,7 @@ async def get_historical_predictions(
     response_model=Dict[str, Any],
     tags=["Prediction Services"],
 )
-async def get_direct_display(symbol: str, model_type: ModelType = ModelType.LSTM):
+async def get_direct_display(symbol: str, model_type: str = "lstm"):
     """Get formatted prediction display for a symbol."""
     try:
         # Import services from main to avoid circular imports
@@ -398,7 +396,7 @@ async def get_direct_display(symbol: str, model_type: ModelType = ModelType.LSTM
 
         # Get prediction and news analysis
         prediction = await prediction_service.get_next_day_prediction(
-            symbol=symbol, model_type=model_type.value
+            symbol=symbol, model_type=model_type
         )
         news_analysis = await news_service.get_news_analysis(symbol)
 
@@ -437,13 +435,24 @@ async def get_trainers():
         # Get the trainers
         trainers_response = await training_service.get_trainers()
 
-        return TrainingTrainersResponse(
-            status=trainers_response["status"],
-            timestamp=datetime.utcnow().isoformat(),
-            result={"models": trainers_response["result"]},
-        )
+        if trainers_response.get("status") == "success":
+            return TrainingTrainersResponse(
+                status=trainers_response["status"],
+                trainers=trainers_response["trainers"],
+                count=trainers_response["count"],
+                timestamp=datetime.now().isoformat(),
+            )
+        else:
+            error_msg = trainers_response.get("error", "Unknown error")
+            api_logger.error(
+                f"Failed to retrieve the list of available trainers: {error_msg}"
+            )
+            raise HTTPException(
+                status_code=500, detail=f"Prediction failed: {error_msg}"
+            )
+
     except Exception as e:
-        api_logger.error(f"Failed to get the trainers: {str(e)}")
+        api_logger.error(f"Failed to retrieve the list of available trainers: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get the trainers: {str(e)}"
         )
@@ -454,16 +463,12 @@ async def get_trainers():
 )
 async def train_model(
     symbol: str,
-    model_type: str = ModelType.LSTM,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    epochs: int = 100,
-    batch_size: int = 32,
+    model_type: str = "lstm",
 ):
     """Train a new model for a symbol."""
     try:
         # Import services from main to avoid circular imports
-        from main import training_service
+        from main import orchestation_service
 
         # Validate symbol
         if not validate_stock_symbol(symbol):
@@ -471,26 +476,26 @@ async def train_model(
                 status_code=400, detail=f"Invalid stock symbol: {symbol}"
             )
 
-        start, end = get_date_range(start_date, end_date)
-
-        # Start training
-        result = await training_service.train_model(
-            symbol=symbol,
-            model_type=model_type,
-            start_date=start,
-            end_date=end,
-            epochs=epochs,
-            batch_size=batch_size,
+        # Train the model
+        training_result = await orchestation_service.run_training_pipeline(
+            model_type=model_type, symbol=symbol
         )
 
-        return TrainingResponse(
-            symbol=symbol,
-            model_type=model_type,
-            model_version=result["result"]["model_version"],
-            training_history=result["result"]["training_history"],
-            metrics=result["result"]["metrics"],
-            timestamp=datetime.utcnow().isoformat(),
-        )
+        if training_result.get("status") == "success":
+            return TrainingResponse(
+                status=training_result["status"],
+                symbol=symbol,
+                model_type=model_type,
+                training_results=training_result["training_results"],
+                metrics=training_result["metrics"],
+                deployment_results=training_result["deployment_results"],
+                timestamp=datetime.now().isoformat(),
+            )
+        else:
+            error_msg = training_result.get("error", "Unknown error")
+            api_logger.error(f"Training failed for {symbol}: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"Training failed: {error_msg}")
+
     except Exception as e:
         api_logger.error(f"Training failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")

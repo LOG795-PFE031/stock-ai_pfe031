@@ -51,6 +51,7 @@ class BaseModel(ABC, PythonModel):
         """
 
         try:
+            mlflow.set_experiment("training_experiments")
             with mlflow.start_run() as run:
 
                 # Set custom tags
@@ -77,7 +78,7 @@ class BaseModel(ABC, PythonModel):
 
             return {
                 "model_name": self.model_name,
-                "run_info": run.info,
+                "run_info": run.info.__dict__,
                 "training_history": training_history,
             }
 
