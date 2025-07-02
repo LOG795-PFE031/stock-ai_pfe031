@@ -25,7 +25,7 @@ class EvaluationService(BaseService):
         model_name: str,
         y_true: np.ndarray,
         y_pred: np.ndarray,
-    ) -> Metrics:
+    ) -> dict:
         """
         Evaluate the performance of a trained model using predicted and true target values.
 
@@ -43,13 +43,14 @@ class EvaluationService(BaseService):
 
             metrics = self._calculate_metrics(y_true, y_pred)
 
-            return metrics
+            # Returns the metrics as a dict
+            return metrics.__dict__
         except Exception as e:
             self.logger.error(f"Evaluation failed for {model_name} model: {str(e)}")
             raise
 
     async def should_deploy_model(
-        self, candidate_metrics: Metrics, live_metrics: Metrics
+        self, candidate_metrics: dict, live_metrics: dict
     ) -> bool:
         """
         Determines whether the candidate model should be deployed by comparing it
@@ -81,13 +82,15 @@ class EvaluationService(BaseService):
             self.logger.error(f"Error during deployment evaluation: {e}")
             raise
 
-    def _has_better_metrics(
-        self, candidate_metrics: Metrics, live_metrics: Metrics
-    ) -> bool:
+    def _has_better_metrics(self, candidate_metrics: dict, live_metrics: dict) -> bool:
         """
         Returns True if the candidate model has a lower MAE than the live model.
         """
-        return candidate_metrics.mae < live_metrics.mae
+        try:
+            return candidate_metrics["mae"] < live_metrics["mae"]
+        except (KeyError, TypeError) as e:
+            self.logger.warning(f"Missing or invalid 'mae' in metrics: {e}")
+            return False
 
     def _calculate_metrics(self, y_true: np.ndarray, y_pred: np.ndarray) -> Metrics:
         mse = mean_squared_error(y_true, y_pred)

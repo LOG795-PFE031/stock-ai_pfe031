@@ -8,13 +8,6 @@ from pydantic import BaseModel, Field
 from enum import Enum
 
 
-class ModelType(str, Enum):
-    """Available model types."""
-
-    LSTM = "lstm"
-    PROPHET = "prophet"
-
-
 class MetaInfo(BaseModel):
     """API metadata information."""
 
@@ -43,11 +36,13 @@ class ErrorResponse(BaseModel):
 class PredictionResponse(BaseModel):
     """Prediction response schema."""
 
+    status: str
     symbol: str
     date: str
     predicted_price: float
     confidence: float
-    model_type: ModelType
+    model_type: str
+    model_version: int
     timestamp: str
 
 
@@ -74,19 +69,20 @@ class TrainingTrainersResponse(BaseModel):
     """Trainers getter response schema."""
 
     status: str
+    trainers: List[str]
+    count: int
     timestamp: str
-    result: Dict[str, List[str]] = None
-    error: Optional[str] = None
 
 
 class TrainingResponse(BaseModel):
     """Model training response."""
 
+    status: str
     symbol: str
     model_type: str
-    model_version: str
-    training_history: Dict[str, Any]
-    metrics: Dict[str, Any]
+    training_results: Dict[str, Any]
+    metrics: Dict[str, float]
+    deployment_results: Dict[str, Any] = None
     timestamp: str
 
 
