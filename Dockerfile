@@ -1,5 +1,5 @@
 # Stage 1: Builder
-FROM python:3.11-slim AS builder
+FROM python:3.12.9-slim AS builder
 
 # Set working directory
 WORKDIR /app
@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 
 
 # Stage 2: Runtime
-FROM python:3.11-slim
+FROM python:3.12.9-slim
 
 # Set working directory
 WORKDIR /app  
@@ -42,14 +42,13 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed Python packages from builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY api/ ./api/
 COPY core/ ./core/
 COPY services/ ./services/
-COPY training/ ./training/
 COPY main.py .
 COPY monitoring/ ./monitoring/
 
