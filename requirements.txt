@@ -18,6 +18,8 @@ accelerate>=0.20.0  # For optimized model loading
 sentencepiece>=0.1.99  # For tokenization
 protobuf>=3.20.0  # Required by transformers
 prefect>=3.4.6 # Required for the ML Pipeline
+tensorflow>=2.19.0
+mlflow>=2.22.0
 
 # API and web server
 fastapi>=0.68.0
