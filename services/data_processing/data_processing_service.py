@@ -29,6 +29,14 @@ class DataProcessingService(BaseService):
         """Initialize the data processing service."""
         try:
             self._initialized = True
+
+            # Map the phase to the correction function
+            self.phase_function_map = {
+                "training": self._preprocess_training_phase,
+                "prediction": self._preprocess_prediction_phase,
+                "evaluation": self._preprocess_evaluation_phase,
+            }
+
             self.logger.info("Data processing service initialized successfully")
         except Exception as e:
             self.logger.error(f"Failed to initialize data processing service: {str(e)}")
@@ -76,6 +84,9 @@ class DataProcessingService(BaseService):
         """
         Preprocess the stock data for models input.
 
+        This method first applies common preprocessing steps that are independent of the phase.
+        Then, it delegates to the appropriate phase-specific preprocessing function.
+
         Args:
             data (pd.DataFrame): Raw stock data
 
@@ -97,6 +108,9 @@ class DataProcessingService(BaseService):
             self.logger.info(
                 f"Starting preprocessing for symbol={symbol} for model {model_type} during {phase} phase"
             )
+
+            if phase not in self.phase_function_map:
+                raise ValueError(f"Unknown phase '{phase}'")
 
             # Clean the data
             clean_data = DataCleaner().process(data)
@@ -128,25 +142,8 @@ class DataProcessingService(BaseService):
             # Add the column-to-index map to the input data
             input_data.feature_index_map = feature_index_map
 
-            if phase == "training":
-                return await self._preprocess_training_phase(
-                    input_data, symbol, model_type
-                )
-
-            elif phase == "prediction":
-                return await self._preprocess_prediction_phase(
-                    input_data, symbol, model_type
-                )
-
-            elif phase == "evaluation":
-                return await self._preprocess_evaluation_phase(
-                    input_data, symbol, model_type
-                )
-
-            else:
-                raise ValueError(
-                    f"Unknown phase '{phase}'. Expected one of: 'training', 'prediction', or 'evaluation'."
-                )
+            # Execute the correction function based on the phase
+            return self.phase_function_map[phase](input_data, symbol, model_type)
 
         except Exception as e:
             self.logger.error(
