@@ -8,6 +8,8 @@ import pytz
 import pandas as pd
 import yfinance as yf
 import pandas_market_calendars as mcal
+import requests
+import json
 
 from .base_service import BaseService
 from core.config import config
@@ -25,6 +27,7 @@ class DataService(BaseService):
         self.config = config
         self.stock_data_dir = self.config.data.STOCK_DATA_DIR
         self.news_data_dir = self.config.data.NEWS_DATA_DIR
+        self.symbols_file = self.config.data.NASDAQ100_SYMBOLS_FILE
 
     async def initialize(self) -> None:
         """Initialize the data service."""
@@ -95,6 +98,54 @@ class DataService(BaseService):
 
             # Log the unsuccessful external request to Yahoo Finance (Prometheuss)
             external_requests_total.labels(site="yahoo_finance", result="error").inc()
+            raise
+
+    async def get_nasdaq_symbols(self) -> dict:
+        """
+        Fetch the NASDAQ 100 symbols
+
+        Returns:
+            dict: A dictionary containing the count of symbols and the list of symbols
+            from the NASDAQ 100 index.
+        """
+
+        self.logger.info("Starting NASDAQ 100 symbol retrieval process")
+
+        try:
+
+            symbol_data_file = self.symbols_file
+
+            if symbol_data_file.exists():
+
+                self.logger.info("Loading NASDAQ 100 symbols from local cache")
+
+                # Read the file
+                with open(symbol_data_file) as f:
+                    symbols_data = json.load(f)
+            else:
+                self.logger.info(
+                    "Local cache not found, fetching NASDAQ 100 symbols from API"
+                )
+
+                # Fetch the data
+                url = "https://api.nasdaq.com/api/quote/list-type/nasdaq100"
+                headers = {"User-Agent": "Mozilla/5.0"}
+                response = requests.get(url, headers=headers)
+                data = response.json()["data"]["data"]["rows"]
+
+                # Retrieve the symbols
+                symbols = [item["symbol"] for item in data]
+                symbols_data = {"count": len(symbols), "symbols": symbols}
+
+                # Save it to the data file
+                with open(symbol_data_file, "w") as f:
+                    json.dump(symbols_data, f, ensure_ascii=False)
+
+            # Return the symbols
+            self.logger.info("Retrieved NASDAQ 100 symbols")
+            return symbols_data
+        except Exception as e:
+            self.logger.error(f"Error collecting NASDAQ 100 symbols: {str(e)}")
             raise
 
     async def collect_stock_data(
