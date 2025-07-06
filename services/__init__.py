@@ -12,3 +12,6 @@ from .visualization_service import VisualizationService
 from .data_processing import DataProcessingService
 from .deployment import DeploymentService
 from .evaluation_service import EvaluationService
+from .orchestration.orchestration_service import OrchestrationService
+from .monitoring.evaluation_scheduler_service import EvaluationSchedulerService
+from .monitoring.monitoring_service import MonitoringService

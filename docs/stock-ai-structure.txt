@@ -7,7 +7,7 @@ stock-ai/
 │   ├── progress.py           # Progress indicator utilities using Rich
 │   └── utils.py            # Common utilities
 ├── data/                   # Data management
-│   ├── stock/        # Stock price data
+│   ├── stock/        # Stock price data (csv)
 │   └── news/         # News articles data
 │   └── processed/        
 │   └── raw/        
@@ -23,21 +23,22 @@ stock-ai/
 ├── prometheus/        
 │   └── prometheus.yml      
 ├── services/              # Business logic services
+│   ├── data_processing/    # Contains data_processing_service.py and scaler_manager.py
+│   ├── deployment/         # Contains deployment_service.py and mlflow_model_manager.py
+│   ├── monitoring/         # Contains monitoring_service to check models and trigger retrain if necessary 
+│   ├── orchestration/      # Contains orchestration_service that runs pipelines (training, prediction and evaluation)
+│   ├── training/           # Training logic Contains training_service.py and model_registry.py + models/, predictors/ and trainers/ for lstm and prophet models
 │   ├── base_service.py
 │   ├── data_service.py
+│   ├── evalution_service.py
 │   ├── model_service.py
 │   ├── prediction_service.py
 │   ├── rabbitmq_service.py
-│   ├── training_service.py
 │   ├── visualization_service.py
 │   └── news_service.py
 ├── api/                   # API endpoints
-│   ├── routes/
-│   └── schemas/
-└── training/            # Training logic
-│   ├── base_trainer.py
-│   ├── lstm_trainer.py
-│   └── prophet_trainer.py
+│   ├── routes.py
+│   └── schemas.py
 ├── main.py            
 ├── monitor_predictions.py            # Monitor prediction events from RabbitMQ
 └── train_prophet_models.py            # Train Prophet models for all symbols that have LSTM models

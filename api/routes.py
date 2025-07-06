@@ -279,7 +279,7 @@ async def get_next_day_prediction(symbol: str, model_type: str = "lstm"):
     """Get stock price prediction for the next day."""
     try:
         # Import services from main to avoid circular imports
-        from main import orchestation_service
+        from main import orchestration_service
 
         # Validate symbol
         if not validate_stock_symbol(symbol):
@@ -290,7 +290,7 @@ async def get_next_day_prediction(symbol: str, model_type: str = "lstm"):
         start_time = time.time()
 
         # Get prediction using the new method
-        prediction = await orchestation_service.run_prediction_pipeline(
+        prediction = await orchestration_service.run_prediction_pipeline(
             model_type=model_type, symbol=symbol
         )
 
@@ -468,7 +468,7 @@ async def train_model(
     """Train a new model for a symbol."""
     try:
         # Import services from main to avoid circular imports
-        from main import orchestation_service
+        from main import orchestration_service
 
         # Validate symbol
         if not validate_stock_symbol(symbol):
@@ -477,7 +477,7 @@ async def train_model(
             )
 
         # Train the model
-        training_result = await orchestation_service.run_training_pipeline(
+        training_result = await orchestration_service.run_training_pipeline(
             model_type=model_type, symbol=symbol
         )
 

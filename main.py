@@ -3,6 +3,7 @@ Main application module for Stock AI.
 """
 
 import os
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,24 +30,28 @@ os.makedirs("scalers", exist_ok=True)
 # Initialize services
 from services import (
     DataService,
+    ModelService,
     NewsService,
     DataProcessingService,
     TrainingService,
     DeploymentService,
     EvaluationService,
+    OrchestrationService,
     RabbitMQService,
+    MonitoringService, 
+    EvaluationSchedulerService,
 )
-from services.orchestration import OrchestrationService
 
 
 # Create service instances in dependency order
 data_service = DataService()
+model_service = ModelService()
 preprocessing_service = DataProcessingService()
 training_service = TrainingService()
 news_service = NewsService()
 deployment_service = DeploymentService()
 evaluation_service = EvaluationService()
-orchestation_service = OrchestrationService(
+orchestration_service = OrchestrationService(
     data_service=data_service,
     preprocessing_service=preprocessing_service,
     training_service=training_service,
@@ -54,8 +59,12 @@ orchestation_service = OrchestrationService(
     evaluation_service=evaluation_service,
 )
 rabbitmq_service = RabbitMQService()
-
-
+monitoring_service = MonitoringService(
+    deployment_service=deployment_service,
+    orchestration_service=orchestration_service,
+    check_interval_seconds=65, 
+)
+        
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
@@ -65,13 +74,33 @@ async def lifespan(app: FastAPI):
 
         # Initialize services in order of dependencies
         await data_service.initialize()
+        await model_service.initialize()
         await news_service.initialize()
         await preprocessing_service.initialize()
         await training_service.initialize()
         await deployment_service.initialize()
         await evaluation_service.initialize()
-        await orchestation_service.initialize()
+        await orchestration_service.initialize()
+        await monitoring_service.initialize()
+        
+        logger["main"].info("Init eval scheduler")
+        evaluation_scheduler = EvaluationSchedulerService(
+            deployment_service = deployment_service,
+            orchestration_service = orchestration_service,
+            interval_seconds=300,
+        )
 
+        eval_task = asyncio.create_task(evaluation_scheduler.start())
+        
+        async def periodic(task_fn, interval):
+            while True:
+                await task_fn(),
+                await asyncio.sleep(interval)
+                
+        mon_task = asyncio.create_task(
+            periodic(monitoring_service.run_once, monitoring_service.check_interval_seconds)
+        )
+        
         # Start auto-publishing predictions
         # await prediction_service.start_auto_publishing(interval_minutes=15) # TDOO
 
@@ -88,12 +117,24 @@ async def lifespan(app: FastAPI):
             logger["main"].info("Shutting down services...")
 
             # Cleanup in reverse order of initialization
+            # Cancel our background loops
+            for task in (eval_task, mon_task):
+                task.cancel()
+
+            # Await cancellation to avoid warnings
+            for task in (eval_task, mon_task):
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+    
             await deployment_service.cleanup()
-            await orchestation_service.cleanup()
+            await orchestration_service.cleanup()
             await evaluation_service.cleanup()
             await preprocessing_service.cleanup()
             await training_service.cleanup()
             await news_service.cleanup()
+            await model_service.cleanup() 
             await data_service.cleanup()
             rabbitmq_service.close()  # Close RabbitMQ connection
 

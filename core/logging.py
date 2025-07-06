@@ -48,6 +48,7 @@ loggers: Dict[str, logging.Logger] = {
     "training": logging.getLogger("training"),
     "orchestration": logging.getLogger("orchestration"),
     "news": logging.getLogger("news"),
+    "monitoring": logging.getLogger("monitoring"),
 }
 
 # Configure each logger
