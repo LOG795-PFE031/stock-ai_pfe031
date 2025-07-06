@@ -3,6 +3,10 @@ from mlflow import MlflowClient
 
 
 class MLflowModelManager:
+
+    # Production alias (used to identify the production model)
+    PRODUCTION_ALIAS = "production"
+
     def __init__(self):
         self.client = MlflowClient()
 
@@ -16,65 +20,106 @@ class MLflowModelManager:
         except Exception as e:
             raise RuntimeError(f"Error listing the models: {str(e)}") from e
 
-    async def load_model(self, model_name: str):
+    async def load_model(self, model_identifier: str):
         """
         Load the latest MLflow model
 
         Args:
-            model_name (str): The model name
+            model_identifier (str): Identifier for the model (run ID of a
+                logged model (training model) or name of a registered model (live model)).
 
         Returns:
             mlflow.pyfunc.PythonModel: The loaded MLflow model
             int: Version of the loaded MLflow model
         """
         try:
+            if self._run_exists(model_identifier):
+                # Path to the logged trained model
+                model_uri = f"runs:/{model_identifier}/model"
 
-            # This gets the latest registered version
-            latest_versions = self.client.get_latest_versions(model_name)
-            latest_version = latest_versions[0].version if latest_versions else None
+                # There is no model version for a logged model
+                version = None
+            else:
+                # Path to the production model (live model)
+                model_uri = f"models:/{model_identifier}@{self.PRODUCTION_ALIAS}"
 
-            # Path to the model
-            model_uri = f"models:/{model_name}/{latest_version}"
+                # Get the version of the registred model
+                versions = self.client.search_model_versions(
+                    f"name='{model_identifier}'"
+                )
+                for v in versions:
+                    if self.PRODUCTION_ALIAS in v.aliases:
+                        version = v.version
+                        break
 
             # Load the model
             model = mlflow.pyfunc.load_model(model_uri)
 
-            return model, latest_version
+            return model, version
 
         except Exception as e:
-            raise RuntimeError(f"Error loading the model {model_name}: {str(e)}") from e
+            raise RuntimeError(
+                f"Error loading the model {model_identifier}: {str(e)}"
+            ) from e
 
-    def log_metrics(self, model_name: str, metrics: dict):
+    def log_metrics(self, model_identifier: str, metrics: dict):
         """
         Log evaluation metrics to MLflow for a given model.
 
         Args:
-            model_name (str): The model name
+            model_identifier (str): Identifier for the model (run ID of a
+                logged model (training model) or name of a registered model (live model)).
             metrics (dict): Metrics (evaluation)
         """
         try:
             # Get the last run_id of the model
-            run_id = self._get_run_id_for_model(model_name)
+            run_id = self._get_run_id_model(model_identifier)
+
+            # Get the current step
+            current_step = self._get_current_step(run_id=run_id)
+
+            # New step
+            new_step = current_step + 1
 
             # Log the metrics
             with mlflow.start_run(run_id=run_id):
-                mlflow.log_metrics(metrics)
+                for key in metrics:
+                    mlflow.log_metric(key, value=metrics[key], step=new_step)
+
+            # Update the step
+            self._update_step_tag(run_id=run_id, step=new_step)
 
         except Exception as e:
             raise RuntimeError(
-                f"Failed to log metrics for model '{model_name}': {str(e)}"
+                f"Failed to log metrics for model '{model_identifier}': {str(e)}"
             ) from e
 
-    def promote(self, train_model_name: str, prod_model_name: str):
-        try:
-            # Get the last train run_id of the model
-            train_run_id = self._get_run_id_for_model(train_model_name)
+    def promote(self, train_run_id: str, prod_model_name: str):
+        """
+        Promote a trained MLflow model (logged in a run) to a registered production model.
 
+        Args:
+            train_run_id (str): The MLflow run ID where the trained model is logged.
+            prod_model_name (str): The name to register the model under in the MLflow model registry.
+
+        Returns:
+            ModelVersion: The registered MLflow ModelVersion object.
+        """
+        try:
             # Generate the training model uri
-            train_model_uri = f"runs:/{train_run_id}/{train_model_name}"
+            train_model_uri = f"runs:/{train_run_id}/model"
 
             # Promote the model (training to prediction (prod))
             mv = mlflow.register_model(train_model_uri, prod_model_name)
+
+            # Add the alias production to the model
+            self.client.set_registered_model_alias(
+                name=prod_model_name, alias=self.PRODUCTION_ALIAS, version=mv.version
+            )
+
+            # Initialize the step counter (for logging)
+            self._update_step_tag(train_run_id, 0)
+
             return mv
         except Exception as e:
             raise RuntimeError(f"Error promoting training model : {str(e)}") from e
@@ -105,7 +150,7 @@ class MLflowModelManager:
         """
         try:
             # Get the last run of the model
-            run_id = self._get_run_id_for_model(model_name)
+            run_id = self._get_run_id_model(model_name)
             run = self.client.get_run(run_id)
 
             # Retrieve the metrics from the run
@@ -117,30 +162,78 @@ class MLflowModelManager:
                 f"Error retrieving metrics for model {model_name}: {str(e)}"
             ) from e
 
-    def _get_run_id_for_model(self, model_name: str) -> str:
+    def _get_current_step(self, run_id: str, key: str = "step") -> int:
         """
-        Retrieve the run ID for the latest registered MLflow model version
+        Retrieve the current step value stored as a tag in an MLflow run.
 
         Args:
-            model_name (str): The model name
+            run_id (str): The MLflow run ID to retrieve the tag from.
+            key (str): The tag key used to store the step value. Defaults to "step".
 
         Returns:
-            str: The run ID associated with the latest version of the model.
+            int: The current step value. Returns 0 if the tag is not set.
+        """
+        run = self.client.get_run(run_id)
+        step_str = run.data.tags.get(key, "0")
+        return int(step_str)
+
+    def _update_step_tag(self, run_id: str, step: int, key: str = "step"):
+        """
+        Update or create a tag in an MLflow run to store the current step value.
+
+        Args:
+            run_id (str): The MLflow run ID where the tag should be set.
+            step (int): The step value to store.
+            key (str): The tag key used to store the step value. Defaults to "step".
+        """
+        self.client.set_tag(run_id, key, str(step))
+
+    def _get_run_id_model(self, model_identifier: str) -> str:
+        """
+        Retrieve the run ID of a MLflow model (live model) based on the model indentifier
+
+        Args:
+            model_identifier (str): Identifier for the model (run ID of a
+                logged model (training model) or name of aregistered model (live model)).
+
+        Returns:
+            str: The run ID associated with the production MLflow model
         """
         try:
-            versions = self.client.search_model_versions(f"name='{model_name}'")
+            if self._run_exists(model_identifier):
+                return model_identifier
+
+            versions = self.client.search_model_versions(f"name='{model_identifier}'")
 
             if not versions:
-                raise RuntimeError(f"No versions found for model '{model_name}'.")
+                raise RuntimeError(f"No versions found for model '{model_identifier}'.")
 
-            # Sort by version number (descending, most recent first)
-            sorted_versions = sorted(
-                versions, key=lambda v: int(v.version), reverse=True
+            for v in versions:
+                if self.PRODUCTION_ALIAS in v.aliases:
+                    return v.run_id
+
+            raise RuntimeError(
+                f"No model '{model_identifier}' has alias '{self.PRODUCTION_ALIAS}'."
             )
-
-            return sorted_versions[0].run_id
 
         except Exception as e:
             raise RuntimeError(
-                f"Failed to retrieve run ID for model '{model_name}': {str(e)}"
+                f"Failed to retrieve run ID for model '{model_identifier}': {str(e)}"
             ) from e
+
+    def _run_exists(self, run_id: str) -> bool:
+        """
+        Check whether a run with the given run ID exists in the MLflow tracking server.
+
+        Args:
+            run_id (str): The unique identifier of the MLflow run.
+
+        Returns:
+            bool: True if the run exists and is accessible; False if it does not exist
+                or has been deleted.
+        """
+        try:
+            mlflow.get_run(run_id)
+            return True
+        except Exception:
+            return False
