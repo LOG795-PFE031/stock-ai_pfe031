@@ -13,7 +13,7 @@ from core.utils import get_model_name
 from .evaluate_and_log_flow import run_evaluate_and_log_flow
 
 PHASE = "training"
-
+_preprocessed_cache = {}
 
 @flow(name="Training Pipeline")
 async def run_training_pipeline(
@@ -25,17 +25,28 @@ async def run_training_pipeline(
     deployment_service,
     evaluation_service,
 ):
-    # Run the data pipeline (Data Ingestion + Preprocessing)
-    preprocessed_data = await run_data_pipeline(
-        symbol=symbol,
-        model_type=model_type,
-        data_service=data_service,
-        processing_service=processing_service,
-        phase=PHASE,
-    )
+    
+    cache_key = f"{symbol}_{model_type}"
+    training_data = []
+    test_data = []
 
-    # Split into train and test datasets
-    training_data, test_data = preprocessed_data
+    if cache_key in _preprocessed_cache:
+        training_data, test_data = _preprocessed_cache[cache_key]
+    
+    else:
+        # Run the data pipeline (Data Ingestion + Preprocessing)
+        preprocessed_data = await run_data_pipeline(
+            symbol=symbol,
+            model_type=model_type,
+            data_service=data_service,
+            processing_service=processing_service,
+            phase=PHASE,
+        )
+
+        # Split into train and test datasets
+        training_data, test_data = preprocessed_data
+
+        _preprocessed_cache[cache_key] = preprocessed_data
 
     # Train the model
     training_results = await train(
@@ -112,7 +123,13 @@ async def run_deployment_pipeline(
         model_type=model_type, symbol=symbol, phase=live_phase
     )
 
-    deployment_results = None
+    deployment_results = {
+                "deployed": False,
+                "model_name": None,
+                "version": None,
+                "run_id": None  
+                }
+    # deployment_results = None
 
     if await model_exist(live_model_name, deployment_service):
 
