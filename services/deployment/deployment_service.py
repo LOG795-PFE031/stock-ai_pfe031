@@ -1,3 +1,4 @@
+from typing import Any, Dict, Tuple
 from .mlflow_model_manager import MLflowModelManager
 from .confidence import ConfidenceCalculator
 from services.base_service import BaseService
@@ -12,6 +13,12 @@ class DeploymentService(BaseService):
         self.mlflow_model_manager = None
         self.evaluator = None
         self._initialized = False
+        
+        # Param:
+        # Key = (symbol, model_type)
+        # Value = (prediction_result, model_version)
+        self._prediction_cache: Dict[Tuple[str, str], Tuple[Any, int]] = {}
+
 
     async def initialize(self) -> None:
         """Initialize the Deployment service."""
@@ -58,10 +65,20 @@ class DeploymentService(BaseService):
             self.logger.info("Listing all avalaible models (in MLFlow).")
             available_models_names = await self.mlflow_model_manager.list_models()
 
+            # if available_models_names:
+            #     self.logger.info(f"Found AVAILABLE models: {available_models_names}")
+            # else:
+            #     self.logger.warning("No AVAILABLE models found in MLFlow.")
+
             # Filter for live models
             live_model_names = [
                 name for name in available_models_names if "prediction" in name.lower()
             ]
+            
+            # if live_model_names:
+            #     self.logger.info(f"Found live models: {live_model_names}")
+            # else:
+            #     self.logger.warning("No live models found in MLFlow.")
 
             return live_model_names
         except Exception as e:
@@ -82,7 +99,23 @@ class DeploymentService(BaseService):
         """
         try:
             self.logger.info(f"Starting prediction using model {model_name}.")
-
+            
+            model_type = model_name.split("_")[0] 
+            symbol = self._extract_symbol_from_model_name(model_name)
+            cache_key = (symbol, model_type)
+            
+            self.logger.info(f"Key is: {cache_key}.")
+            
+            # Load model version
+            _, current_version = await self.mlflow_model_manager.load_model(model_name)
+            
+            # Use cache if available and version matches
+            if cache_key in self._prediction_cache:
+                cached_pred, cached_ver = self._prediction_cache[cache_key]
+                if cached_ver == current_version:
+                    self.logger.info(f"Using cached prediction for {cache_key}")
+                    return cached_pred, cached_ver
+            
             # Load the model
             model, version = await self.mlflow_model_manager.load_model(model_name)
 
@@ -95,12 +128,29 @@ class DeploymentService(BaseService):
             # Log the completion of the prediction
             self.logger.info(f"Prediction completed for model {model_name}.")
 
+            # Cache prediction
+            self._prediction_cache[cache_key] = (predictions, version)
+            
             return predictions, version
 
         except Exception as e:
             self.logger.error(f"Failed to predict with model {model_name} : {str(e)}")
             raise
-
+        
+    def _extract_symbol_from_model_name(self, model_name: str) -> str:
+            """
+            Extract the stock symbol from the model name.
+            Assumes format: <model_type>_<SYMBOL>_prediction
+            """
+            try:
+                parts = model_name.split("_")
+                if len(parts) >= 3:
+                    return parts[1].upper()
+                raise ValueError(f"Invalid model name format: {model_name}")
+            except Exception as e:
+                self.logger.error(f"Error extracting symbol from model name: {str(e)}")
+                raise
+        
     async def calculate_prediction_confidence(
         self, model_type: str, prediction_input, y_pred
     ):
