@@ -16,5 +16,5 @@ async def load_data(service: DataService, symbol: str) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Stock data.
     """
-    data, _ = await service.get_stock_data(symbol)
+    data, _ = await service.get_recent_data(symbol)
     return data

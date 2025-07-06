@@ -134,6 +134,14 @@ class StockDataResponse(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
+class StocksListDataResponse(BaseModel):
+    """Stocks symbols list data response."""
+
+    count: int
+    symbols: List[str]
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
 class NewsDataResponse(BaseModel):
     """News data response."""
 
