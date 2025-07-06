@@ -118,6 +118,9 @@ class DataProcessingService(BaseService):
                 f"Data cleaned for symbol={symbol}, model_type={model_type}"
             )
 
+            # Retrieve dates
+            dates = clean_data["Date"].dt.date
+
             # Build features
             features = FeatureBuilder().process(clean_data)
             self.logger.debug(
@@ -143,7 +146,7 @@ class DataProcessingService(BaseService):
             input_data.feature_index_map = feature_index_map
 
             # Execute the correction function based on the phase
-            return self.phase_function_map[phase](input_data, symbol, model_type)
+            return self.phase_function_map[phase](input_data, dates, symbol, model_type)
 
         except Exception as e:
             self.logger.error(
@@ -201,7 +204,7 @@ class DataProcessingService(BaseService):
             raise
 
     async def _preprocess_training_phase(
-        self, features: ProcessedData, symbol: str, model_type: str
+        self, features: ProcessedData, dates: pd.Series, symbol: str, model_type: str
     ):
         """Handle the preprocessing steps for training."""
 
@@ -229,6 +232,21 @@ class DataProcessingService(BaseService):
             f"Test data normalized for symbol={symbol}, model_type={model_type}"
         )
 
+        # Retrieve training dataset start and end dates
+        train_start_date = dates[0]
+        train_end_date = dates[len(norm_train_data.X) - 1]
+
+        # Retrieve test dataset start and end dates
+        test_start_date = dates[len(norm_train_data.X)]
+        test_end_date = dates[len(dates) - 1]
+
+        # Add start and end dates to preprocessed data (Train and test)
+        norm_train_data.start_date = train_start_date
+        norm_train_data.end_date = train_end_date
+
+        norm_test_data.start_date = test_start_date
+        norm_test_data.end_date = test_end_date
+
         self.logger.info(
             f"Completed training phase preprocessing for {symbol} symbol for {model_type} model"
         )
@@ -236,7 +254,7 @@ class DataProcessingService(BaseService):
         return norm_train_data, norm_test_data
 
     async def _preprocess_evaluation_phase(
-        self, features: ProcessedData, symbol: str, model_type: str
+        self, features: ProcessedData, dates: pd.Series, symbol: str, model_type: str
     ):
         """Handle the preprocessing steps for evaluation"""
 
@@ -255,6 +273,14 @@ class DataProcessingService(BaseService):
             f"Evaluation data normalized for symbol={symbol}, model_type={model_type}"
         )
 
+        # Retrieve the start and end dates
+        eval_start_date = dates[len(dates) - len(norm_eval_data.X)]
+        eval_end_date = dates[len(dates) - 1]
+
+        # Add start and end dates to preprocessed data
+        norm_eval_data.start_date = eval_start_date
+        norm_eval_data.end_date = eval_end_date
+
         self.logger.info(
             f"Completed evaluation phase preprocessing for {symbol} symbol for model {model_type}"
         )
@@ -262,7 +288,7 @@ class DataProcessingService(BaseService):
         return norm_eval_data
 
     async def _preprocess_prediction_phase(
-        self, features: ProcessedData, symbol: str, model_type: str
+        self, features: ProcessedData, dates: pd.Series, symbol: str, model_type: str
     ):
         """Handle the preprocessing steps for prediction."""
 
@@ -270,9 +296,18 @@ class DataProcessingService(BaseService):
         norm_features = DataNormalizer(symbol, model_type, "prediction").process(
             features, fit=False
         )
+
         self.logger.debug(
             f"Prediction data normalized for symbol={symbol}, model_type={model_type}"
         )
+
+        # Retrieve the start and end dates
+        pred_start_date = dates[len(dates) - len(norm_features.X)]
+        pred_end_date = dates[len(dates) - 1]
+
+        # Add start and end dates to preprocessed data
+        norm_features.start_date = pred_start_date
+        norm_features.end_date = pred_end_date
 
         self.logger.info(
             f"Completed prediction phase preprocessing for {symbol} symbol for {model_type} model"

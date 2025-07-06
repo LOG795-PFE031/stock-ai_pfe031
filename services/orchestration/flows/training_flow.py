@@ -45,8 +45,12 @@ async def run_training_pipeline(
         service=training_service,
     )
 
+    # Get the training run id
+    run_id = training_results["run_id"]
+
     # Make inference (prediction)
     pred_target, _, _ = await run_inference_pipeline(
+        model_identifier=run_id,
         model_type=model_type,
         symbol=symbol,
         phase=PHASE,
@@ -64,12 +68,9 @@ async def run_training_pipeline(
         prediction=test_data.y,
     )
 
-    # Get the training model name
-    model_name = get_model_name(model_type=model_type, symbol=symbol, phase=PHASE)
-
     # Evaluate the training model
     metrics = await run_evaluate_and_log_flow(
-        model_name=model_name,
+        model_identifier=run_id,
         true_target=true_target,
         pred_target=pred_target,
         evaluation_service=evaluation_service,
@@ -78,6 +79,7 @@ async def run_training_pipeline(
 
     # Deploy the model
     deployment_results = await run_deployment_pipeline(
+        run_id=run_id,
         model_type=model_type,
         symbol=symbol,
         candidate_metrics=metrics,
@@ -96,6 +98,7 @@ async def run_training_pipeline(
 
 @flow(name="Deployment Pipeline")
 async def run_deployment_pipeline(
+    run_id: str,
     model_type: str,
     symbol: str,
     candidate_metrics,
@@ -108,9 +111,7 @@ async def run_deployment_pipeline(
     live_phase = "prediction"
 
     # Get the live model name
-    live_model_name = get_model_name(
-        model_type=model_type, symbol=symbol, phase=live_phase
-    )
+    live_model_name = get_model_name(model_type=model_type, symbol=symbol)
 
     deployment_results = None
 
@@ -128,6 +129,7 @@ async def run_deployment_pipeline(
 
         # Make inference on the test data with the live model
         pred_target, _, _ = await run_inference_pipeline(
+            model_identifier=live_model_name,
             model_type=model_type,
             symbol=symbol,
             phase=live_phase,
@@ -147,7 +149,7 @@ async def run_deployment_pipeline(
 
         # Evaluate the live model
         live_metrics = await run_evaluate_and_log_flow(
-            model_name=live_model_name,
+            model_identifier=live_model_name,
             true_target=true_target,
             pred_target=pred_target,
             evaluation_service=evaluation_service,
@@ -167,7 +169,7 @@ async def run_deployment_pipeline(
     else:
         # Automatically promote training model (if there is no live model)
         deployment_results = promote_model(
-            model_type=model_type, symbol=symbol, service=deployment_service
+            run_id=run_id, model_name=live_model_name, service=deployment_service
         )
 
     if deployment_results is not None:

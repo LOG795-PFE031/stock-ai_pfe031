@@ -16,7 +16,7 @@ async def run_evaluation_pipeline(
     evaluation_service,
 ):
     # Get the live model name
-    live_model_name = get_model_name(model_type, symbol, "prediction")
+    live_model_name = get_model_name(model_type, symbol)
 
     # Checks if the live model exists
     live_model_exist = await model_exist(live_model_name, deployment_service)
@@ -33,6 +33,7 @@ async def run_evaluation_pipeline(
 
         # Make inference (prediction) using live model
         pred_target, _, _ = await run_inference_pipeline(
+            model_identifier=live_model_name,
             model_type=model_type,
             symbol=symbol,
             phase="prediction",
@@ -52,7 +53,7 @@ async def run_evaluation_pipeline(
 
         # Evaluate the training model
         metrics = await run_evaluate_and_log_flow(
-            model_name=live_model_name,
+            model_identifier=live_model_name,
             true_target=true_target,
             pred_target=pred_target,
             evaluation_service=evaluation_service,

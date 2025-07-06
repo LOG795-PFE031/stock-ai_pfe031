@@ -22,7 +22,6 @@ class EvaluationService(BaseService):
 
     async def evaluate(
         self,
-        model_name: str,
         y_true: np.ndarray,
         y_pred: np.ndarray,
     ) -> dict:
@@ -30,7 +29,6 @@ class EvaluationService(BaseService):
         Evaluate the performance of a trained model using predicted and true target values.
 
         Args:
-            model_type (str): Type of the model being evaluated (e.g., 'lstm', 'prophet').
             y_true (np.ndarray): Ground truth target values.
             y_pred (np.ndarray): Predicted target values by the model.
 
@@ -39,14 +37,14 @@ class EvaluationService(BaseService):
         """
 
         try:
-            self.logger.info(f"Starting evaluation for {model_name} model")
+            self.logger.info(f"Starting evaluation")
 
             metrics = self._calculate_metrics(y_true, y_pred)
 
             # Returns the metrics as a dict
             return metrics.__dict__
         except Exception as e:
-            self.logger.error(f"Evaluation failed for {model_name} model: {str(e)}")
+            self.logger.error(f"Evaluation failed: {str(e)}")
             raise
 
     async def should_deploy_model(

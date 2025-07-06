@@ -1,18 +1,22 @@
 from prefect import flow
 from .tasks import predict, postprocess_data, calculate_prediction_confidence
-from core.utils import get_model_name
 import numpy as np
 
 
 @flow(name="Inference Pipeline")
 async def run_inference_pipeline(
-    model_type, symbol, phase, prediction_input, processing_service, deployment_service
+    model_identifier,
+    model_type,
+    symbol,
+    phase,
+    prediction_input,
+    processing_service,
+    deployment_service,
 ):
-    model_name = get_model_name(model_type=model_type, symbol=symbol, phase=phase)
 
     # Prediction
     y_pred, model_version = await predict(
-        model_name=model_name,
+        model_identifier=model_identifier,
         X=prediction_input.X,
         service=deployment_service,
     )

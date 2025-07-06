@@ -11,9 +11,12 @@ PHASE = "prediction"
 async def run_prediction_pipeline(
     model_type: str, symbol: str, data_service, processing_service, deployment_service
 ):
-    live_model_exist = await model_exist(
-        get_model_name(model_type, symbol, PHASE), deployment_service
-    )
+
+    # Generate the production model (live model) name
+    live_model_name = get_model_name(model_type, symbol)
+
+    # Check if it exist
+    live_model_exist = await model_exist(live_model_name, deployment_service)
     if live_model_exist:
         prediction_input = await run_data_pipeline(
             symbol=symbol,
@@ -25,6 +28,7 @@ async def run_prediction_pipeline(
 
         # Make prediction (prediction and confidence included)
         pred_target, confidence, model_version = await run_inference_pipeline(
+            model_identifier=live_model_name,
             model_type=model_type,
             symbol=symbol,
             phase=PHASE,
