@@ -6,6 +6,7 @@ from core.utils import get_model_name
 import hashlib
 import json
 import numpy as np
+import pandas as pd
 
 class DeploymentService(BaseService):
     def __init__(self):
@@ -69,6 +70,8 @@ class DeploymentService(BaseService):
     def _hash_input(self, X) -> str:
         try:
             def convert(obj):
+                if isinstance(obj, pd.DataFrame):
+                    return obj.to_dict(orient="records")
                 if isinstance(obj, np.ndarray):
                     return obj.tolist()
                 if isinstance(obj, (np.float32, np.float64, np.int32, np.int64)):
@@ -97,6 +100,8 @@ class DeploymentService(BaseService):
         try:
             self.logger.info(f"Starting prediction using model {model_identifier}.")
 
+            # self.logger.info(f"X is {X}.")
+            
             # Generate input hash
             input_hash = self._hash_input(X)
             cache_key = (model_identifier, input_hash)
