@@ -11,6 +11,7 @@ from .data_flow import run_data_pipeline
 from .inference_flow import run_inference_pipeline
 from core.utils import get_model_name
 from .evaluate_and_log_flow import run_evaluate_and_log_flow
+import time
 
 PHASE = "training"
 _preprocessed_cache = {}
@@ -27,11 +28,14 @@ async def run_training_pipeline(
 ):
     
     cache_key = f"{symbol}_{model_type}"
+    current_time = time.time()
+
     training_data = []
     test_data = []
 
-    if cache_key in _preprocessed_cache:
-        training_data, test_data = _preprocessed_cache[cache_key]
+    if cache_key in _preprocessed_cache and _preprocessed_cache[cache_key][1]>current_time:
+        # training_data, test_data = _preprocessed_cache[cache_key]
+        training_data, test_data = _preprocessed_cache[cache_key][0] 
     
     else:
         # Run the data pipeline (Data Ingestion + Preprocessing)
@@ -45,8 +49,9 @@ async def run_training_pipeline(
 
         # Split into train and test datasets
         training_data, test_data = preprocessed_data
+        expiration_time = current_time + 300
 
-        _preprocessed_cache[cache_key] = preprocessed_data
+        _preprocessed_cache[cache_key] = (preprocessed_data, expiration_time)
 
     # Train the model
     training_results = await train(
@@ -123,13 +128,7 @@ async def run_deployment_pipeline(
         model_type=model_type, symbol=symbol, phase=live_phase
     )
 
-    deployment_results = {
-                "deployed": False,
-                "model_name": None,
-                "version": None,
-                "run_id": None  
-                }
-    # deployment_results = None
+    deployment_results = None
 
     if await model_exist(live_model_name, deployment_service):
 
