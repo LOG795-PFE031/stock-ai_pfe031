@@ -3,6 +3,10 @@ from .confidence import ConfidenceCalculator
 from services.base_service import BaseService
 from core.logging import logger
 from core.utils import get_model_name
+import hashlib
+import json
+import numpy as np
+import pandas as pd
 
 
 class DeploymentService(BaseService):
@@ -12,6 +16,7 @@ class DeploymentService(BaseService):
         self.mlflow_model_manager = None
         self.evaluator = None
         self._initialized = False
+        self._prediction_cache = {}
 
     async def initialize(self) -> None:
         """Initialize the Deployment service."""
@@ -79,13 +84,33 @@ class DeploymentService(BaseService):
         try:
             self.logger.info(f"Starting prediction using model {model_identifier}.")
 
-            # Load the model
-            model, version = await self.mlflow_model_manager.load_model(
+            # Generate input hash for caching
+            input_hash = self._hash_input(X)
+            if not input_hash:
+                self.logger.warning(
+                    "Could not generate a valid input hash. Caching will be skipped."
+                )
+                cache_key = None
+            else:
+                cache_key = (model_identifier, input_hash)
+                self.logger.debug(f"Cache key generated: {cache_key}")
+
+            # Load model version
+            model, current_version = await self.mlflow_model_manager.load_model(
                 model_identifier
             )
 
             # Log the successful loading of the model
             self.logger.debug(f"Model {model_identifier} successfully loaded.")
+
+            # Use cache if available and version matches
+            if cache_key and cache_key in self._prediction_cache:
+                cached_pred, cached_ver = self._prediction_cache[cache_key]
+                if cached_ver == current_version:
+                    self.logger.info(
+                        f"Using cached prediction for model {model_identifier} with input hash {input_hash}"
+                    )
+                    return cached_pred, cached_ver
 
             # Perform prediction
             predictions = model.predict(X)
@@ -93,7 +118,12 @@ class DeploymentService(BaseService):
             # Log the completion of the prediction
             self.logger.info(f"Prediction completed for model {model_identifier}.")
 
-            return predictions, version
+            # Cache the result
+            if cache_key:
+                self._prediction_cache[cache_key] = (predictions, current_version)
+                self.logger.debug(f"Prediction cached for key {cache_key}.")
+
+            return predictions, current_version
 
         except Exception as e:
             self.logger.error(
@@ -173,6 +203,14 @@ class DeploymentService(BaseService):
             mv = self.mlflow_model_manager.promote(run_id, prod_model_name)
             self.logger.info(f"Successfully promoted {mv.name} model to MLflow")
 
+            # Invalidate all cache entries for the production model name
+            to_remove = [k for k in self._prediction_cache if k[0] == prod_model_name]
+            for key in to_remove:
+                del self._prediction_cache[key]
+                self.logger.info(
+                    f"Invalidated prediction cache for model {key[0]} after promotion"
+                )
+
             return {
                 "deployed": True,
                 "model_name": mv.name,
@@ -193,3 +231,30 @@ class DeploymentService(BaseService):
             self.logger.info("Deployment service cleaned up successfully")
         except Exception as e:
             self.logger.error(f"Error during deployment service cleanup: {str(e)}")
+
+    def _hash_input(self, X) -> str:
+        """
+        Returns an MD5 hash of the prediction input `X`, used for caching.
+
+        Parameters:
+            X: Prediction input data to be hashed.
+
+        Returns:
+            str: MD5 hash string or None on error.
+        """
+        try:
+
+            def convert(obj):
+                if isinstance(obj, pd.DataFrame):
+                    return obj.to_dict(orient="records")
+                if isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                if isinstance(obj, (np.float32, np.float64, np.int32, np.int64)):
+                    return obj.item()
+                raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+            input_str = json.dumps(X, sort_keys=True, default=convert)
+            return hashlib.md5(input_str.encode()).hexdigest()
+        except Exception as e:
+            self.logger.error(f"Failed to hash input for caching: {str(e)}")
+            return None

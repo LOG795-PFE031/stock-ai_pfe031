@@ -14,6 +14,7 @@ test_env/
 .gitignore
 .env
 __pycache__/
+*.pyc
 *.py[cod]
 *$py.class
 *.so
@@ -37,6 +38,10 @@ venv/
 .venv/
 .idea/
 .vscode/
+*.pyo
+*.pyd
+*.log
+*.db
 
 # Exclude Docker files
 Dockerfile
