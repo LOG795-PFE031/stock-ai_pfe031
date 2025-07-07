@@ -16,7 +16,7 @@ PHASE = "training"
 
 
 @flow(name="Training Pipeline")
-async def run_training_pipeline(
+def run_training_pipeline(
     model_type,
     symbol,
     data_service,
@@ -26,7 +26,7 @@ async def run_training_pipeline(
     evaluation_service,
 ):
     # Run the data pipeline (Data Ingestion + Preprocessing)
-    preprocessed_data = await run_data_pipeline(
+    preprocessed_data = run_data_pipeline(
         symbol=symbol,
         model_type=model_type,
         data_service=data_service,
@@ -38,7 +38,7 @@ async def run_training_pipeline(
     training_data, test_data = preprocessed_data
 
     # Train the model
-    training_results = await train(
+    training_results_future = train.submit(
         symbol=symbol,
         model_type=model_type,
         training_data=training_data,
@@ -46,10 +46,11 @@ async def run_training_pipeline(
     )
 
     # Get the training run id
+    training_results = training_results_future.result()
     run_id = training_results["run_id"]
 
     # Make inference (prediction)
-    pred_target, _, _ = await run_inference_pipeline(
+    pred_target, _, _ = run_inference_pipeline(
         model_identifier=run_id,
         model_type=model_type,
         symbol=symbol,
@@ -60,16 +61,17 @@ async def run_training_pipeline(
     )
 
     # Postprocess the ground truth values
-    true_target = await postprocess_data(
+    true_target_future = postprocess_data.submit(
         service=processing_service,
         symbol=symbol,
         model_type=model_type,
         phase=PHASE,
         prediction=test_data.y,
     )
+    true_target = true_target_future.result()
 
     # Evaluate the training model
-    metrics = await run_evaluate_and_log_flow(
+    metrics = run_evaluate_and_log_flow(
         model_identifier=run_id,
         true_target=true_target,
         pred_target=pred_target,
@@ -78,7 +80,7 @@ async def run_training_pipeline(
     )
 
     # Deploy the model
-    deployment_results = await run_deployment_pipeline(
+    deployment_results = run_deployment_pipeline(
         run_id=run_id,
         model_type=model_type,
         symbol=symbol,
@@ -97,7 +99,7 @@ async def run_training_pipeline(
 
 
 @flow(name="Deployment Pipeline")
-async def run_deployment_pipeline(
+def run_deployment_pipeline(
     run_id: str,
     model_type: str,
     symbol: str,
@@ -115,11 +117,14 @@ async def run_deployment_pipeline(
 
     deployment_results = None
 
-    if await model_exist(live_model_name, deployment_service):
+    # Checks if the live model exists
+    live_model_exist = model_exist.submit(live_model_name, deployment_service)
+
+    if live_model_exist.result():
 
         # Run the data pipeline (Data Ingestion + Preprocessing)
         # This is done because the live model its data preprocess (own scaler)
-        test_data = await run_data_pipeline(
+        test_data = run_data_pipeline(
             symbol=symbol,
             model_type=model_type,
             data_service=data_service,
@@ -128,7 +133,7 @@ async def run_deployment_pipeline(
         )
 
         # Make inference on the test data with the live model
-        pred_target, _, _ = await run_inference_pipeline(
+        pred_target, _, _ = run_inference_pipeline(
             model_identifier=live_model_name,
             model_type=model_type,
             symbol=symbol,
@@ -139,16 +144,17 @@ async def run_deployment_pipeline(
         )
 
         # Postprocess the ground truth values
-        true_target = await postprocess_data(
+        true_target_future = postprocess_data.submit(
             service=processing_service,
             symbol=symbol,
             model_type=model_type,
             phase=live_phase,
             prediction=test_data.y,
         )
+        true_target = true_target_future.result()
 
         # Evaluate the live model
-        live_metrics = await run_evaluate_and_log_flow(
+        live_metrics = run_evaluate_and_log_flow(
             model_identifier=live_model_name,
             true_target=true_target,
             pred_target=pred_target,
@@ -157,13 +163,15 @@ async def run_deployment_pipeline(
         )
 
         # Promote the training model if better
-        if await should_deploy_model(
+        should_deploy_train_model = should_deploy_model.submit(
             candidate_metrics=candidate_metrics,
             live_metrics=live_metrics,
             service=evaluation_service,
-        ):
+        )
+
+        if should_deploy_train_model.result():
             deployment_results = promote_model(
-                model_type=model_type, symbol=symbol, service=deployment_service
+                run_id=run_id, model_name=live_model_name, service=deployment_service
             )
 
     else:
@@ -174,7 +182,7 @@ async def run_deployment_pipeline(
 
     if deployment_results is not None:
         # If there was a deployment
-        await promote_scaler(
+        promote_scaler.submit(
             model_type=model_type, symbol=symbol, service=processing_service
         )
 

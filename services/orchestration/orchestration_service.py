@@ -64,7 +64,7 @@ class OrchestrationService(BaseService):
             )
 
             # Run the training pipeline
-            result = await run_training_pipeline(
+            result = run_training_pipeline(
                 model_type,
                 symbol,
                 self.data_service,
@@ -114,7 +114,7 @@ class OrchestrationService(BaseService):
             )
 
             # Run the prediction pipeline
-            prediction_result = await run_prediction_pipeline(
+            prediction_result = run_prediction_pipeline(
                 model_type,
                 symbol,
                 self.data_service,
@@ -185,7 +185,7 @@ class OrchestrationService(BaseService):
             )
 
             # Run the evaluation pipeline
-            result = await run_evaluation_pipeline(
+            result = run_evaluation_pipeline(
                 model_type,
                 symbol,
                 self.data_service,
