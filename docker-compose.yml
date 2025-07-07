@@ -7,9 +7,13 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./data:/app/data
-      - ./models:/app/models
-      - ./logs:/app/logs
+      - .:/app                 
+      - /app/__pycache__        
+      - ./logs:/app/logs       
+      - ./data:/app/data       
+      - ./models:/app/models   
+      - ./mlruns:/app/mlruns   
+      - ./scalers:/app/scalers 
     environment:
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
@@ -53,7 +57,7 @@ services:
       - microservices_auth
     depends_on:
       - stock-ai
-  
+
   grafana:
     image: grafana/grafana
     container_name: stock-ai-grafana

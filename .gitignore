@@ -73,9 +73,10 @@ sandbox/lstm-stock-price-prediction/models/
 data/news/
 data/stock/
 
-models/general
-models/prophet
-models/specific
+/models/
+
+# Ignore MlFlow files
+mlruns/
 
 stock-ai.code-workspace
 

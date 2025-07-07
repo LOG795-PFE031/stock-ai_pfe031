@@ -8,13 +8,6 @@ from pydantic import BaseModel, Field
 from enum import Enum
 
 
-class ModelType(str, Enum):
-    """Available model types."""
-
-    LSTM = "lstm"
-    PROPHET = "prophet"
-
-
 class MetaInfo(BaseModel):
     """API metadata information."""
 
@@ -43,11 +36,13 @@ class ErrorResponse(BaseModel):
 class PredictionResponse(BaseModel):
     """Prediction response schema."""
 
+    status: str
     symbol: str
     date: str
     predicted_price: float
     confidence: float
-    model_type: ModelType
+    model_type: str
+    model_version: int
     timestamp: str
 
 
@@ -70,14 +65,24 @@ class NewsAnalysisResponse(BaseModel):
     model_version: str
 
 
+class TrainingTrainersResponse(BaseModel):
+    """Trainers getter response schema."""
+
+    status: str
+    trainers: List[str]
+    count: int
+    timestamp: str
+
+
 class TrainingResponse(BaseModel):
     """Model training response."""
 
+    status: str
     symbol: str
     model_type: str
-    model_version: str
-    training_history: Dict[str, List[float]]
-    metrics: Dict[str, Any]
+    training_results: Dict[str, Any]
+    metrics: Dict[str, float]
+    deployment_results: Dict[str, Any] = None
     timestamp: str
 
 
@@ -114,7 +119,6 @@ class DataUpdateResponse(BaseModel):
 
     symbol: str
     stock_data_updated: bool
-    news_data_updated: bool
     timestamp: str
     stock_records: int
     news_articles: int
@@ -127,6 +131,27 @@ class StockDataResponse(BaseModel):
     name: str
     data: List[Dict[str, Any]]
     meta: MetaInfo
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+class StockItem(BaseModel):
+    """Infos about a stock"""
+
+    symbol: str
+    sector: str
+    companyName: str
+    marketCap: str
+    lastSalePrice: str
+    netChange: str
+    percentageChange: str
+    deltaIndicator: str
+
+
+class StocksListDataResponse(BaseModel):
+    """Stocks data list data response."""
+
+    count: int
+    data: List[StockItem]
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
