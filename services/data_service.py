@@ -27,7 +27,6 @@ class DataService(BaseService):
         self.config = config
         self.stock_data_dir = self.config.data.STOCK_DATA_DIR
         self.news_data_dir = self.config.data.NEWS_DATA_DIR
-        self.stocks_data_file = self.config.data.NASDAQ100_STOCKS_DATA_FILE
 
     async def initialize(self) -> None:
         """Initialize the data service."""
@@ -119,44 +118,23 @@ class DataService(BaseService):
         self.logger.info("Starting NASDAQ 100 stocks data retrieval process")
 
         try:
+            # Fetch the data
+            url = "https://api.nasdaq.com/api/quote/list-type/nasdaq100"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            response = requests.get(url, headers=headers)
+            data = response.json()["data"]["data"]["rows"]
 
-            stocks_data_file = self.stocks_data_file
+            # Sort the list by absolute percentageChange (descending)
+            sorted_stocks = sorted(
+                data,
+                key=lambda x: parse_percentage_change(x.get("percentageChange", "0%")),
+                reverse=True,
+            )
+            stocks_data = {"count": len(sorted_stocks), "data": sorted_stocks}
 
-            if stocks_data_file.exists():
-
-                self.logger.info("Loading NASDAQ 100 stocks data from local cache")
-
-                # Read the file
-                with open(stocks_data_file) as f:
-                    stocks_data = json.load(f)
-            else:
-                self.logger.info(
-                    "Local cache not found, fetching NASDAQ 100 stocks data from API"
-                )
-
-                # Fetch the data
-                url = "https://api.nasdaq.com/api/quote/list-type/nasdaq100"
-                headers = {"User-Agent": "Mozilla/5.0"}
-                response = requests.get(url, headers=headers)
-                data = response.json()["data"]["data"]["rows"]
-
-                # Sort the list by absolute percentageChange (descending)
-                sorted_stocks = sorted(
-                    data,
-                    key=lambda x: parse_percentage_change(
-                        x.get("percentageChange", "0%")
-                    ),
-                    reverse=True,
-                )
-
-                stocks_data = {"count": len(sorted_stocks), "data": sorted_stocks}
-
-                # Save it to the data file
-                with open(stocks_data_file, "w") as f:
-                    json.dump(stocks_data, f, ensure_ascii=False)
-
-            # Return the symbols
             self.logger.info("Retrieved NASDAQ 100 stocks data")
+
+            # Return the stock data
             return stocks_data
         except Exception as e:
             self.logger.error(f"Error collecting NASDAQ 100 stocks data: {str(e)}")
