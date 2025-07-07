@@ -17,7 +17,7 @@ async def model_exist(model_name: str, service: DeploymentService) -> bool:
     return await service.model_exists(model_name)
 
 
-@task(retries=3, retry_delay_seconds=5)
+@task(retries=3, retry_delay_seconds=5, timeout_seconds=30)
 async def log_metrics(model_identifier: str, metrics, service: DeploymentService):
     return await service.log_metrics(model_identifier=model_identifier, metrics=metrics)
 
