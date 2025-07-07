@@ -11,7 +11,6 @@ from mlflow.pyfunc import PythonModel
 from .saving_strategies import BaseSaver
 from core.config import config
 from core.types import ProcessedData
-from core.utils import get_model_name
 from core.logging import logger
 from services.training.trainers import BaseTrainer
 
@@ -37,7 +36,6 @@ class BaseModel(ABC, PythonModel):
         self.config = config
         self.logger = logger["training"]
         self.model_root_dir = self.config.model.MODELS_ROOT_DIR
-        self.model_name = get_model_name(model_type, symbol, "training")
 
     async def train_and_save(self, data: ProcessedData) -> str:
         """
@@ -58,6 +56,8 @@ class BaseModel(ABC, PythonModel):
                 mlflow.set_tag("stage", "training")
                 mlflow.set_tag("model_type", self.model_type)
                 mlflow.set_tag("symbol", self.symbol)
+                mlflow.set_tag("training_data_start_date", data.start_date)
+                mlflow.set_tag("training_data_end_date", data.end_date)
 
                 # Train the model
                 model, training_history = await self.trainer.train(data)
@@ -70,14 +70,13 @@ class BaseModel(ABC, PythonModel):
                 # Register the model to MLFlow
                 mlflow.pyfunc.log_model(
                     python_model=self.predictor,
-                    artifact_path=self.model_name,
+                    artifact_path="model",
                     input_example=data.X,  # TODO To long to log. We will need to get one sample
-                    registered_model_name=self.model_name,
                     artifacts={"model": str(saved_training_model_path)},
                 )
 
             return {
-                "model_name": self.model_name,
+                "run_id": run.info.run_id,
                 "run_info": run.info.__dict__,
                 "training_history": training_history,
             }

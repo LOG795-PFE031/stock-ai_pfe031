@@ -3,6 +3,10 @@ from .confidence import ConfidenceCalculator
 from services.base_service import BaseService
 from core.logging import logger
 from core.utils import get_model_name
+import hashlib
+import json
+import numpy as np
+import pandas as pd
 
 
 class DeploymentService(BaseService):
@@ -12,6 +16,7 @@ class DeploymentService(BaseService):
         self.mlflow_model_manager = None
         self.evaluator = None
         self._initialized = False
+        self._prediction_cache = {}
 
     async def initialize(self) -> None:
         """Initialize the Deployment service."""
@@ -30,7 +35,8 @@ class DeploymentService(BaseService):
 
     async def model_exists(self, model_name: str) -> bool:
         """
-        Checks whether a live model with the given name exists in the MLflow registry.
+        Checks whether a production model (live model) with the given name exists
+        in the MLflow registry.
 
         Args:
             model_name (str): The name of the model to check.
@@ -47,9 +53,8 @@ class DeploymentService(BaseService):
 
     async def list_models(self):
         """
-        Retrieves and returns a list of all available live model names from the MLflow model registry.
-
-        A "live model" is defined here as any model whose name contains the word "prediction".
+        Retrieves and returns a list of all available production model (live model) names
+        from the MLflow model registry.
 
         Returns:
             List[str]: A list of model names
@@ -58,22 +63,18 @@ class DeploymentService(BaseService):
             self.logger.info("Listing all avalaible models (in MLFlow).")
             available_models_names = await self.mlflow_model_manager.list_models()
 
-            # Filter for live models
-            live_model_names = [
-                name for name in available_models_names if "prediction" in name.lower()
-            ]
-
-            return live_model_names
+            return available_models_names
         except Exception as e:
             self.logger.error(f"Failed to list the models: {str(e)}")
             raise
 
-    async def predict(self, model_name: str, X):
+    async def predict(self, model_identifier: str, X):
         """
-        Run prediction on input data
+        Run prediction on input data using either a logged model or a registered production model.
 
         Args:
-            model_name (str): The name of the model to use.
+            model_identifier (str): Identifier for the model (run ID of a
+                logged model (training model) or name of a registered model (live model)).
             X: Input features.
 
         Returns:
@@ -81,24 +82,53 @@ class DeploymentService(BaseService):
             int: Version of the model
         """
         try:
-            self.logger.info(f"Starting prediction using model {model_name}.")
+            self.logger.info(f"Starting prediction using model {model_identifier}.")
 
-            # Load the model
-            model, version = await self.mlflow_model_manager.load_model(model_name)
+            # Generate input hash for caching
+            input_hash = self._hash_input(X)
+            if not input_hash:
+                self.logger.warning(
+                    "Could not generate a valid input hash. Caching will be skipped."
+                )
+                cache_key = None
+            else:
+                cache_key = (model_identifier, input_hash)
+                self.logger.debug(f"Cache key generated: {cache_key}")
+
+            # Load model version
+            model, current_version = await self.mlflow_model_manager.load_model(
+                model_identifier
+            )
 
             # Log the successful loading of the model
-            self.logger.debug(f"Model {model_name} successfully loaded.")
+            self.logger.debug(f"Model {model_identifier} successfully loaded.")
+
+            # Use cache if available and version matches
+            if cache_key and cache_key in self._prediction_cache:
+                cached_pred, cached_ver = self._prediction_cache[cache_key]
+                if cached_ver == current_version:
+                    self.logger.info(
+                        f"Using cached prediction for model {model_identifier} with input hash {input_hash}"
+                    )
+                    return cached_pred, cached_ver
 
             # Perform prediction
             predictions = model.predict(X)
 
             # Log the completion of the prediction
-            self.logger.info(f"Prediction completed for model {model_name}.")
+            self.logger.info(f"Prediction completed for model {model_identifier}.")
 
-            return predictions, version
+            # Cache the result
+            if cache_key:
+                self._prediction_cache[cache_key] = (predictions, current_version)
+                self.logger.debug(f"Prediction cached for key {cache_key}.")
+
+            return predictions, current_version
 
         except Exception as e:
-            self.logger.error(f"Failed to predict with model {model_name} : {str(e)}")
+            self.logger.error(
+                f"Failed to predict with model {model_identifier} : {str(e)}"
+            )
             raise
 
     async def calculate_prediction_confidence(
@@ -135,48 +165,51 @@ class DeploymentService(BaseService):
             )
             raise
 
-    async def log_metrics(self, model_name: str, metrics: dict):
+    async def log_metrics(self, model_identifier: str, metrics: dict):
         """
         Logs evaluation metrics to MLflow for the specified model.
 
         Args:
-            model_name (str): The name of the model in MLflow.
+            model_identifier (str): Identifier for the model (run ID of a
+                logged model (training model) or name of a registered model (live model)).
             metrics: An object containing evaluation metrics to log.
 
         Returns:
             bool: True if the metrics were logged successfully.
         """
         try:
-            self.mlflow_model_manager.log_metrics(model_name, metrics)
+            self.mlflow_model_manager.log_metrics(model_identifier, metrics)
             self.logger.info(
-                f"Metrics successfully logged to MLflow for model {model_name}"
+                f"Metrics successfully logged to MLflow for model {model_identifier}"
             )
 
             return True
         except Exception as e:
             self.logger.error(
-                f"Failed to log metrics to MLFlow with model {model_name} : {str(e)}"
+                f"Failed to log metrics to MLFlow with model {model_identifier} : {str(e)}"
             )
             raise
 
-    async def promote_model(self, model_type: str, symbol: str):
+    async def promote_model(self, run_id: str, prod_model_name: str):
         """
         Promote a logged training model to the production model registry.
 
-        This function evaluates the production model (if it exists) and
-        promotes the training model only if it has a lower MAE.
-
         Parameters:
-            model_type (str): The model type to promote
-            symbol (str): The stock symbol
+            run_id (str): The run id of the logged trained model
+            prod_model_name (str): Name of the production model
         """
         try:
-            training_model_name = get_model_name(model_type, symbol, "training")
-            prod_model_name = get_model_name(model_type, symbol, "prediction")
-
             # Promotion
-            mv = self.mlflow_model_manager.promote(training_model_name, prod_model_name)
+            mv = self.mlflow_model_manager.promote(run_id, prod_model_name)
             self.logger.info(f"Successfully promoted {mv.name} model to MLflow")
+
+            # Invalidate all cache entries for the production model name
+            to_remove = [k for k in self._prediction_cache if k[0] == prod_model_name]
+            for key in to_remove:
+                del self._prediction_cache[key]
+                self.logger.info(
+                    f"Invalidated prediction cache for model {key[0]} after promotion"
+                )
 
             return {
                 "deployed": True,
@@ -187,7 +220,7 @@ class DeploymentService(BaseService):
 
         except Exception as e:
             self.logger.error(
-                f"Failed to promote the training model for {model_type} model for symbol {symbol} : {str(e)}"
+                f"Failed to promote the training model for {prod_model_name} model : {str(e)}"
             )
             raise
 
@@ -198,3 +231,30 @@ class DeploymentService(BaseService):
             self.logger.info("Deployment service cleaned up successfully")
         except Exception as e:
             self.logger.error(f"Error during deployment service cleanup: {str(e)}")
+
+    def _hash_input(self, X) -> str:
+        """
+        Returns an MD5 hash of the prediction input `X`, used for caching.
+
+        Parameters:
+            X: Prediction input data to be hashed.
+
+        Returns:
+            str: MD5 hash string or None on error.
+        """
+        try:
+
+            def convert(obj):
+                if isinstance(obj, pd.DataFrame):
+                    return obj.to_dict(orient="records")
+                if isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                if isinstance(obj, (np.float32, np.float64, np.int32, np.int64)):
+                    return obj.item()
+                raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+            input_str = json.dumps(X, sort_keys=True, default=convert)
+            return hashlib.md5(input_str.encode()).hexdigest()
+        except Exception as e:
+            self.logger.error(f"Failed to hash input for caching: {str(e)}")
+            return None

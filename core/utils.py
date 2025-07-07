@@ -101,6 +101,30 @@ def get_date_range(
     return start, end
 
 
+def get_latest_trading_day():
+    """
+    Get the latest valid trading day
+
+    Returns:
+        str: the latest valid trading day (in string format)
+    """
+    nyse = mcal.get_calendar("NYSE")
+    today = datetime.now().date()
+
+    # Look back over the past 10 days to find the most recent trading day
+    start_date = today - timedelta(days=10)
+    end_date = today
+
+    schedule = nyse.schedule(start_date=start_date, end_date=end_date)
+
+    # Find the latest trading day that is today or before
+    past_trading_days = schedule.index.date
+    latest_trading_day = max(d for d in past_trading_days if d <= today)
+
+    # Return the latest valid trading day
+    return datetime.combine(latest_trading_day, datetime.min.time())
+
+
 def get_next_trading_day():
     """
     Get the next valid trading day
@@ -117,8 +141,7 @@ def get_next_trading_day():
     )
 
     # Return the first valid trading day after today
-    next_day = schedule.index[0]
-    return next_day.strftime("%Y-%m-%d")
+    return schedule.index[0].to_pydatetime()
 
 
 def get_start_date_from_trading_days(
@@ -156,17 +179,16 @@ def get_start_date_from_trading_days(
     return start_date
 
 
-def get_model_name(model_type: str, symbol: str, phase: str):
+def get_model_name(model_type: str, symbol: str):
     """
     Generate a standardized model name by combining the model type
-    and stock symbol for a given phase (training and prediction).
+    and stock symbol.
 
     Args:
         model_type (str): The model type
         symbol (str): The stock ticker symbol
-        phase (str): The phase of
 
     Returns:
         str: A string representing the model name
     """
-    return f"{model_type}_{symbol}_{phase}"
+    return f"{model_type}_{symbol}"

@@ -14,7 +14,7 @@ import json
 from .base_service import BaseService
 from core.config import config
 from core.logging import logger
-from core.utils import get_start_date_from_trading_days
+from core.utils import get_start_date_from_trading_days, get_latest_trading_day
 from monitoring.prometheus_metrics import external_requests_total
 
 
@@ -27,7 +27,6 @@ class DataService(BaseService):
         self.config = config
         self.stock_data_dir = self.config.data.STOCK_DATA_DIR
         self.news_data_dir = self.config.data.NEWS_DATA_DIR
-        self.symbols_file = self.config.data.NASDAQ100_SYMBOLS_FILE
 
     async def initialize(self) -> None:
         """Initialize the data service."""
@@ -100,52 +99,45 @@ class DataService(BaseService):
             external_requests_total.labels(site="yahoo_finance", result="error").inc()
             raise
 
-    async def get_nasdaq_symbols(self) -> dict:
+    async def get_nasdaq_stocks(self) -> dict:
         """
-        Fetch the NASDAQ 100 symbols
+        Fetch the NASDAQ 100 stocks sorted by price percentage change (descending)
 
         Returns:
             dict: A dictionary containing the count of symbols and the list of symbols
             from the NASDAQ 100 index.
         """
 
-        self.logger.info("Starting NASDAQ 100 symbol retrieval process")
+        def parse_percentage_change(pct_str):
+            """Parse the percentage change of a stock (absolute value)"""
+            try:
+                return abs(float(pct_str.strip("%").replace(",", "")))
+            except:
+                return 0.0
+
+        self.logger.info("Starting NASDAQ 100 stocks data retrieval process")
 
         try:
+            # Fetch the data
+            url = "https://api.nasdaq.com/api/quote/list-type/nasdaq100"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            response = requests.get(url, headers=headers)
+            data = response.json()["data"]["data"]["rows"]
 
-            symbol_data_file = self.symbols_file
+            # Sort the list by absolute percentageChange (descending)
+            sorted_stocks = sorted(
+                data,
+                key=lambda x: parse_percentage_change(x.get("percentageChange", "0%")),
+                reverse=True,
+            )
+            stocks_data = {"count": len(sorted_stocks), "data": sorted_stocks}
 
-            if symbol_data_file.exists():
+            self.logger.info("Retrieved NASDAQ 100 stocks data")
 
-                self.logger.info("Loading NASDAQ 100 symbols from local cache")
-
-                # Read the file
-                with open(symbol_data_file) as f:
-                    symbols_data = json.load(f)
-            else:
-                self.logger.info(
-                    "Local cache not found, fetching NASDAQ 100 symbols from API"
-                )
-
-                # Fetch the data
-                url = "https://api.nasdaq.com/api/quote/list-type/nasdaq100"
-                headers = {"User-Agent": "Mozilla/5.0"}
-                response = requests.get(url, headers=headers)
-                data = response.json()["data"]["data"]["rows"]
-
-                # Retrieve the symbols
-                symbols = [item["symbol"] for item in data]
-                symbols_data = {"count": len(symbols), "symbols": symbols}
-
-                # Save it to the data file
-                with open(symbol_data_file, "w") as f:
-                    json.dump(symbols_data, f, ensure_ascii=False)
-
-            # Return the symbols
-            self.logger.info("Retrieved NASDAQ 100 symbols")
-            return symbols_data
+            # Return the stock data
+            return stocks_data
         except Exception as e:
-            self.logger.error(f"Error collecting NASDAQ 100 symbols: {str(e)}")
+            self.logger.error(f"Error collecting NASDAQ 100 stocks data: {str(e)}")
             raise
 
     async def collect_stock_data(
@@ -210,166 +202,78 @@ class DataService(BaseService):
             external_requests_total.labels(site="yahoo_finance", result="error").inc()
             raise
 
-    async def update_data(
-        self, symbol: str, update_interval: Optional[int] = None
-    ) -> Dict[str, Any]:
+    async def get_current_price(self, symbol: str):
         """
-        Update both stock and news data for a symbol.
+        Retrieves the stock price for the given symbol on the latest trading day.
 
         Args:
-            symbol: Stock symbol
-            update_interval: Update interval in minutes
+            symbol (str): The stock symbol (e.g., "AAPL").
 
         Returns:
-            Dictionary containing update results
+            pandas.DataFrame: A DataFrame containing the stock data for the latest trading day.
+            str: Stock Company Name
         """
         try:
-            # Update stock data
-            stock_df = await self.collect_stock_data(symbol)
+            # Get start and end dates (as today)
+            start_date = get_latest_trading_day()
+            end_date = start_date
 
-            return {
-                "symbol": symbol,
-                "stock_data": {
-                    "rows": len(stock_df),
-                    "latest_date": stock_df["Date"].max().isoformat(),
-                },
-                "timestamp": datetime.now().isoformat(),
-            }
+            # Retrieve stock data prices
+            df = await self._get_stock_data(symbol, start_date, end_date)
 
+            # Retrieve the latest trading day
+            current_price = df[df["Date"].dt.date == end_date.date()]
+
+            # Get the stock_name
+            stock_name = await self.get_stock_name(symbol)
+
+            self.logger.info(f"Retrieved current stock price for {symbol}")
+
+            return current_price, stock_name
         except Exception as e:
-            self.logger.error(f"Error updating data for {symbol}: {str(e)}")
+            self.logger.error(
+                f"Error getting current stock price for {symbol}: {str(e)}"
+            )
             raise
 
-    async def get_latest_data(self, symbol: str) -> Dict[str, Any]:
-        """
-        Get the latest stock data for a symbol.
-
-        Args:
-            symbol: Stock symbol
-
-        Returns:
-            Dictionary containing the latest data
-        """
+    async def get_recent_data(self, symbol: str, days_back: int = None):
         try:
-            # Load data from file
-            data_file = self.stock_data_dir / f"{symbol}_data.csv"
+            # If there is no number of days back, use the default config lookback period days
+            if days_back is None:
+                days_back = self.config.data.LOOKBACK_PERIOD_DAYS
 
-            # Check if file exists and is valid
-            needs_refresh = False
-            if not data_file.exists():
-                needs_refresh = True
-            else:
-                try:
-                    df = pd.read_csv(data_file)
+            # Get start and end dates
+            end_date = datetime.now()
+            start_date = get_start_date_from_trading_days(end_date, days_back)
 
-                    # Convert date column to timezone-aware UTC
-                    df["Date"] = pd.to_datetime(df["Date"], format="mixed", utc=True)
+            # Retrieve stock data prices
+            df = await self._get_stock_data(symbol, start_date, end_date)
 
-                    # Validate data
-                    if len(df) < 80:  # Need at least 80 days for technical indicators
-                        self.logger.warning(
-                            f"Data file for {symbol} has insufficient data points: {len(df)}"
-                        )
-                        needs_refresh = True
-                    elif (
-                        datetime.now(timezone.utc) - df["Date"].max()
-                    ).days > 1:  # Data is more than 1 day old
-                        self.logger.warning(
-                            f"Data file for {symbol} is outdated: {df['Date'].max()}"
-                        )
-                        needs_refresh = True
-                    elif not all(
-                        col in df.columns for col in self.config.model.FEATURES
-                    ):
-                        self.logger.warning(
-                            f"Data file for {symbol} is missing required columns"
-                        )
-                        needs_refresh = True
-                except Exception as e:
-                    self.logger.error(f"Error reading data file for {symbol}: {str(e)}")
-                    needs_refresh = True
+            # Filter data for requested date range
+            mask = (df["Date"].dt.date >= start_date.date()) & (
+                df["Date"].dt.date <= end_date.date()
+            )
+            df = df[mask]
 
-            # Refresh data if needed
-            if needs_refresh:
-                self.logger.info(f"Refreshing data for {symbol}")
-                df = await self.collect_stock_data(symbol)
-            else:
-                # Recalculate technical indicators
-                # TODO We need to separate the preprocessing step
-                # df = calculate_technical_indicators(df)
-                pass
+            # Get the stock_name
+            stock_name = await self.get_stock_name(symbol)
 
-            # Get enough data for technical indicators (60 days + max lookback period)
-            # MA_20 needs 20 days, so we need at least 80 days to get 60 complete sequences
-            df = df.tail(80)
+            self.logger.info(
+                f"Retrieved recent stock prices for {symbol} looking back for {days_back} trading days"
+            )
 
-            # Final validation
-            if len(df) < 80:
-                raise ValueError(
-                    f"Failed to collect sufficient data for {symbol}. Got {len(df)} days, need 80."
-                )
-
-            return {"status": "success", "data": df}
-
+            return df, stock_name
         except Exception as e:
-            self.logger.error(f"Error getting latest data for {symbol}: {str(e)}")
-            return {"status": "error", "message": str(e)}
+            self.logger.error(
+                f"Error getting recent stock prices for {symbol} looking back for {days_back} trading days : {str(e)}"
+            )
+            raise
 
-    async def get_historical_data(self, symbol: str, days: int = 30) -> Dict[str, Any]:
-        """
-        Get historical stock data for a symbol.
-
-        Args:
-            symbol: Stock symbol
-            days: Number of days of historical data to include
-
-        Returns:
-            Dictionary containing the data and metadata
-        """
-        try:
-            # Read data file
-            file_path = self.stock_data_dir / f"{symbol}_data.csv"
-            if not file_path.exists():
-                self.logger.error(f"Data file not found for {symbol}")
-                return {"status": "error", "error": f"Data file not found for {symbol}"}
-
-            df = pd.read_csv(file_path)
-
-            # Convert date column to datetime with proper timezone handling
-            if "Date" in df.columns:
-                # Use format='mixed' to handle different date formats
-                df["Date"] = pd.to_datetime(df["Date"], format="mixed", utc=True)
-
-            # Sort by date and get last n days
-            df = df.sort_values("Date", ascending=False)
-            df = df.head(days)
-
-            return {
-                "status": "success",
-                "data": df,
-                "metadata": {
-                    "symbol": symbol,
-                    "last_updated": datetime.now(timezone.utc).isoformat(),
-                    "data_points": len(df),
-                    "date_range": {
-                        "start": df["Date"].min().isoformat(),
-                        "end": df["Date"].max().isoformat(),
-                    },
-                },
-            }
-
-        except Exception as e:
-            self.logger.error(f"Error reading data file for {symbol}: {str(e)}")
-            return {"status": "error", "error": str(e)}
-
-    async def get_stock_data(
-        self,
-        symbol: str,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+    async def get_historical_stock_prices(
+        self, symbol: str, start_date: datetime, end_date: datetime
     ) -> pd.DataFrame:
         """
-        Get stock data for a symbol. If data doesn't exist or is outdated, collect new data.
+        Get historical stock prices for a symbol. If data doesn't exist or is outdated, collect new data.
 
         Args:
             symbol: Stock symbol
@@ -377,66 +281,18 @@ class DataService(BaseService):
             end_date: End date for data retrieval
 
         Returns:
-            DataFrame containing stock data
+            pd.DataFrame: DataFrame containing stock data
+            str: Stock Company Name
         """
         try:
-            # Get the eastern timezone
-            eastern_timezone = pytz.timezone("America/New_York")
-
-            # Set end_date if not provided
-            end_date = end_date or datetime.now(eastern_timezone)
-
-            if not start_date:
-                business_days = pd.bdate_range(
-                    end=end_date, periods=self.config.data.LOOKBACK_PERIOD_DAYS
-                )
-                start_date = (
-                    business_days[0].to_pydatetime().astimezone(eastern_timezone)
-                )
+            # Retrieve stock data prices
+            df = await self._get_stock_data(symbol, start_date, end_date)
 
             # Ensure dates are timezone-aware
             if start_date.tzinfo is None:
                 start_date = start_date.replace(tzinfo=timezone.utc)
             if end_date.tzinfo is None:
                 end_date = end_date.replace(tzinfo=timezone.utc)
-
-            # Check if we have recent data
-            data_file = self.stock_data_dir / f"{symbol}_data.csv"
-
-            # Get the stock_name
-            stock_name = await self.get_stock_name(symbol)
-
-            if data_file.exists():
-                df = pd.read_csv(data_file)
-                # Convert dates to timezone-aware UTC
-                df["Date"] = pd.to_datetime(df["Date"], format="mixed", utc=True)
-
-                # Check if data is up to date
-                latest_date = df["Date"].max()
-                current_date = datetime.now(timezone.utc).replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                )
-                data_is_stale = (
-                    latest_date.date() < (current_date - timedelta(days=1)).date()
-                )
-
-                # Get the trading days within start_date and end_date
-                nyse = mcal.get_calendar("NYSE")
-                schedule = nyse.schedule(start_date=start_date, end_date=end_date)
-                trading_dates = set(schedule["market_open"].dt.date)
-
-                # Extract the dates present in the data
-                df_dates = set(df["Date"].dt.date)
-
-                # Check if all expected dates are present
-                missing_dates = trading_dates - df_dates
-
-                if data_is_stale or missing_dates:
-                    # Update data
-                    df = await self.collect_stock_data(symbol, start_date, end_date)
-            else:
-                # No data exists, collect new data
-                df = await self.collect_stock_data(symbol, start_date, end_date)
 
             # Filter data for requested date range
             mask = (df["Date"].dt.date >= start_date.date()) & (
@@ -447,12 +303,83 @@ class DataService(BaseService):
             # Sort by date
             df = df.sort_values("Date")
 
-            self.logger.info(f"Retrieved stock data for {symbol}")
+            # Get the stock_name
+            stock_name = await self.get_stock_name(symbol)
+
+            self.logger.info(f"Retrieved historical stock data for {symbol}")
+
             return df, stock_name
 
         except Exception as e:
             self.logger.error(f"Error getting stock data for {symbol}: {str(e)}")
             raise
+
+    async def _get_stock_data(
+        self, symbol: str, start_date: datetime, end_date: datetime
+    ):
+        """
+        Retrieves stock data for a given symbol and date range, using a cached CSV file if available and valid.
+
+        If a cached file exists and contains valid data for the requested date range, it is returned.
+        Otherwise, new data is fetched via `collect_stock_data()`.
+
+        Args:
+            symbol (str): The stock symbol (e.g., "AAPL", "GOOG").
+            start_date (datetime): The start date of the desired data range.
+            end_date (datetime): The end date of the desired data range.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the stock data for the specified symbol and date range.
+        """
+        try:
+            # Check if we have recent data
+            data_file = self.stock_data_dir / f"{symbol}_data.csv"
+
+            if data_file.exists():
+                df = pd.read_csv(data_file)
+
+                # Convert dates to timezone-aware UTC
+                df["Date"] = pd.to_datetime(df["Date"], format="mixed", utc=True)
+
+                # Check if the cache needs to be reloaded
+                reload = self._is_cache_valid(df, start_date, end_date)
+
+                if not reload:
+                    self.logger.info(f"Load data from cache for {symbol}")
+                    # Return data from cache
+                    return df
+
+            # No data exists or need reload, collect new data
+            return await self.collect_stock_data(symbol, start_date, end_date)
+        except Exception as e:
+            self.logger.error(f"Error getting stock data for {symbol}: {str(e)}")
+            raise
+
+    def _is_cache_valid(self, df, start_date, end_date):
+        """
+        Checks whether the cached stock data is valid by ensuring that all expected
+        NYSE trading days within the given date range are present in the DataFrame.
+
+        Args:
+            df (pd.DataFrame): The cached stock data.
+            start_date (datetime): The start of the date range to validate.
+            end_date (datetime): The end of the date range to validate.
+
+        Returns:
+            set: A set of missing trading dates. If empty, the cache is considered valid.
+        """
+        # Get the trading days within start_date and end_date
+        nyse = mcal.get_calendar("NYSE")
+        schedule = nyse.schedule(start_date=start_date, end_date=end_date)
+        trading_dates = set(schedule["market_open"].dt.date)
+
+        # Extract the dates present in the data
+        df_dates = set(df["Date"].dt.date)
+
+        # Check if all expected dates are present
+        missing_dates = trading_dates - df_dates
+
+        return missing_dates
 
     async def cleanup_data(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -491,16 +418,12 @@ class DataService(BaseService):
                             f"Data file {data_file.name} has insufficient data points: {len(df)}"
                         )
                         needs_cleanup = True
-                    elif (datetime.now() - df["Date"].max()).days > 1:
+                    elif (
+                        get_latest_trading_day().astimezone(timezone.utc)
+                        - df["Date"].max()
+                    ).days > 1:
                         self.logger.warning(
                             f"Data file {data_file.name} is outdated: {df['Date'].max()}"
-                        )
-                        needs_cleanup = True
-                    elif not all(
-                        col in df.columns for col in self.config.model.FEATURES
-                    ):
-                        self.logger.warning(
-                            f"Data file {data_file.name} is missing required columns"
                         )
                         needs_cleanup = True
                     elif df.isna().any().any():

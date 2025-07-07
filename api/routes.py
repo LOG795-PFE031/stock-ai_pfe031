@@ -21,6 +21,7 @@ from api.schemas import (
     TrainingTasksResponse,
     DataUpdateResponse,
     StockDataResponse,
+    StocksListDataResponse,
     NewsDataResponse,
     ModelListResponse,
     ModelMetadataResponse,
@@ -119,44 +120,42 @@ async def health_check():
 
 
 # Data collection endpoints
-@router.post(
-    "/data/update/{symbol}", response_model=DataUpdateResponse, tags=["Data Services"]
+@router.get(
+    "/data/stocks", response_model=StocksListDataResponse, tags=["Data Services"]
 )
-async def update_stock_data(symbol: str):
-    """Update stock data for a symbol."""
+async def get_stocks_list():
+    """
+    Retrieve a list of NASDAQ-100 stocks, sorted by absolute percentage change in
+    descending order (top movers first)."
+    """
+
     try:
         # Import services from main to avoid circular imports
         from main import data_service
 
-        # Validate symbol
-        if not validate_stock_symbol(symbol):
-            raise HTTPException(
-                status_code=400, detail=f"Invalid stock symbol: {symbol}"
-            )
+        symbols_data = await data_service.get_nasdaq_stocks()
 
-        # Update data
-        result = await data_service.update_data(symbol)
-
-        return DataUpdateResponse(
-            symbol=symbol,
-            stock_data_updated=True,
-            news_data_updated=False,
-            timestamp=datetime.utcnow().isoformat(),
-            stock_records=result["stock_data"]["rows"],
-            news_articles=result["news_data"]["articles"],
+        return StocksListDataResponse(
+            count=symbols_data["count"],
+            data=symbols_data["data"],
+            timestamp=datetime.now().isoformat(),
         )
     except Exception as e:
-        api_logger.error(f"Data update failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Data update failed: {str(e)}")
+        api_logger.error(f"Failed to get stock list: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get stock list: {str(e)}"
+        )
 
 
 @router.get(
-    "/data/stock/{symbol}", response_model=StockDataResponse, tags=["Data Services"]
+    "/data/stock/{symbol}/current",
+    response_model=StockDataResponse,
+    tags=["Data Services"],
 )
-async def get_stock_data(
-    symbol: str, start_date: Optional[str] = None, end_date: Optional[str] = None
+async def get_current_stock_data(
+    symbol: str,
 ):
-    """Get stock data for a symbol."""
+    """Get the current stock data for a symbol."""
     try:
         # Import services from main to avoid circular imports
         from main import data_service
@@ -167,11 +166,68 @@ async def get_stock_data(
                 status_code=400, detail=f"Invalid stock symbol: {symbol}"
             )
 
-        # Get date range
-        start, end = get_date_range(start_date, end_date)
+        data, stock_name = await data_service.get_current_price(symbol=symbol)
+        return StockDataResponse(
+            symbol=symbol,
+            name=stock_name,
+            data=data.to_dict(orient="records"),
+            meta=MetaInfo(
+                message=f"Stock data retrieved successfully for {symbol}",
+                version=config.api.API_VERSION,
+                documentation="https://api.example.com/docs",
+                endpoints=["/api/data/stock/{symbol}"],
+            ),
+            timestamp=datetime.now().isoformat(),
+        )
 
-        # Get data
-        data, stock_name = await data_service.get_stock_data(symbol, start, end)
+    except Exception as e:
+        api_logger.error(f"Failed to get stock data: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get stock data: {str(e)}"
+        )
+
+
+@router.get(
+    "/data/stock/{symbol}/historical",
+    response_model=StockDataResponse,
+    tags=["Data Services"],
+)
+async def get_historical_stock_data(
+    symbol: str,
+    start_date: Optional[datetime] = Query(
+        None, description="Start date for historical data"
+    ),
+    end_date: Optional[datetime] = Query(
+        None, description="End date for historical data (defaults to today)"
+    ),
+):
+    """Get historical stock data for a symbol."""
+    try:
+        # Import services from main to avoid circular imports
+        from main import data_service
+
+        # Validate symbol
+        if not validate_stock_symbol(symbol):
+            raise HTTPException(
+                status_code=400, detail=f"Invalid stock symbol: {symbol}"
+            )
+
+        if not start_date:
+            raise HTTPException(
+                status_code=400, detail="start_date is required for historical data"
+            )
+        end_date = end_date or datetime.now()
+
+        # Check if start date if before end date
+        if start_date > end_date:
+            raise HTTPException(
+                status_code=400, detail="start_date must be before end_date"
+            )
+
+        # Get historical data
+        data, stock_name = await data_service.get_historical_stock_prices(
+            symbol, start_date, end_date
+        )
 
         return StockDataResponse(
             symbol=symbol,
@@ -183,8 +239,61 @@ async def get_stock_data(
                 documentation="https://api.example.com/docs",
                 endpoints=["/api/data/stock/{symbol}"],
             ),
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now().isoformat(),
         )
+
+    except Exception as e:
+        api_logger.error(f"Failed to get stock data: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get stock data: {str(e)}"
+        )
+
+
+@router.get(
+    "/data/stock/{symbol}/recent",
+    response_model=StockDataResponse,
+    tags=["Data Services"],
+)
+async def get_reccent_stock_data(
+    symbol: str,
+    days_back: Optional[int] = Query(
+        None, description="Number of days to look back", ge=1, le=10_000
+    ),
+):
+    """Get recent stock data for a symbol (based on a number of days back)."""
+    try:
+        # Import services from main to avoid circular imports
+        from main import data_service
+
+        # Validate symbol
+        if not validate_stock_symbol(symbol):
+            raise HTTPException(
+                status_code=400, detail=f"Invalid stock symbol: {symbol}"
+            )
+
+        if not days_back:
+            raise HTTPException(
+                status_code=400, detail="days_back is required for recent data"
+            )
+
+        # Get recents N trading days stock prices
+        data, stock_name = await data_service.get_recent_data(
+            symbol=symbol, days_back=days_back
+        )
+
+        return StockDataResponse(
+            symbol=symbol,
+            name=stock_name,
+            data=data.to_dict(orient="records"),
+            meta=MetaInfo(
+                message=f"Stock data retrieved successfully for {symbol}",
+                version=config.api.API_VERSION,
+                documentation="https://api.example.com/docs",
+                endpoints=["/api/data/stock/{symbol}"],
+            ),
+            timestamp=datetime.now().isoformat(),
+        )
+
     except Exception as e:
         api_logger.error(f"Failed to get stock data: {str(e)}")
         raise HTTPException(
