@@ -12,7 +12,7 @@ class DataConfig(BaseModel):
 
     STOCK_DATA_DIR: Path = Path("data/stock")
     NEWS_DATA_DIR: Path = Path("data/news")
-    NASDAQ100_SYMBOLS_FILE: Path = Path("data/nasdaq100_symbols.json")
+    NASDAQ100_STOCKS_DATA_FILE: Path = Path("data/nasdaq100_stocks.json")
     LOGS_DIR: Path = Path("logs")
     LOOKBACK_PERIOD_DAYS: int = 365
     NEWS_HISTORY_DAYS: int = 7

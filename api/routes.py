@@ -123,23 +123,27 @@ async def health_check():
 @router.get(
     "/data/stocks", response_model=StocksListDataResponse, tags=["Data Services"]
 )
-async def get_stocks_symbols_list():
-    """Get stocks symbols list (of the NASDAQ 100)"""
+async def get_stocks_list():
+    """
+    Retrieve a list of NASDAQ-100 stocks, sorted by absolute percentage change in
+    descending order (top movers first)."
+    """
+
     try:
         # Import services from main to avoid circular imports
         from main import data_service
 
-        symbols_data = await data_service.get_nasdaq_symbols()
+        symbols_data = await data_service.get_nasdaq_stocks()
 
         return StocksListDataResponse(
             count=symbols_data["count"],
-            symbols=symbols_data["symbols"],
+            data=symbols_data["data"],
             timestamp=datetime.now().isoformat(),
         )
     except Exception as e:
-        api_logger.error(f"Failed to get stock symbols list: {str(e)}")
+        api_logger.error(f"Failed to get stock list: {str(e)}")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get stock symbols list: {str(e)}"
+            status_code=500, detail=f"Failed to get stock list: {str(e)}"
         )
 
 

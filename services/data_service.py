@@ -27,7 +27,7 @@ class DataService(BaseService):
         self.config = config
         self.stock_data_dir = self.config.data.STOCK_DATA_DIR
         self.news_data_dir = self.config.data.NEWS_DATA_DIR
-        self.symbols_file = self.config.data.NASDAQ100_SYMBOLS_FILE
+        self.stocks_data_file = self.config.data.NASDAQ100_STOCKS_DATA_FILE
 
     async def initialize(self) -> None:
         """Initialize the data service."""
@@ -100,31 +100,38 @@ class DataService(BaseService):
             external_requests_total.labels(site="yahoo_finance", result="error").inc()
             raise
 
-    async def get_nasdaq_symbols(self) -> dict:
+    async def get_nasdaq_stocks(self) -> dict:
         """
-        Fetch the NASDAQ 100 symbols
+        Fetch the NASDAQ 100 stocks sorted by price percentage change (descending)
 
         Returns:
             dict: A dictionary containing the count of symbols and the list of symbols
             from the NASDAQ 100 index.
         """
 
-        self.logger.info("Starting NASDAQ 100 symbol retrieval process")
+        def parse_percentage_change(pct_str):
+            """Parse the percentage change of a stock (absolute value)"""
+            try:
+                return abs(float(pct_str.strip("%").replace(",", "")))
+            except:
+                return 0.0
+
+        self.logger.info("Starting NASDAQ 100 stocks data retrieval process")
 
         try:
 
-            symbol_data_file = self.symbols_file
+            stocks_data_file = self.stocks_data_file
 
-            if symbol_data_file.exists():
+            if stocks_data_file.exists():
 
-                self.logger.info("Loading NASDAQ 100 symbols from local cache")
+                self.logger.info("Loading NASDAQ 100 stocks data from local cache")
 
                 # Read the file
-                with open(symbol_data_file) as f:
-                    symbols_data = json.load(f)
+                with open(stocks_data_file) as f:
+                    stocks_data = json.load(f)
             else:
                 self.logger.info(
-                    "Local cache not found, fetching NASDAQ 100 symbols from API"
+                    "Local cache not found, fetching NASDAQ 100 stocks data from API"
                 )
 
                 # Fetch the data
@@ -133,19 +140,26 @@ class DataService(BaseService):
                 response = requests.get(url, headers=headers)
                 data = response.json()["data"]["data"]["rows"]
 
-                # Retrieve the symbols
-                symbols = [item["symbol"] for item in data]
-                symbols_data = {"count": len(symbols), "symbols": symbols}
+                # Sort the list by absolute percentageChange (descending)
+                sorted_stocks = sorted(
+                    data,
+                    key=lambda x: parse_percentage_change(
+                        x.get("percentageChange", "0%")
+                    ),
+                    reverse=True,
+                )
+
+                stocks_data = {"count": len(sorted_stocks), "data": sorted_stocks}
 
                 # Save it to the data file
-                with open(symbol_data_file, "w") as f:
-                    json.dump(symbols_data, f, ensure_ascii=False)
+                with open(stocks_data_file, "w") as f:
+                    json.dump(stocks_data, f, ensure_ascii=False)
 
             # Return the symbols
-            self.logger.info("Retrieved NASDAQ 100 symbols")
-            return symbols_data
+            self.logger.info("Retrieved NASDAQ 100 stocks data")
+            return stocks_data
         except Exception as e:
-            self.logger.error(f"Error collecting NASDAQ 100 symbols: {str(e)}")
+            self.logger.error(f"Error collecting NASDAQ 100 stocks data: {str(e)}")
             raise
 
     async def collect_stock_data(
