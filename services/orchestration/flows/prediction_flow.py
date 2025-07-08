@@ -1,4 +1,4 @@
-from prefect import flow
+from prefect import flow, task
 from .data_flow import run_data_pipeline
 from .inference_flow import run_inference_pipeline
 from .tasks import model_exist
@@ -7,8 +7,8 @@ from core.utils import get_model_name
 PHASE = "prediction"
 
 
-@flow(name="Prediction Pipeline", retries=2, retry_delay_seconds=10)
-def run_prediction_pipeline(
+@task(name="Prediction Pipeline", retries=2, retry_delay_seconds=10)
+async def run_prediction_pipeline(
     model_type: str, symbol: str, data_service, processing_service, deployment_service
 ):
 
@@ -46,3 +46,24 @@ def run_prediction_pipeline(
 
     # No live model available
     return None
+
+
+@flow(name="Batch Prediction Orchestration")
+def run_batch_prediction(
+    model_types, symbols, data_service, processing_service, deployment_service
+):
+    # Create the tasks
+    tasks = [
+        run_prediction_pipeline.submit(
+            model_type=model_type,
+            symbol=symbol,
+            data_service=data_service,
+            processing_service=processing_service,
+            deployment_service=deployment_service,
+        )
+        for symbol in symbols
+        for model_type in model_types
+    ]
+
+    # Wait for all tasks to complete
+    [task.result() for task in tasks]
