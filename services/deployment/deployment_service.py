@@ -1,3 +1,4 @@
+from datetime import date, datetime, timedelta
 from .mlflow_model_manager import MLflowModelManager
 from .confidence import ConfidenceCalculator
 from services.base_service import BaseService
@@ -243,14 +244,21 @@ class DeploymentService(BaseService):
             str: MD5 hash string or None on error.
         """
         try:
-
             def convert(obj):
                 if isinstance(obj, pd.DataFrame):
                     return obj.to_dict(orient="records")
-                if isinstance(obj, np.ndarray):
+                if isinstance(obj, pd.Series):
                     return obj.tolist()
-                if isinstance(obj, (np.float32, np.float64, np.int32, np.int64)):
+                if isinstance(obj, (np.ndarray,)):
+                    return obj.tolist()
+                if isinstance(obj, (np.integer, np.floating)):
                     return obj.item()
+                if isinstance(obj, (np.bool_, bool)):
+                    return bool(obj)
+                if isinstance(obj, (pd.Timestamp, datetime, date)):
+                    return obj.isoformat()
+                if isinstance(obj, (timedelta, pd.Timedelta)):
+                    return str(obj)
                 raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
             input_str = json.dumps(X, sort_keys=True, default=convert)
@@ -258,3 +266,4 @@ class DeploymentService(BaseService):
         except Exception as e:
             self.logger.error(f"Failed to hash input for caching: {str(e)}")
             return None
+

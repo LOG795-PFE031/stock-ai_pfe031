@@ -14,6 +14,7 @@ from ..data_processing import DataProcessingService
 from ..evaluation_service import EvaluationService
 from ..data_service import DataService
 from core.logging import logger
+from monitoring.prometheus_metrics import evaluation_mae
 
 
 class OrchestrationService(BaseService):
@@ -194,6 +195,14 @@ class OrchestrationService(BaseService):
                 self.evaluation_service,
             )
 
+            # Extract/Set MAE 
+            mae = result.get("mae") or result.get("metrics", {}).get("mae")
+            if mae is not None:
+                evaluation_mae.labels(model_type=model_type, symbol=symbol).set(mae)
+                self.logger.debug(f"Emitted MAE={mae:.4f} to Prometheus for {model_type}_{symbol}")
+            else:
+                self.logger.warning(f"No MAE found in evaluation result for {model_type}_{symbol}, skipping gauge update")
+            
             # Log the successful completion of the pipeline
             self.logger.info(
                 f"Evaluation pipeline completed successfully for {model_type} model for {symbol}."

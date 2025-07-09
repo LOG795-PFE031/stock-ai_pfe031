@@ -35,6 +35,7 @@ from services import (
     DeploymentService,
     EvaluationService,
     RabbitMQService,
+    MonitoringService,
 )
 from services.orchestration import OrchestrationService
 
@@ -54,7 +55,11 @@ orchestation_service = OrchestrationService(
     evaluation_service=evaluation_service,
 )
 rabbitmq_service = RabbitMQService()
-
+monitoring_service = MonitoringService(
+    deployment_service, 
+    orchestation_service, 
+    check_interval_seconds=24*60*60 # 86400 sec in a day
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -71,7 +76,8 @@ async def lifespan(app: FastAPI):
         await deployment_service.initialize()
         await evaluation_service.initialize()
         await orchestation_service.initialize()
-
+        await monitoring_service.initialize()
+        
         # Start auto-publishing predictions
         # await prediction_service.start_auto_publishing(interval_minutes=15) # TDOO
 
@@ -88,6 +94,7 @@ async def lifespan(app: FastAPI):
             logger["main"].info("Shutting down services...")
 
             # Cleanup in reverse order of initialization
+            await monitoring_service.cleanup()
             await deployment_service.cleanup()
             await orchestation_service.cleanup()
             await evaluation_service.cleanup()
