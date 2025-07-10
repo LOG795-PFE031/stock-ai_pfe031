@@ -141,7 +141,7 @@ def run_evaluate_and_log_flow(
 
 
 @flow(
-    "Evaluate model flow",
+    name="Evaluate model flow",
     description="Performs model inference, postprocesses the results, evaluates predictions, and logs metrics.",
 )
 def evaluate_model(
