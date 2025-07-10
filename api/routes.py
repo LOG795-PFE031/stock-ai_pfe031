@@ -547,7 +547,7 @@ async def get_trainers():
         if trainers_response.get("status") == "success":
             return TrainingTrainersResponse(
                 status=trainers_response["status"],
-                trainers=trainers_response["trainers"],
+                types=trainers_response["types"],
                 count=trainers_response["count"],
                 timestamp=datetime.now().isoformat(),
             )

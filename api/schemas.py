@@ -69,7 +69,7 @@ class TrainingTrainersResponse(BaseModel):
     """Trainers getter response schema."""
 
     status: str
-    trainers: List[str]
+    types: List[str]
     count: int
     timestamp: str
 

@@ -63,7 +63,7 @@ class TrainingService(BaseService):
             )
             return {
                 "status": "success",
-                "trainers": trainers,
+                "types": trainers,
                 "count": len(trainers),
                 "timestamp": datetime.now().isoformat(),
             }

@@ -1,43 +1,87 @@
 from prefect import flow
-from .tasks import (
-    train,
-    postprocess_data,
-    model_exist,
-    should_deploy_model,
-    promote_model,
-    promote_scaler,
-)
-from .data_flow import run_data_pipeline
-from .inference_flow import run_inference_pipeline
+from prefect.logging import get_run_logger
+from typing import Any
+
+from ..tasks.data import load_recent_stock_data, preprocess_data
+from ..tasks.training import train
+from ..tasks.deployment import production_model_exists
+from .deployment_flow import run_deploy_flow
+from .evaluation_flow import evaluate_model
 from core.utils import get_model_name
-from .evaluate_and_log_flow import run_evaluate_and_log_flow
+from services import (
+    DataService,
+    DataProcessingService,
+    DeploymentService,
+    EvaluationService,
+    TrainingService,
+)
+
 
 PHASE = "training"
 
 
-@flow(name="Training Pipeline")
-def run_training_pipeline(
-    model_type,
-    symbol,
-    data_service,
-    processing_service,
-    training_service,
-    deployment_service,
-    evaluation_service,
-):
-    # Run the data pipeline (Data Ingestion + Preprocessing)
-    preprocessed_data = run_data_pipeline(
-        symbol=symbol,
+@flow(
+    name="Training Pipeline",
+    description="Train a machine learning model, evaluate it against a production model, and optionally deploy it.",
+)
+def run_training_flow(
+    model_type: str,
+    symbol: str,
+    data_service: DataService,
+    processing_service: DataProcessingService,
+    training_service: TrainingService,
+    deployment_service: DeploymentService,
+    evaluation_service: EvaluationService,
+) -> dict[str, Any]:
+    """
+    Orchestrates the training, evaluation, and potential deployment of a training model
+    for a specific stock symbol and model type.
+
+    The pipeline performs the following steps:
+    1. Loads the latest stock data.
+    2. Preprocesses the data for training and evaluation.
+    3. Trains a new model and evaluates both the new (candidate) and current production model.
+    4. Compares performance metrics.
+    5. Decides whether to promote the candidate model to production.
+
+    Args:
+        model_type (str): Type of model (e.g., "lstm", "prophet").
+        symbol (str): Stock ticker symbol.
+        data_service: Service used to load raw market data.
+        processing_service: Service used to preprocess data for training and evaluation.
+        training_service: Service responsible for model training.
+        deployment_service: Service used to perform predictions and manage models.
+        evaluation_service: Service used to evaluate and compare models based on performance metrics.
+
+    Returns:
+        dict: Dictionary containing:
+            - "training_results": Training metadata and run ID.
+            - "metrics": Performance metrics for the trained (candidate) model.
+            - "deployment_results": Outcome of the deployment step (success/failure).
+    """
+
+    # Get Prefect logger
+    logger = get_run_logger()
+
+    # Load the recent stock data
+    raw_data = load_recent_stock_data.submit(data_service, symbol)
+
+    # --- Training of the model ---
+
+    # Preprocess the raw data
+    preprocessed_data = preprocess_data.submit(
         model_type=model_type,
-        data_service=data_service,
-        processing_service=processing_service,
+        symbol=symbol,
+        data=raw_data,
+        service=processing_service,
         phase=PHASE,
     )
 
     # Split into train and test datasets
-    training_data, test_data = preprocessed_data
+    training_data, test_data = preprocessed_data.result()
 
     # Train the model
+    logger.info("Starting model training...")
     training_results_future = train.submit(
         symbol=symbol,
         model_type=model_type,
@@ -45,145 +89,80 @@ def run_training_pipeline(
         service=training_service,
     )
 
-    # Get the training run id
-    training_results = training_results_future.result()
-    run_id = training_results["run_id"]
+    # --- Evaluation of the production model ---
+    live_metrics = None
 
-    # Make inference (prediction)
-    pred_target, _, _ = run_inference_pipeline(
-        model_identifier=run_id,
-        model_type=model_type,
-        symbol=symbol,
-        phase=PHASE,
-        prediction_input=test_data,
-        processing_service=processing_service,
-        deployment_service=deployment_service,
-    )
+    # Get the phase and model name of production
+    production_phase = "prediction"
+    production_model_name = get_model_name(model_type=model_type, symbol=symbol)
 
-    # Postprocess the ground truth values
-    true_target_future = postprocess_data.submit(
-        service=processing_service,
-        symbol=symbol,
-        model_type=model_type,
-        phase=PHASE,
-        prediction=test_data.y,
-    )
-    true_target = true_target_future.result()
+    prod_model_exists = production_model_exists.submit(
+        prod_model_name=production_model_name, service=deployment_service
+    ).result()
 
-    # Evaluate the training model
-    metrics = run_evaluate_and_log_flow(
-        model_identifier=run_id,
-        true_target=true_target,
-        pred_target=pred_target,
-        evaluation_service=evaluation_service,
-        deployment_service=deployment_service,
-    )
+    if prod_model_exists:
 
-    # Deploy the model
-    deployment_results = run_deployment_pipeline(
-        run_id=run_id,
-        model_type=model_type,
-        symbol=symbol,
-        candidate_metrics=metrics,
-        data_service=data_service,
-        processing_service=processing_service,
-        deployment_service=deployment_service,
-        evaluation_service=evaluation_service,
-    )
-
-    return {
-        "training_results": training_results,
-        "metrics": metrics,
-        "deployment_results": deployment_results,
-    }
-
-
-@flow(name="Deployment Pipeline")
-def run_deployment_pipeline(
-    run_id: str,
-    model_type: str,
-    symbol: str,
-    candidate_metrics,
-    data_service,
-    processing_service,
-    deployment_service,
-    evaluation_service,
-):
-    # This is the phase of the live model
-    live_phase = "prediction"
-
-    # Get the live model name
-    live_model_name = get_model_name(model_type=model_type, symbol=symbol)
-
-    deployment_results = None
-
-    # Checks if the live model exists
-    live_model_exist = model_exist.submit(live_model_name, deployment_service)
-
-    if live_model_exist.result():
-
-        # Run the data pipeline (Data Ingestion + Preprocessing)
-        # This is done because the live model its data preprocess (own scaler)
-        test_data = run_data_pipeline(
-            symbol=symbol,
+        # Get the production evaluation data
+        prod_eval_data = preprocess_data.submit(
             model_type=model_type,
-            data_service=data_service,
-            processing_service=processing_service,
+            symbol=symbol,
+            data=raw_data,
+            service=processing_service,
             phase="evaluation",
         )
 
-        # Make inference on the test data with the live model
-        pred_target, _, _ = run_inference_pipeline(
-            model_identifier=live_model_name,
+        # Evaluate the production model
+        live_metrics = evaluate_model(
+            model_identifier=production_model_name,
             model_type=model_type,
             symbol=symbol,
-            phase=live_phase,
-            prediction_input=test_data,
+            phase=production_phase,
+            eval_data=prod_eval_data,
             processing_service=processing_service,
             deployment_service=deployment_service,
-        )
-
-        # Postprocess the ground truth values
-        true_target_future = postprocess_data.submit(
-            service=processing_service,
-            symbol=symbol,
-            model_type=model_type,
-            phase=live_phase,
-            prediction=test_data.y,
-        )
-        true_target = true_target_future.result()
-
-        # Evaluate the live model
-        live_metrics = run_evaluate_and_log_flow(
-            model_identifier=live_model_name,
-            true_target=true_target,
-            pred_target=pred_target,
             evaluation_service=evaluation_service,
-            deployment_service=deployment_service,
         )
 
-        # Promote the training model if better
-        should_deploy_train_model = should_deploy_model.submit(
-            candidate_metrics=candidate_metrics,
-            live_metrics=live_metrics,
-            service=evaluation_service,
-        )
+    # --- Evaluation of the training model
 
-        if should_deploy_train_model.result():
-            deployment_results = promote_model(
-                run_id=run_id, model_name=live_model_name, service=deployment_service
-            )
+    # Wait for the training results
+    logger.info("Waiting for training to finish...")
+    training_results = training_results_future.result()
 
-    else:
-        # Automatically promote training model (if there is no live model)
-        deployment_results = promote_model(
-            run_id=run_id, model_name=live_model_name, service=deployment_service
-        )
+    # Retrieve the run id
+    run_id = training_results["run_id"]
+    logger.info(f"Training completed. Run ID: {run_id}")
 
-    if deployment_results is not None:
-        # If there was a deployment
-        promote_scaler.submit(
-            model_type=model_type, symbol=symbol, service=processing_service
-        )
+    # Evaluate the training model
+    candidate_metrics = evaluate_model(
+        run_id,
+        model_type,
+        symbol,
+        PHASE,
+        test_data,
+        processing_service,
+        deployment_service,
+        evaluation_service,
+    )
 
-    return deployment_results
+    # Deploy (or not) the training model
+    logger.info("Starting deployment check and promotion (if applicable)...")
+
+    deployment_results = run_deploy_flow(
+        model_type=model_type,
+        symbol=symbol,
+        run_id=run_id,
+        candidate_metrics=candidate_metrics,
+        prod_model_name=production_model_name,
+        live_metrics=live_metrics,
+        evaluation_service=evaluation_service,
+        deployment_service=deployment_service,
+        processing_service=processing_service,
+    )
+    logger.info(f"Deployment process completed. Result: {deployment_results}")
+
+    return {
+        "training_results": training_results,
+        "metrics": candidate_metrics,
+        "deployment_results": deployment_results,
+    }

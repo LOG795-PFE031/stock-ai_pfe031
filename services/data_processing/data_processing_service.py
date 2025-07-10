@@ -203,7 +203,7 @@ class DataProcessingService(BaseService):
             )
             raise
 
-    async def _preprocess_training_phase(
+    def _preprocess_training_phase(
         self, features: ProcessedData, dates: pd.Series, symbol: str, model_type: str
     ):
         """Handle the preprocessing steps for training."""
@@ -253,7 +253,7 @@ class DataProcessingService(BaseService):
 
         return norm_train_data, norm_test_data
 
-    async def _preprocess_evaluation_phase(
+    def _preprocess_evaluation_phase(
         self, features: ProcessedData, dates: pd.Series, symbol: str, model_type: str
     ):
         """Handle the preprocessing steps for evaluation"""
@@ -287,7 +287,7 @@ class DataProcessingService(BaseService):
 
         return norm_eval_data
 
-    async def _preprocess_prediction_phase(
+    def _preprocess_prediction_phase(
         self, features: ProcessedData, dates: pd.Series, symbol: str, model_type: str
     ):
         """Handle the preprocessing steps for prediction."""
