@@ -1,4 +1,3 @@
-from .evaluation_flow import run_evaluation_pipeline
-from .prediction_flow import run_prediction_pipeline, run_batch_prediction
-from .training_flow import run_training_pipeline
-from .data_flow import run_data_pipeline
+from .evaluation_flow import run_evaluation_flow
+from .prediction_flow import run_prediction_flow, run_batch_prediction
+from .training_flow import run_training_flow

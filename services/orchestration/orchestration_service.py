@@ -7,9 +7,9 @@ from pytz import timezone
 from core.logging import logger
 from core.utils import format_prediction_response
 from .flows import (
-    run_evaluation_pipeline,
-    run_prediction_pipeline,
-    run_training_pipeline,
+    run_evaluation_flow,
+    run_prediction_flow,
+    run_training_flow,
     run_batch_prediction,
 )
 from ..base_service import BaseService
@@ -75,7 +75,7 @@ class OrchestrationService(BaseService):
             )
 
             # Run the training pipeline
-            result = run_training_pipeline(
+            result = run_training_flow(
                 model_type,
                 symbol,
                 self.data_service,
@@ -125,7 +125,7 @@ class OrchestrationService(BaseService):
             )
 
             # Run the prediction pipeline
-            prediction_result = run_prediction_pipeline(
+            prediction_result = run_prediction_flow(
                 model_type,
                 symbol,
                 self.data_service,
@@ -196,7 +196,7 @@ class OrchestrationService(BaseService):
             )
 
             # Run the evaluation pipeline
-            result = run_evaluation_pipeline(
+            result = run_evaluation_flow(
                 model_type,
                 symbol,
                 self.data_service,

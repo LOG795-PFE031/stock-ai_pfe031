@@ -9,7 +9,7 @@ class ConfidenceCalculator:
     def __init__(self, model_type: str):
         self.model_type = model_type
 
-    def calculate_confidence(self, y_pred, prediction_input):
+    def calculate_confidence(self, y_pred, prediction_input) -> list[float]:
         try:
             confidence_calculator = self._get_confidence_calculator()
             confidence = confidence_calculator.calculate(y_pred, prediction_input)
