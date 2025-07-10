@@ -18,6 +18,8 @@ from .scaler_manager import ScalerManager
 
 from core.types import ProcessedData
 
+_preprocessed_cache = {}
+
 
 class DataProcessingService(BaseService):
 
@@ -102,12 +104,18 @@ class DataProcessingService(BaseService):
         else
             generate preprocessed data
         """
-
         try:
 
             self.logger.info(
                 f"Starting preprocessing for symbol={symbol} for model {model_type} during {phase} phase"
             )
+            
+            cache_key = f"{symbol}_{model_type}"
+            print("*********les dates*************")
+            print(start_date)
+            print(end_date)
+            if cache_key in _preprocessed_cache:
+                _preprocessed_cache[cache_key]
 
             if phase not in self.phase_function_map:
                 raise ValueError(f"Unknown phase '{phase}'")
@@ -146,7 +154,9 @@ class DataProcessingService(BaseService):
             input_data.feature_index_map = feature_index_map
 
             # Execute the correction function based on the phase
-            return self.phase_function_map[phase](input_data, dates, symbol, model_type)
+            _preprocessed_cache[cache_key] = self.phase_function_map[phase](input_data, dates, symbol, model_type)
+            return _preprocessed_cache[cache_key]
+            # return self.phase_function_map[phase](input_data, dates, symbol, model_type)
 
         except Exception as e:
             self.logger.error(
