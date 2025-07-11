@@ -82,7 +82,7 @@ class TrainingResponse(BaseModel):
     model_type: str
     training_results: Dict[str, Any]
     metrics: Dict[str, float]
-    deployment_results: Dict[str, Any] = None
+    deployment_results: Optional[Dict[str, Any]] = None
     timestamp: str
 
 
