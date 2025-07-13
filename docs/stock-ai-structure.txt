@@ -13,8 +13,9 @@ stock-ai/
 │   └── raw/        
 ├── models/                 # ML models
 │   ├── general/          # general_model.jeras and symbol_encoder.gz
+│   └── lstm/             # Lstm models for each stock (with mode.keras)
 │   └── news/             # Nothing here right now 
-│   └── prophet/          # Specific stock (with each a _metadata.json and .joblib)
+│   └── prophet/          # Prophey(with each a _metadata.json and .joblib)
 │   └── specific/         # Specific stock (with .keras, .weights.h5, scaler_metadata.json and _scaler.gz) 
 ├── monitoring/              
 │   ├── grafana/          # Holds the dashboards and its config

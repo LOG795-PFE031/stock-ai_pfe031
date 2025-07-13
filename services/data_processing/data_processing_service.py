@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional, Union, Tuple
 
 import pandas as pd
+import asyncio
 
 from core.logging import logger
 from services import BaseService
@@ -146,7 +147,12 @@ class DataProcessingService(BaseService):
             input_data.feature_index_map = feature_index_map
 
             # Execute the correction function based on the phase
-            return self.phase_function_map[phase](input_data, dates, symbol, model_type)
+            handler = self.phase_function_map[phase]
+            result = handler(input_data, dates, symbol, model_type)
+            # if handler was async, await it so its inner logs actually execute
+            if asyncio.iscoroutine(result):
+                result = await result
+            return result
 
         except Exception as e:
             self.logger.error(
@@ -247,25 +253,42 @@ class DataProcessingService(BaseService):
         norm_test_data.start_date = test_start_date
         norm_test_data.end_date = test_end_date
 
-        self.logger.info(
-            f"Completed training phase preprocessing for {symbol} symbol for {model_type} model"
-        )
+        # self.logger.info(
+        #     f"Completed training phase preprocessing for {symbol} symbol for {model_type} model"
+        # )
 
+        # self.logger.info(
+        #     f"Preprocess norm_train_data data is : {norm_train_data}"
+        # )
+        
+        # self.logger.info(
+        #     f"Preprocess norm_test_data data is : {norm_test_data}"
+        # )
+        
         return norm_train_data, norm_test_data
 
     async def _preprocess_evaluation_phase(
-        self, features: ProcessedData, dates: pd.Series, symbol: str, model_type: str
+        self,
+        features: ProcessedData,
+        dates: pd.Series,
+        symbol: str,
+        model_type: str
     ):
-        """Handle the preprocessing steps for evaluation"""
-
+        """
+        Handle the preprocessing steps for evaluation phase.
+        This method splits data, normalizes it, and assigns correct start/end dates using positional indexing.
+        """
         # Split the data
-        _, eval_data = DataSplitter().process(features)
+        # _, eval_data = DataSplitter().process(features)
+        eval_data = features
         self.logger.debug(
-            f"Data split completed for symbol={symbol}, model_type={model_type} — "
-            f"Eval size: {len(eval_data.X) if eval_data.X is not None else 0}"
+            # f"Data split completed for symbol={symbol}, model_type={model_type} — "
+            # f"Eval size: {len(eval_data.X) if eval_data.X is not None else 0}"
+            f"Evaluation data size for symbol={symbol}, model_type={model_type}: "
+            f"{len(eval_data.X) if getattr(eval_data, 'X', None) is not None else 0}"
         )
 
-        # Normalize the test data (use prediction-phase scaler)
+        # Normalize the evaluation data (use prediction-phase scaler)
         norm_eval_data = DataNormalizer(symbol, model_type, "prediction").process(
             eval_data, fit=False
         )
@@ -273,9 +296,15 @@ class DataProcessingService(BaseService):
             f"Evaluation data normalized for symbol={symbol}, model_type={model_type}"
         )
 
-        # Retrieve the start and end dates
-        eval_start_date = dates[len(dates) - len(norm_eval_data.X)]
-        eval_end_date = dates[len(dates) - 1]
+        # Retrieve the start and end dates using positional indexing
+        # Use .iloc to avoid KeyError
+        if hasattr(dates, 'iloc'):
+            eval_start_date = dates.iloc[len(dates) - len(norm_eval_data.X)]
+            eval_end_date = dates.iloc[-1]
+        else:
+            date_list = list(dates)
+            eval_start_date = date_list[len(date_list) - len(norm_eval_data.X)]
+            eval_end_date = date_list[-1]
 
         # Add start and end dates to preprocessed data
         norm_eval_data.start_date = eval_start_date
@@ -284,7 +313,6 @@ class DataProcessingService(BaseService):
         self.logger.info(
             f"Completed evaluation phase preprocessing for {symbol} symbol for model {model_type}"
         )
-
         return norm_eval_data
 
     async def _preprocess_prediction_phase(

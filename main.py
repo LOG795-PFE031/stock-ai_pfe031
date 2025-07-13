@@ -58,7 +58,10 @@ rabbitmq_service = RabbitMQService()
 monitoring_service = MonitoringService(
     deployment_service, 
     orchestation_service, 
-    check_interval_seconds=24*60*60 # 86400 sec in a day
+    data_service,
+    preprocessing_service,
+    check_interval_seconds=24*60*60, # 86400 sec in a day
+    data_interval_seconds=7 * 24 * 60 * 60,
 )
 
 @asynccontextmanager
