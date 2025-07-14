@@ -26,6 +26,7 @@ class DataProcessingService(BaseService):
     def __init__(self):
         super().__init__()
         self.logger = logger["data_processing"]
+        self._preprocessed_cache = {}
 
     async def initialize(self) -> None:
         """Initialize the data processing service."""
@@ -109,13 +110,6 @@ class DataProcessingService(BaseService):
             self.logger.info(
                 f"Starting preprocessing for symbol={symbol} for model {model_type} during {phase} phase"
             )
-            
-            cache_key = f"{symbol}_{model_type}"
-            print("*********les dates*************")
-            print(start_date)
-            print(end_date)
-            if cache_key in _preprocessed_cache:
-                _preprocessed_cache[cache_key]
 
             if phase not in self.phase_function_map:
                 raise ValueError(f"Unknown phase '{phase}'")
@@ -128,7 +122,12 @@ class DataProcessingService(BaseService):
 
             # Retrieve dates
             dates = clean_data["Date"].dt.date
-
+            
+            cache_key = f"{symbol}_{model_type}_{phase}_{dates[0]}_{dates[len(dates)-1]}"
+            
+            if cache_key in self._preprocessed_cache:
+                return self._preprocessed_cache[cache_key]
+                        
             # Build features
             features = FeatureBuilder().process(clean_data)
             self.logger.debug(
@@ -153,10 +152,9 @@ class DataProcessingService(BaseService):
             # Add the column-to-index map to the input data
             input_data.feature_index_map = feature_index_map
 
-            # Execute the correction function based on the phase
-            _preprocessed_cache[cache_key] = self.phase_function_map[phase](input_data, dates, symbol, model_type)
-            return _preprocessed_cache[cache_key]
-            # return self.phase_function_map[phase](input_data, dates, symbol, model_type)
+            value_cached = await self.phase_function_map[phase](input_data, dates, symbol, model_type)
+            self._preprocessed_cache[cache_key] = value_cached   
+            return self._preprocessed_cache[cache_key]
 
         except Exception as e:
             self.logger.error(
@@ -214,7 +212,7 @@ class DataProcessingService(BaseService):
             raise
 
     async def _preprocess_training_phase(
-        self, features: ProcessedData, dates: pd.Series, symbol: str, model_type: str
+        self, features: ProcessedData, dates: pd.Series, symbol: str, model_type: str #, cache_key:str
     ):
         """Handle the preprocessing steps for training."""
 
@@ -261,10 +259,12 @@ class DataProcessingService(BaseService):
             f"Completed training phase preprocessing for {symbol} symbol for {model_type} model"
         )
 
+        # self._preprocessed_cache[cache_key] = norm_train_data, norm_test_data
+
         return norm_train_data, norm_test_data
 
     async def _preprocess_evaluation_phase(
-        self, features: ProcessedData, dates: pd.Series, symbol: str, model_type: str
+        self, features: ProcessedData, dates: pd.Series, symbol: str, model_type: str #, cache_key:str
     ):
         """Handle the preprocessing steps for evaluation"""
 
@@ -295,10 +295,12 @@ class DataProcessingService(BaseService):
             f"Completed evaluation phase preprocessing for {symbol} symbol for model {model_type}"
         )
 
+        # self._preprocessed_cache[cache_key] = norm_eval_data
+
         return norm_eval_data
 
     async def _preprocess_prediction_phase(
-        self, features: ProcessedData, dates: pd.Series, symbol: str, model_type: str
+        self, features: ProcessedData, dates: pd.Series, symbol: str, model_type: str #, cache_key:str
     ):
         """Handle the preprocessing steps for prediction."""
 
@@ -322,6 +324,8 @@ class DataProcessingService(BaseService):
         self.logger.info(
             f"Completed prediction phase preprocessing for {symbol} symbol for {model_type} model"
         )
+
+        # self._preprocessed_cache[cache_key] = norm_features
 
         return norm_features
 
