@@ -46,8 +46,22 @@ class DeploymentService(BaseService):
             bool: True if the production model exists, False otherwise.
         """
         try:
-            models = await self.list_models()
-            return prod_model_name in models
+            self.logger.info(
+                f"Checking if the prodcution model '{prod_model_name}' exists."
+            )
+            # Get all the list of the registred (production) models corresponding to the production model name
+            prod_models = await self.mlflow_model_manager.find_registred_model(
+                prod_model_name
+            )
+
+            if prod_models:
+                self.logger.info(f"Prodcution model '{prod_model_name}' exists.")
+                return True
+            else:
+                self.logger.info(
+                    f"Prodcution model '{prod_model_name}' does not exists."
+                )
+                return False
         except Exception as e:
             self.logger.error(
                 f"Failed to check if {prod_model_name} production model exists: {str(e)}"
