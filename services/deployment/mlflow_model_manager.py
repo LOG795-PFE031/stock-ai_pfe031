@@ -1,6 +1,8 @@
 import mlflow
 from mlflow import MlflowClient
 
+from api.schemas import ModelMlflowInfo, ModelVersionInfo
+
 
 class MLflowModelManager:
 
@@ -10,15 +12,81 @@ class MLflowModelManager:
     def __init__(self):
         self.client = MlflowClient()
 
-    async def list_models(self):
+    async def list_models_name(self):
         """
-        Lists all registered MLflow models
+        Lists all registered MLflow models names.
         """
         try:
             models = self.client.search_registered_models()
             return [model.name for model in models]
         except Exception as e:
             raise RuntimeError(f"Error listing the models: {str(e)}") from e
+    
+    
+    async def list_models(self):
+        try:
+            models = self.client.search_registered_models()
+            return [
+                {
+                    "name": model.name,
+                    "description": model.description,
+                    "creation_timestamp": model.creation_timestamp,
+                    "last_updated_timestamp": model.last_updated_timestamp,
+                    "tags": {tag.key: tag.value for tag in model.tags},
+                    "latest_versions": [
+                        {
+                            "version": str(v.version),  # <-- fix here
+                            "stage": v.current_stage,
+                            "status": v.status,
+                            "run_id": v.run_id,
+                            "creation_timestamp": v.creation_timestamp,
+                            "last_updated_timestamp": v.last_updated_timestamp,
+                        }
+                        for v in model.latest_versions
+                    ],
+                }
+                for model in models
+            ]
+        except Exception as e:
+            raise RuntimeError(f"Error listing the models: {str(e)}") from e
+
+
+    async def get_model_metadata(self, model_name: str):
+        """
+        Retrieve detailed metadata for a specific MLflow model, including latest versions.
+
+        Args:
+            model_name (str): The name of the model to retrieve metadata for.
+
+        Returns:
+            ModelMlflowInfo: An object containing the model metadata.
+        """
+        try:
+            model = self.client.get_registered_model(model_name)
+            latest_versions = [
+                ModelVersionInfo(
+                    version=str(v.version),
+                    stage=v.current_stage,
+                    status=v.status,
+                    run_id=v.run_id,
+                    creation_timestamp=v.creation_timestamp,
+                    last_updated_timestamp=v.last_updated_timestamp,
+                )
+                for v in model.latest_versions
+            ]
+            return ModelMlflowInfo(
+                name=model.name,
+                description=model.description,
+                creation_timestamp=model.creation_timestamp,
+                last_updated_timestamp=model.last_updated_timestamp,
+                tags={tag.key: tag.value for tag in model.tags},
+                latest_versions=latest_versions,
+            )
+        except Exception as e:
+            raise RuntimeError(f"Error retrieving metadata for model '{model_name}': {str(e)}") from e
+        except Exception as e:
+            raise RuntimeError(f"Error retrieving metadata for model '{model_name}': {str(e)}") from e
+        
 
     async def load_model(self, model_identifier: str):
         """
