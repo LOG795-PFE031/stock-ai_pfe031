@@ -88,6 +88,22 @@ class MLflowModelManager:
             raise RuntimeError(f"Error retrieving metadata for model '{model_name}': {str(e)}") from e
         
 
+    async def find_registred_model(self, prod_model_name: str) -> list:
+        """
+        Find if a production model exists
+
+        Args:
+            prod_model_name (str): Production model name to check
+        """
+        try:
+            models = self.client.search_registered_models(
+                filter_string=f"name='{prod_model_name}'"
+            )
+
+            return models
+        except Exception as e:
+            raise RuntimeError(f"Error listing the models: {str(e)}") from e
+
     async def load_model(self, model_identifier: str):
         """
         Load the latest MLflow model

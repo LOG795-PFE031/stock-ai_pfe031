@@ -1,10 +1,10 @@
-from datetime import datetime
-from typing import Optional, Union, Tuple
-
+from typing import Union, Tuple
 import pandas as pd
 
 from core.logging import logger
+from core.types import ProcessedData
 from services import BaseService
+from .scaler_manager import ScalerManager
 from .steps import (
     DataCleaner,
     DataNormalizer,
@@ -14,9 +14,6 @@ from .steps import (
     InputFormatter,
     OutputFormatter,
 )
-from .scaler_manager import ScalerManager
-
-from core.types import ProcessedData
 
 
 class DataProcessingService(BaseService):
@@ -78,31 +75,22 @@ class DataProcessingService(BaseService):
         data: pd.DataFrame,
         model_type: str,
         phase: str,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
     ) -> Union[ProcessedData, Tuple[ProcessedData, ProcessedData]]:
         """
-        Preprocess the stock data for models input.
+        Preprocess the stock data for models input (raw data to preprocessed data).
 
         This method first applies common preprocessing steps that are independent of the phase.
         Then, it delegates to the appropriate phase-specific preprocessing function.
 
         Args:
+            symbol (str): Stock symbol
             data (pd.DataFrame): Raw stock data
+            model_type (str): Type of model
+            phase (str): The phase (e.g., "training", "prediction").
 
         Returns:
             FormattedInput: Processed data formatted specifically for input into a model.
         """
-
-        # TODO Check existing preproccessed Data (MinIO + Redis ? Or Cache ?)
-        """
-        Exemple:
-        if preprocessing_is_cached(symbol, start_date, end_date)
-            return preprocessed data
-        else
-            generate preprocessed data
-        """
-
         try:
 
             self.logger.info(
@@ -157,7 +145,7 @@ class DataProcessingService(BaseService):
     async def postprocess_data(
         self,
         symbol: str,
-        prediction: pd.DataFrame,
+        prediction,
         model_type: str,
         phase: str,
     ) -> ProcessedData:
@@ -166,23 +154,24 @@ class DataProcessingService(BaseService):
 
         Args:
             symbol (str): Stock symbol
-            targets (pd.DataFrame): Scaled predictions to be unnormalized.
-            model_type: Type of model
-            phase (str): The phase (e.g., "train", "test", or "inference").
+            prediction (Any): Scaled predictions to be unnormalized.
+            model_type (str): Type of model
+            phase (str): The phase (e.g., "training", "prediction").
 
         Returns:
             FormattedInput: Processed data including the unscaled targets
         """
         try:
+
             self.logger.info(
                 f"Starting postprocessing for {symbol} symbol for {model_type} model during {phase} phase"
             )
 
             data = ProcessedData(y=prediction)
 
-            data = DataNormalizer(
-                symbol=symbol, model_type=model_type, phase=phase
-            ).unprocess(data)
+            data = DataNormalizer(symbol=symbol, model_type=model_type).unprocess(
+                data, phase=phase
+            )
             self.logger.debug(
                 f"Targets unnormalized for symbol={symbol}, model_type={model_type}"
             )
@@ -216,29 +205,30 @@ class DataProcessingService(BaseService):
             f"test size: {len(test_data.X) if test_data.X is not None else 0}"
         )
 
+        # Retrieve training dataset start and end dates
+        train_start_date = dates[0]
+        train_end_date = dates[len(train_data.X) - 1]
+
+        # Retrieve test dataset start and end dates
+        test_start_date = dates[len(train_data.X)]
+        test_end_date = dates[len(dates) - 1]
+
         # Normalize the training data
-        norm_train_data = DataNormalizer(symbol, model_type, "training").process(
-            train_data, fit=True
+        norm_train_data = DataNormalizer(symbol=symbol, model_type=model_type).process(
+            train_data, fit=True, scaler_dates=(train_start_date, train_end_date)
         )
         self.logger.debug(
             f"Training data normalized for symbol={symbol}, model_type={model_type}"
         )
 
         # Normalize the test data
-        norm_test_data = DataNormalizer(symbol, model_type, "training").process(
-            test_data, fit=False
+        norm_test_data = DataNormalizer(symbol, model_type).process(
+            test_data, phase="training"
         )
+
         self.logger.debug(
             f"Test data normalized for symbol={symbol}, model_type={model_type}"
         )
-
-        # Retrieve training dataset start and end dates
-        train_start_date = dates[0]
-        train_end_date = dates[len(norm_train_data.X) - 1]
-
-        # Retrieve test dataset start and end dates
-        test_start_date = dates[len(norm_train_data.X)]
-        test_end_date = dates[len(dates) - 1]
 
         # Add start and end dates to preprocessed data (Train and test)
         norm_train_data.start_date = train_start_date
@@ -266,9 +256,10 @@ class DataProcessingService(BaseService):
         )
 
         # Normalize the test data (use prediction-phase scaler)
-        norm_eval_data = DataNormalizer(symbol, model_type, "prediction").process(
-            eval_data, fit=False
+        norm_eval_data = DataNormalizer(symbol, model_type).process(
+            eval_data, phase="prediction"
         )
+
         self.logger.debug(
             f"Evaluation data normalized for symbol={symbol}, model_type={model_type}"
         )
@@ -293,8 +284,8 @@ class DataProcessingService(BaseService):
         """Handle the preprocessing steps for prediction."""
 
         # Normalize the data
-        norm_features = DataNormalizer(symbol, model_type, "prediction").process(
-            features, fit=False
+        norm_features = DataNormalizer(symbol, model_type).process(
+            features, phase="prediction"
         )
 
         self.logger.debug(

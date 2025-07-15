@@ -1,5 +1,6 @@
 from prefect import task
 import pandas as pd
+from typing import Union
 
 from services.data_processing import DataProcessingService
 from core.types import ProcessedData
@@ -17,7 +18,7 @@ async def preprocess_data(
     data: pd.DataFrame,
     model_type: str,
     phase: str,
-) -> ProcessedData:
+) -> Union[ProcessedData, tuple[ProcessedData, ProcessedData]]:
     """
     Prefect task to preprocess raw stock data for model consumption.
 
