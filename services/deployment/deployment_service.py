@@ -68,23 +68,6 @@ class DeploymentService(BaseService):
             )
             raise
 
-    async def list_models_name(self):
-        """
-        Retrieves and returns a list of all available production model (live model) names
-        from the MLflow model registry.
-
-        Returns:
-            List[str]: A list of model names
-        """
-        try:
-            self.logger.info("Listing all avalaible models (in MLFlow).")
-            available_models_names = await self.mlflow_model_manager.list_models_name()
-
-            return available_models_names
-        except Exception as e:
-            self.logger.error(f"Failed to list the models: {str(e)}")
-            raise
-
     async def list_models(self):
         """
         Retrieves and returns a list of all available production models (live models)
