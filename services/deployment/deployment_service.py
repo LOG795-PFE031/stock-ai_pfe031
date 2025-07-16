@@ -131,13 +131,16 @@ class DeploymentService(BaseService):
                 cache_key = (model_identifier, input_hash)
                 self.logger.debug(f"Cache key generated: {cache_key}")
 
+            # Log the beginning of model loading
+            self.logger.debug(f"Loading model {model_identifier}...")
+
             # Load model version
-            model, current_version = await self.mlflow_model_manager.load_model(
-                model_identifier
-            )
+            model_result = await self.mlflow_model_manager.load_model(model_identifier)
+            model = model_result["model"]
+            current_version = model_result["version"]
 
             # Log the successful loading of the model
-            self.logger.debug(f"Model {model_identifier} successfully loaded.")
+            self.logger.info(f"Model {model_identifier} successfully loaded.")
 
             # Use cache if available and version matches
             if cache_key and cache_key in self._prediction_cache:
@@ -147,6 +150,9 @@ class DeploymentService(BaseService):
                         f"Using cached prediction for model {model_identifier} with input hash {input_hash}"
                     )
                     return {"predictions": cached_pred, "model_version": cached_ver}
+
+            # Log the beginning of the prediction
+            self.logger.debug(f"Starting prediction for model {model_identifier}...")
 
             # Perform prediction
             predictions = model.predict(X)

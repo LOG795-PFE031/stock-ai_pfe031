@@ -1,11 +1,15 @@
 import mlflow
 from mlflow import MlflowClient
 from mlflow.exceptions import MlflowException
+from typing import Any
 
 from api.schemas import ModelMlflowInfo, ModelVersionInfo
 
 
 class MLflowModelManager:
+
+    # Loaded models cache
+    models_cache = {}
 
     # Production alias (used to identify the production model)
     PRODUCTION_ALIAS = "production"
@@ -100,7 +104,7 @@ class MLflowModelManager:
             else:
                 raise RuntimeError(f"Error retrieving model: {str(e)}") from e
 
-    async def load_model(self, model_identifier: str):
+    async def load_model(self, model_identifier: str) -> dict[str, Any]:
         """
         Load the latest MLflow model
 
@@ -113,29 +117,38 @@ class MLflowModelManager:
             int: Version of the loaded MLflow model
         """
         try:
-            if self._run_exists(model_identifier):
-                # Path to the logged trained model
-                model_uri = f"runs:/{model_identifier}/model"
+            if model_identifier not in self.models_cache:
 
-                # There is no model version for a logged model
-                version = None
-            else:
-                # Path to the production model (live model)
-                model_uri = f"models:/{model_identifier}@{self.PRODUCTION_ALIAS}"
+                if self._run_exists(model_identifier):
+                    # Path to the logged trained model
+                    model_uri = f"runs:/{model_identifier}/model"
 
-                # Get the version of the registred model
-                versions = self.client.search_model_versions(
-                    f"name='{model_identifier}'"
-                )
-                for v in versions:
-                    if self.PRODUCTION_ALIAS in v.aliases:
-                        version = v.version
-                        break
+                    # There is no model version for a logged model
+                    version = None
+                else:
+                    # Path to the production model (live model)
+                    model_uri = f"models:/{model_identifier}@{self.PRODUCTION_ALIAS}"
 
-            # Load the model
-            model = mlflow.pyfunc.load_model(model_uri)
+                    # Get the version of the registred model
+                    versions = self.client.search_model_versions(
+                        f"name='{model_identifier}'"
+                    )
+                    for v in versions:
+                        if self.PRODUCTION_ALIAS in v.aliases:
+                            version = v.version
+                            break
 
-            return model, version
+                # Load the model
+                model = mlflow.pyfunc.load_model(model_uri)
+
+                # Store it to cache
+                self.models_cache[model_identifier] = {
+                    "model": model,
+                    "version": version,
+                }
+
+            # Return cache
+            return self.models_cache[model_identifier]
 
         except Exception as e:
             raise RuntimeError(
@@ -191,6 +204,10 @@ class MLflowModelManager:
 
             # Promote the model (training to prediction (prod))
             mv = mlflow.register_model(train_model_uri, prod_model_name)
+
+            # Delete cache entry if the model was in the cached
+            if prod_model_name in self.models_cache:
+                del self.models_cache[prod_model_name]
 
             # Add the alias production to the model
             self.client.set_registered_model_alias(
