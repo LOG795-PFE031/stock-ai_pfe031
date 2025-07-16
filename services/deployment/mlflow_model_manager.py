@@ -1,5 +1,6 @@
 import mlflow
 from mlflow import MlflowClient
+from mlflow.exceptions import MlflowException
 
 from api.schemas import ModelMlflowInfo, ModelVersionInfo
 
@@ -82,19 +83,22 @@ class MLflowModelManager:
 
     async def find_registred_model(self, prod_model_name: str) -> list:
         """
-        Find if a production model exists
+        Find if a registered model exists by name.
 
         Args:
-            prod_model_name (str): Production model name to check
+            prod_model_name (str): The name of the registered model to look for.
+
+        Returns:
+            RegisteredModel object if found, None otherwise.
         """
         try:
-            models = self.client.search_registered_models(
-                filter_string=f"name='{prod_model_name}'"
-            )
-
-            return models
-        except Exception as e:
-            raise RuntimeError(f"Error listing the models: {str(e)}") from e
+            model = self.client.get_registered_model(prod_model_name)
+            return model
+        except MlflowException as e:
+            if "not found" in str(e):
+                return None  # Model does not exist
+            else:
+                raise RuntimeError(f"Error retrieving model: {str(e)}") from e
 
     async def load_model(self, model_identifier: str):
         """
