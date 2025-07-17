@@ -167,4 +167,4 @@ http_errors_total = Counter(
     ["method", "endpoint"]
 )
 
-# Saturation in Training Monitoring above
+# Saturation is in Training Monitoring above
