@@ -44,25 +44,12 @@ class LSTMTrainer(BaseTrainer):
         model = Sequential(
             [
                 layers.LSTM(
-                    100,
-                    return_sequences=True,
-                    input_shape=input_shape,
+                    32,
                     kernel_initializer="glorot_uniform",
                     recurrent_initializer="orthogonal",
+                    return_sequences=False,
                 ),
                 layers.Dropout(0.2),
-                layers.LSTM(
-                    50,
-                    kernel_initializer="glorot_uniform",
-                    recurrent_initializer="orthogonal",
-                ),
-                layers.Dropout(0.2),
-                layers.Dense(
-                    50, activation="relu", kernel_initializer="glorot_uniform"
-                ),
-                layers.Dense(
-                    25, activation="relu", kernel_initializer="glorot_uniform"
-                ),
                 layers.Dense(1),
             ]
         )
