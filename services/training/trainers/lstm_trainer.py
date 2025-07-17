@@ -1,4 +1,4 @@
-from keras import Sequential, layers, callbacks  # Replace tensorflow import
+from keras import Sequential, layers, callbacks, Input  # Replace tensorflow import
 from typing import Any, Tuple, Dict
 import numpy as np
 
@@ -22,6 +22,7 @@ class LSTMTrainer(BaseTrainer):
             history = model.fit(
                 X_train,
                 y_train,
+                shuffle=False,
                 epochs=kwargs.get("epochs", 50),
                 batch_size=kwargs.get("batch_size", 32),
                 validation_split=0.2,
@@ -43,15 +44,13 @@ class LSTMTrainer(BaseTrainer):
         """Build LSTM model architecture."""
         model = Sequential(
             [
+                Input(input_shape),
                 layers.LSTM(
                     32,
-                    kernel_initializer="glorot_uniform",
-                    recurrent_initializer="orthogonal",
                     return_sequences=False,
                 ),
                 layers.Dropout(0.2),
                 layers.Dense(1),
             ]
         )
-
         return model
