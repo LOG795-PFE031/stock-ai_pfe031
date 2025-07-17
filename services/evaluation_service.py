@@ -47,7 +47,7 @@ class EvaluationService(BaseService):
             self.logger.error(f"Evaluation failed: {str(e)}")
             raise
 
-    async def should_deploy_model(
+    async def is_ready_for_deployment(
         self, candidate_metrics: dict, live_metrics: dict
     ) -> bool:
         """

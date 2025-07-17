@@ -8,6 +8,7 @@ import hashlib
 import json
 import numpy as np
 import pandas as pd
+from typing import Any, Union
 
 
 class DeploymentService(BaseService):
@@ -34,22 +35,38 @@ class DeploymentService(BaseService):
         """Load all models from disk."""
         pass
 
-    async def model_exists(self, model_name: str) -> bool:
+    async def production_model_exists(self, prod_model_name: str) -> bool:
         """
         Checks whether a production model (live model) with the given name exists
         in the MLflow registry.
 
         Args:
-            model_name (str): The name of the model to check.
+            prod_model_name (str): The name of the production model to check.
 
         Returns:
-            bool: True if the model exists, False otherwise.
+            bool: True if the production model exists, False otherwise.
         """
         try:
-            models = await self.list_models()
-            return model_name in models
+            self.logger.info(
+                f"Checking if the prodcution model '{prod_model_name}' exists."
+            )
+            # Get all the list of the registred (production) models corresponding to the production model name
+            prod_models = await self.mlflow_model_manager.find_registred_model(
+                prod_model_name
+            )
+
+            if prod_models:
+                self.logger.info(f"Prodcution model '{prod_model_name}' exists.")
+                return True
+            else:
+                self.logger.info(
+                    f"Prodcution model '{prod_model_name}' does not exists."
+                )
+                return False
         except Exception as e:
-            self.logger.error(f"Failed to check if {model_name} model exists: {str(e)}")
+            self.logger.error(
+                f"Failed to check if {prod_model_name} production model exists: {str(e)}"
+            )
             raise
 
     async def list_models(self):
@@ -69,7 +86,9 @@ class DeploymentService(BaseService):
             self.logger.error(f"Failed to list the models: {str(e)}")
             raise
 
-    async def predict(self, model_identifier: str, X):
+    async def predict(
+        self, model_identifier: str, X: Union[pd.DataFrame, np.ndarray, list]
+    ) -> dict[Any, int]:
         """
         Run prediction on input data using either a logged model or a registered production model.
 
@@ -79,8 +98,9 @@ class DeploymentService(BaseService):
             X: Input features.
 
         Returns:
-            Any: Predicted values from the model.
-            int: Version of the model
+            dict[str,Any]: A dictionary containing:
+                - "predictions": The prediction output from the model (e.g., list, ndarray, or DataFrame).
+                - "model_version": The version of the model used for prediction.
         """
         try:
             self.logger.info(f"Starting prediction using model {model_identifier}.")
@@ -111,7 +131,7 @@ class DeploymentService(BaseService):
                     self.logger.info(
                         f"Using cached prediction for model {model_identifier} with input hash {input_hash}"
                     )
-                    return cached_pred, cached_ver
+                    return {"predictions": cached_pred, "model_version": cached_ver}
 
             # Perform prediction
             predictions = model.predict(X)
@@ -124,7 +144,7 @@ class DeploymentService(BaseService):
                 self._prediction_cache[cache_key] = (predictions, current_version)
                 self.logger.debug(f"Prediction cached for key {cache_key}.")
 
-            return predictions, current_version
+            return {"predictions": predictions, "model_version": current_version}
 
         except Exception as e:
             self.logger.error(
@@ -134,7 +154,7 @@ class DeploymentService(BaseService):
 
     async def calculate_prediction_confidence(
         self, model_type: str, prediction_input, y_pred
-    ):
+    ) -> list[float]:
         """
         Calculates the prediction confidence score for the specified model type.
 
@@ -144,21 +164,21 @@ class DeploymentService(BaseService):
             y_pred: The model's predicted output.
 
         Returns:
-            float | None: The confidence score between 0 and 1, or None if unsupported.
+            list[float] | None: The confidence(s) score(s) between 0 and 1, or None if unsupported.
         """
         try:
             self.logger.info(
                 f"Starting prediction confidence calculation with {model_type} model."
             )
-            # Confidence calculation
-            confidence = ConfidenceCalculator(model_type).calculate_confidence(
+            # Confidences calculation
+            confidences = ConfidenceCalculator(model_type).calculate_confidence(
                 y_pred, prediction_input
             )
 
             self.logger.info(
                 f"Prediction confidence calculation doned with {model_type} model."
             )
-            return confidence
+            return confidences
 
         except Exception as e:
             self.logger.error(
@@ -166,7 +186,7 @@ class DeploymentService(BaseService):
             )
             raise
 
-    async def log_metrics(self, model_identifier: str, metrics: dict):
+    async def log_metrics(self, model_identifier: str, metrics: dict) -> bool:
         """
         Logs evaluation metrics to MLflow for the specified model.
 
@@ -189,15 +209,18 @@ class DeploymentService(BaseService):
             self.logger.error(
                 f"Failed to log metrics to MLFlow with model {model_identifier} : {str(e)}"
             )
-            raise
+            return False
 
-    async def promote_model(self, run_id: str, prod_model_name: str):
+    async def promote_model(self, run_id: str, prod_model_name: str) -> dict[str, Any]:
         """
         Promote a logged training model to the production model registry.
 
         Parameters:
             run_id (str): The run id of the logged trained model
             prod_model_name (str): Name of the production model
+
+        Returns:
+            dict[str,Any]: Deployment results
         """
         try:
             # Promotion

@@ -1,11 +1,16 @@
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from asyncio import run
 from datetime import datetime
+from pytz import timezone
 
 from core.logging import logger
 from core.utils import format_prediction_response
 from .flows import (
-    run_evaluation_pipeline,
-    run_prediction_pipeline,
-    run_training_pipeline,
+    run_evaluation_flow,
+    run_prediction_flow,
+    run_training_flow,
+    run_batch_prediction,
 )
 from ..base_service import BaseService
 from ..deployment import DeploymentService
@@ -35,9 +40,15 @@ class OrchestrationService(BaseService):
         self.evaluation_service = evaluation_service
         self.logger = logger["orchestration"]
 
+        # Scheduler (use to schdule all predictions)
+        self.scheduler = AsyncIOScheduler()
+
     async def initialize(self) -> None:
         """Initialize the orchestration service."""
         try:
+            # Configure the prediction scheduler
+            self._set_prediction_scheduler()
+
             self._initialized = True
             self.logger.info("Orchestration service initialized successfully")
         except Exception as e:
@@ -65,7 +76,7 @@ class OrchestrationService(BaseService):
             )
 
             # Run the training pipeline
-            result = run_training_pipeline(
+            result = run_training_flow(
                 model_type,
                 symbol,
                 self.data_service,
@@ -115,7 +126,7 @@ class OrchestrationService(BaseService):
             )
 
             # Run the prediction pipeline
-            prediction_result = run_prediction_pipeline(
+            prediction_result = run_prediction_flow(
                 model_type,
                 symbol,
                 self.data_service,
@@ -186,7 +197,7 @@ class OrchestrationService(BaseService):
             )
 
             # Run the evaluation pipeline
-            result = run_evaluation_pipeline(
+            result = run_evaluation_flow(
                 model_type,
                 symbol,
                 self.data_service,
@@ -228,3 +239,36 @@ class OrchestrationService(BaseService):
             self.logger.info("Orchestration service cleaned up successfully")
         except Exception as e:
             self.logger.error(f"Error during orchestration service cleanup: {str(e)}")
+
+    def _set_prediction_scheduler(self):
+        """Set the prediction scheduler"""
+        # Start the scheduler
+        self.scheduler.start()
+
+        # Configure a trigger for the scheduler (15 mins after the market close on weekdays)
+        eastern = timezone("US/Eastern")
+        trigger = CronTrigger(
+            day_of_week="mon-fri", hour=16, minute=45, timezone=eastern
+        )
+
+        # Add job to the scheduler
+        self.scheduler.add_job(self._predict_all, trigger=trigger)
+
+    async def _predict_all(self):
+        """Run batch prediction for all configured model types and symbols."""
+
+        # Retrieve the model types
+        trainers = await self.training_service.get_trainers()
+        model_types = trainers["types"]
+
+        # Retrieve the symbols to predict
+        stocks_data = await self.data_service.get_nasdaq_stocks()
+        symbols = [item["symbol"] for item in stocks_data["data"]]
+
+        run_batch_prediction(
+            model_types,
+            symbols,
+            self.data_service,
+            self.preprocessing_service,
+            self.deployment_service,
+        )

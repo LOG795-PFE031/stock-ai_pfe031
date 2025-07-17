@@ -69,7 +69,7 @@ class TrainingTrainersResponse(BaseModel):
     """Trainers getter response schema."""
 
     status: str
-    trainers: List[str]
+    types: List[str]
     count: int
     timestamp: str
 
@@ -82,7 +82,7 @@ class TrainingResponse(BaseModel):
     model_type: str
     training_results: Dict[str, Any]
     metrics: Dict[str, float]
-    deployment_results: Dict[str, Any] = None
+    deployment_results: Optional[Dict[str, Any]] = None
     timestamp: str
 
 

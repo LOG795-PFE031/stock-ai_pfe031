@@ -63,7 +63,7 @@ def format_prediction_response(
     return {
         "status": "success",
         "symbol": symbol,
-        "date": date or (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d"),
+        "date": get_next_trading_day().strftime("%Y-%m-%d"),
         "predicted_price": safe_float(prediction),
         "confidence": safe_float(confidence),
         "model_type": model_type,
@@ -125,7 +125,7 @@ def get_latest_trading_day():
     return datetime.combine(latest_trading_day, datetime.min.time())
 
 
-def get_next_trading_day():
+def get_next_trading_day() -> datetime:
     """
     Get the next valid trading day
 

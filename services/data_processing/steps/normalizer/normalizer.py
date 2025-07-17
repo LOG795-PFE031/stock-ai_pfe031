@@ -3,6 +3,7 @@ from services.data_processing.abstract import BaseDataProcessor
 from core.types import ProcessedData
 
 import numpy as np
+from typing import Optional
 
 
 class DataNormalizer(BaseDataProcessor):
@@ -11,22 +12,34 @@ class DataNormalizer(BaseDataProcessor):
     model-specific scalers during training and prediction.
     """
 
-    def __init__(self, symbol, model_type: str, phase: str):
+    def __init__(self, symbol, model_type: str):
         self.symbol = symbol
         self.model_type = model_type
-        self.phase = phase
         self.scaler_manager = ScalerManager(model_type, symbol)
 
-    def process(self, data: ProcessedData, fit=False) -> ProcessedData:
+    def process(
+        self,
+        data: ProcessedData,
+        phase="prediction",
+        fit=False,
+        scaler_dates: Optional[tuple[str, str]] = None,
+    ) -> ProcessedData:
         """
-        Process the data by applying normalization if required.
+        Processes the given data by applying scaling to features and targets if required
+        based on the current phase.
 
         Args:
-            data (PreprocessedData): Features and targets to normalize.
-            fit (bool): If True, fit a new scaler.
+            data (ProcessedData): The input data containing features (X) and targets (y) to be processed.
+            phase (str, optional): The current phase of the pipeline (e.g., "training", "prediction").
+                                Determines which scaler to use. Defaults to "prediction".
+            fit (bool, optional): Whether to fit a new scaler using the input data.
+                                If False, an existing scaler is loaded. Defaults to False.
+            scaler_dates (Optional[tuple[str, str]], optional): Tuple containing start and end dates
+                                                                for fitting the scaler, if applicable.
+                                                                Defaults to None.
 
         Returns:
-            PreprocessedData: Normalized features and targets.
+            ProcessedData: Preprocessed data (scaled features and targets).
         """
         try:
 
@@ -50,10 +63,16 @@ class DataNormalizer(BaseDataProcessor):
                         if inputs.ndim == 1:
                             inputs = inputs.reshape(-1, 1)
 
-                        # Load (or create) the scaler
-                        scaler = self._load_or_fit_scaler(
-                            scaler_type, fit=fit, data=inputs
-                        )
+                        if fit:
+                            scaler = self._create_and_fit_scaler(
+                                scaler_type=scaler_type,
+                                data=inputs,
+                                scaler_dates=scaler_dates,
+                            )
+                        else:
+                            scaler = self.scaler_manager.load_scaler(
+                                scaler_type=scaler_type, phase=phase
+                            )
 
                         # Scale the data
                         scaled_data = scaler.transform(inputs)
@@ -80,9 +99,9 @@ class DataNormalizer(BaseDataProcessor):
                 return data
 
         except Exception as e:
-            raise RuntimeError(f"Error while scaling data.") from e
+            raise RuntimeError(f"Error while scaling data : {str(e)}") from e
 
-    def unprocess(self, data: ProcessedData):
+    def unprocess(self, data: ProcessedData, phase: str):
         """
         Reverse the normalization applied to the targets included in the data.
 
@@ -91,6 +110,7 @@ class DataNormalizer(BaseDataProcessor):
 
         Args:
             data (PreprocessedData): Features and targets.
+            phase (str): The phase (e.g., "training", "prediction").
 
         Returns:
             PreprocessedData: Unnormalized target values in the PreprocessedData format.
@@ -112,7 +132,7 @@ class DataNormalizer(BaseDataProcessor):
 
             # Load the targets scaler
             y_scaler = self.scaler_manager.load_scaler(
-                self.phase, ScalerManager.TARGETS_SCALER_TYPE
+                scaler_type=ScalerManager.TARGETS_SCALER_TYPE, phase=phase
             )
 
             # Unscale the targets
@@ -128,21 +148,37 @@ class DataNormalizer(BaseDataProcessor):
             # No Unnormalize needed
             return data
 
-    def _load_or_fit_scaler(self, scaler_type: str, fit: bool, data):
+    def _create_and_fit_scaler(
+        self, scaler_type: str, data, scaler_dates: tuple[str, str]
+    ):
         """
-        Returns the appropriate scaler based on the model type.
+        Creates, fits, and saves a scaler for the given data and type.
+
+        Args:
+            scaler_type (str): A string indicating whether the scaler is for "features" or "targets".
+            data: The input data to be used for fitting the scaler.
+            scaler_dates (tuple[str, str]): A tuple representing the start and end dates
+                                            used to label/version the fitted scaler.
+
+        Returns:
+            sklearn.preprocessing.MinMaxScaler: A fitted scaler.
         """
         try:
-            if fit:
-                # Create it
-                scaler = self.scaler_manager.create_scaler()
-                # Fit and save the scaler
-                scaler.fit(data)
-                self.scaler_manager.save_scaler(scaler, self.phase, scaler_type)
-            else:
-                scaler = self.scaler_manager.load_scaler(self.phase, scaler_type)
+            if not scaler_dates:
+                raise ValueError("You must provide scaler_dates when fitting a scaler.")
+
+            # Create it
+            scaler = self.scaler_manager.create_scaler()
+
+            # Fit it
+            scaler = scaler.fit(data)
+
+            # Save it
+            self.scaler_manager.save_scaler(
+                scaler=scaler, scaler_type=scaler_type, scaler_dates=scaler_dates
+            )
 
             return scaler
 
         except Exception as e:
-            raise RuntimeError(f"Error preparing the scaler.") from e
+            raise RuntimeError(f"Error creating and fitting the scaler.") from e
