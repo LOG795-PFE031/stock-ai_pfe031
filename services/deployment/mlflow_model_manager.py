@@ -85,7 +85,7 @@ class MLflowModelManager:
                 f"Error retrieving metadata for model '{model_name}': {str(e)}"
             ) from e
 
-    async def find_registred_model(self, prod_model_name: str) -> list:
+    def find_registred_model(self, prod_model_name: str) -> list:
         """
         Find if a registered model exists by name.
 
