@@ -11,6 +11,8 @@ from monitoring.prometheus_metrics import prediction_time_seconds
 import time
 
 from api.schemas import (
+    ModelListMlflowResponse,
+    ModelMlflowInfo,
     PredictionResponse,
     PredictionsResponse,
     HealthResponse,
@@ -346,7 +348,7 @@ async def get_news_data(
 
 
 # Model management endpoints
-@router.get("/models", response_model=ModelListResponse, tags=["Model Management"])
+@router.get("/models", response_model=ModelListMlflowResponse, tags=["Model Management"])
 async def get_models():
     """List all available ML models."""
     try:
@@ -354,25 +356,30 @@ async def get_models():
         from main import deployment_service
 
         models = await deployment_service.list_models()
-        return ModelListResponse(models=models)
+        response = ModelListMlflowResponse(models=models,
+                                        total_models=len(models),
+                                        timestamp=datetime.now().isoformat())
+        return response
+
     except Exception as e:
         api_logger.error(f"Failed to get models: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get models: {str(e)}")
 
 
 @router.get(
-    "/models/{model_id}",
-    response_model=ModelMetadataResponse,
+    "/models/{model_name}",
+    response_model=ModelMlflowInfo,
     tags=["Model Management"],
 )
-async def get_model_metadata(model_id: str):
+async def get_model_metadata(model_name: str):
     """Get metadata for a specific model."""
     try:
         # Import services from main to avoid circular imports
-        from main import model_service
+        from main import deployment_service
 
-        metadata = await model_service.get_model_metadata(model_id)
-        return ModelMetadataResponse(**metadata)
+        metadata = await deployment_service.get_model_metadata(model_name)
+        print(f"Model metadata for {model_name}: {metadata}")
+        return metadata
     except Exception as e:
         api_logger.error(f"Failed to get model metadata: {str(e)}")
         raise HTTPException(

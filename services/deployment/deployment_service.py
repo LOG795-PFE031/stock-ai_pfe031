@@ -70,19 +70,37 @@ class DeploymentService(BaseService):
 
     async def list_models(self):
         """
-        Retrieves and returns a list of all available production model (live model) names
-        from the MLflow model registry.
+        Retrieves and returns a list of all available production models (live models)
+        with detailed information from the MLflow model registry.
 
         Returns:
-            List[str]: A list of model names
+            List[dict]: A list of dictionaries containing model details.
         """
         try:
             self.logger.info("Listing all avalaible models (in MLFlow).")
-            available_models_names = await self.mlflow_model_manager.list_models()
+            available_models = await self.mlflow_model_manager.list_models()
 
-            return available_models_names
+            return available_models
         except Exception as e:
             self.logger.error(f"Failed to list the models: {str(e)}")
+            raise
+
+    async def get_model_metadata(self, model_name: str) -> dict[str, Any]:
+        """
+        Retrieves metadata for a specific model by its ID.
+
+        Args:
+            model_name (str): The name of the model to retrieve metadata for. ex: lstm_INTC
+
+        Returns:
+            dict[str, Any]: A dictionary containing model metadata.
+        """
+        try:
+            self.logger.info(f"Retrieving metadata for model {model_name}.")
+            metadata = await self.mlflow_model_manager.get_model_metadata(model_name)
+            return metadata
+        except Exception as e:
+            self.logger.error(f"Failed to get model metadata: {str(e)}")
             raise
 
     async def predict(
