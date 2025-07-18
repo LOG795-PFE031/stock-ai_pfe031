@@ -1,3 +1,4 @@
+from datetime import date, datetime, timedelta
 from .mlflow_model_manager import MLflowModelManager
 from .confidence import ConfidenceCalculator
 from services.base_service import BaseService
@@ -8,6 +9,11 @@ import json
 import numpy as np
 import pandas as pd
 from typing import Any, Union
+from monitoring.prometheus_metrics import (
+    predictions_total,
+    prediction_time_seconds,
+    prediction_confidence,
+)
 
 
 class DeploymentService(BaseService):
@@ -119,64 +125,75 @@ class DeploymentService(BaseService):
                 - "predictions": The prediction output from the model (e.g., list, ndarray, or DataFrame).
                 - "model_version": The version of the model used for prediction.
         """
+        
         try:
-            self.logger.info(f"Starting prediction using model {model_identifier}.")
+            model_type, symbol, _ = model_identifier.split("_", 2)
+        except ValueError:
+            model_type, symbol = model_identifier, ""
+        
+        # Time the prediction
+        with prediction_time_seconds.labels(
+            model_type=model_type, symbol=symbol
+        ).time():
+            try:
+                self.logger.info(f"Starting prediction using model {model_identifier}.")
 
-            # Generate input hash for caching
-            input_hash = self._hash_input(X)
-            if not input_hash:
-                self.logger.warning(
-                    "Could not generate a valid input hash. Caching will be skipped."
-                )
-                cache_key = None
-            else:
-                cache_key = (model_identifier, input_hash)
-                self.logger.debug(f"Cache key generated: {cache_key}")
-
-            # Load model version
-            model, current_version = await self.mlflow_model_manager.load_model(
-                model_identifier
-            )
-
-            # Log the successful loading of the model
-            self.logger.debug(f"Model {model_identifier} successfully loaded.")
-
-            # Use cache if available and version matches
-            if cache_key and cache_key in self._prediction_cache:
-                cached_pred, cached_ver = self._prediction_cache[cache_key]
-                if cached_ver == current_version:
-                    self.logger.info(
-                        f"Using cached prediction for model {model_identifier} with input hash {input_hash}"
+                # Generate input hash for caching
+                input_hash = self._hash_input(X)
+                if not input_hash:
+                    self.logger.warning(
+                        "Could not generate a valid input hash. Caching will be skipped."
                     )
-                    return {"predictions": cached_pred, "model_version": cached_ver}
+                    cache_key = None
+                else:
+                    cache_key = (model_identifier, input_hash)
+                    self.logger.debug(f"Cache key generated: {cache_key}")
 
-            # Perform prediction
-            predictions = model.predict(X)
+                # Load model version
+                model, current_version = await self.mlflow_model_manager.load_model(
+                    model_identifier
+                )
 
-            # Log the completion of the prediction
-            self.logger.info(f"Prediction completed for model {model_identifier}.")
+                # Log the successful loading of the model
+                self.logger.debug(f"Model {model_identifier} successfully loaded.")
 
-            # Cache the result
-            if cache_key:
-                self._prediction_cache[cache_key] = (predictions, current_version)
-                self.logger.debug(f"Prediction cached for key {cache_key}.")
+                # Use cache if available and version matches
+                if cache_key and cache_key in self._prediction_cache:
+                    cached_pred, cached_ver = self._prediction_cache[cache_key]
+                    if cached_ver == current_version:
+                        self.logger.info(
+                            f"Using cached prediction for model {model_identifier} with input hash {input_hash}"
+                        )
+                        return {"predictions": cached_pred, "model_version": cached_ver}
 
-            return {"predictions": predictions, "model_version": current_version}
+                # Perform prediction
+                predictions = model.predict(X)
 
-        except Exception as e:
-            self.logger.error(
-                f"Failed to predict with model {model_identifier} : {str(e)}"
-            )
-            raise
+                # Log the completion of the prediction
+                self.logger.info(f"Prediction completed for model {model_identifier}.")
+
+                # Cache the result
+                if cache_key:
+                    self._prediction_cache[cache_key] = (predictions, current_version)
+                    self.logger.debug(f"Prediction cached for key {cache_key}.")
+                
+                return {"predictions": predictions, "model_version": current_version}
+
+            except Exception as e:
+                self.logger.error(
+                    f"Failed to predict with model {model_identifier} : {str(e)}"
+                )
+                raise
 
     async def calculate_prediction_confidence(
-        self, model_type: str, prediction_input, y_pred
+        self, model_type: str, symbol: str, prediction_input, y_pred
     ) -> list[float]:
         """
         Calculates the prediction confidence score for the specified model type.
 
         Args:
             model_type (str): The type of the model (e.g., "lstm", "prophet").
+            symbol: Stock symbol. (It's to log the metric).
             prediction_input: The input data used for the prediction.
             y_pred: The model's predicted output.
 
@@ -192,6 +209,15 @@ class DeploymentService(BaseService):
                 y_pred, prediction_input
             )
 
+            # emit the gauge for each value (gauge holds last)
+            if confidences is not None:
+                vals = confidences if isinstance(confidences, (list, tuple)) else [confidences]
+                for c in vals:
+                    prediction_confidence.labels(
+                        model_type=model_type,
+                        symbol=symbol
+                    ).set(float(c))
+            
             self.logger.info(
                 f"Prediction confidence calculation doned with {model_type} model."
             )
@@ -288,10 +314,18 @@ class DeploymentService(BaseService):
             def convert(obj):
                 if isinstance(obj, pd.DataFrame):
                     return obj.to_dict(orient="records")
-                if isinstance(obj, np.ndarray):
+                if isinstance(obj, pd.Series):
                     return obj.tolist()
-                if isinstance(obj, (np.float32, np.float64, np.int32, np.int64)):
+                if isinstance(obj, (np.ndarray,)):
+                    return obj.tolist()
+                if isinstance(obj, (np.integer, np.floating)):
                     return obj.item()
+                if isinstance(obj, (np.bool_, bool)):
+                    return bool(obj)
+                if isinstance(obj, (pd.Timestamp, datetime, date)):
+                    return obj.isoformat()
+                if isinstance(obj, (timedelta, pd.Timedelta)):
+                    return str(obj)
                 raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
             input_str = json.dumps(X, sort_keys=True, default=convert)

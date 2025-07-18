@@ -97,6 +97,8 @@ def run_evaluation_flow(
 )
 def run_evaluate_and_log_flow(
     model_identifier: str,
+    model_type: str,
+    symbol: str,
     true_target: ProcessedData,
     pred_target: ProcessedData,
     evaluation_service: EvaluationService,
@@ -125,6 +127,8 @@ def run_evaluate_and_log_flow(
     metrics_future = evaluate.submit(
         true_target=true_target.y,
         pred_target=pred_target.y,
+        model_type=model_type,
+        symbol=symbol,
         service=evaluation_service,
     )
 
@@ -201,6 +205,8 @@ def evaluate_model(
     # Run evaluation and log metrics
     metrics = run_evaluate_and_log_flow(
         model_identifier=model_identifier,
+        model_type=model_type,
+        symbol=symbol,
         true_target=true_target,
         pred_target=pred_target,
         evaluation_service=evaluation_service,
