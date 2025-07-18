@@ -51,6 +51,7 @@ COPY core/ ./core/
 COPY services/ ./services/
 COPY main.py .
 COPY monitoring/ ./monitoring/
+COPY start.sh .
 
 # Set environment variables
 ENV PYTHONPATH=/app \
@@ -72,4 +73,5 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
-CMD ["python", "main.py"]
+RUN chmod +x /app/start.sh
+CMD ["./start.sh"]
