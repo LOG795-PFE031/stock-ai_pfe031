@@ -25,7 +25,6 @@ class MonitoringService(BaseService):
         preprocessing_service: DataProcessingService,
         check_interval_seconds: int = 24 * 60 * 60,  # default: once per day
         data_interval_seconds: int = 7 * 24 * 60 * 60, # once per week
-        data_drift_pvalue_threshold: float = 0.051, # AAPL was 0.0384 < 0.05
         max_drift_samples: int = 500,
         drift_stat_threshold: float = 0.1,
     ):
@@ -37,11 +36,12 @@ class MonitoringService(BaseService):
         self.preprocessing_service = preprocessing_service
         self.check_interval_seconds = check_interval_seconds
         self.data_interval = data_interval_seconds
-        self.drift_threshold = data_drift_pvalue_threshold
         self.max_drift_samples = max_drift_samples
         self.drift_stat_threshold = drift_stat_threshold
         self._last_mae: Dict[Tuple[str, str], float] = {}
-        self._task: asyncio.Task | None = None
+        
+        # Background tasks for performance and data loops
+        self._perf_task: asyncio.Task | None = None
         self._data_task: asyncio.Task | None = None
         self.logger.info("Initializing MonitoringService")
 
@@ -53,11 +53,14 @@ class MonitoringService(BaseService):
         self.logger.info("MonitoringService initialized and loops started")
 
     async def cleanup(self) -> None:
+        """Stop both monitoring loops and clean up."""
         self._initialized = False
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
+        # Cancel performance and data tasks if running
+        for task in (self._perf_task, self._data_task):
+            if task:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
         self.logger.info("MonitoringService cleaned up")
 
     async def _performance_loop(self) -> None:

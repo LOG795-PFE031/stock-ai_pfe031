@@ -20,8 +20,6 @@ from ..evaluation_service import EvaluationService
 from ..data_service import DataService
 from core.logging import logger
 
-from monitoring.prometheus_metrics import evaluation_mae
-
 class OrchestrationService(BaseService):
 
     def __init__(
