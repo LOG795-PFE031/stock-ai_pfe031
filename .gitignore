@@ -82,7 +82,7 @@ mlruns/
 prefect_data/
 
 # Ignore Scaler data infos (registry)
-data_processing/scalers/scaler_registry.json
+data/scalers/scaler_registry.json
 
 stock-ai.code-workspace
 
