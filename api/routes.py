@@ -304,6 +304,69 @@ async def get_reccent_stock_data(
 
 
 @router.get(
+    "/data/stock/{symbol}/from-end-date",
+    response_model=StockDataResponse,
+    tags=["Data Services"],
+)
+async def get_historical_stock_prices_from_end_date(
+    symbol: str,
+    end_date: datetime = Query(None, description="End date to retrieve the data from"),
+    days_back: int = Query(
+        None,
+        description="Number of days to look back from the end date",
+        ge=1,
+        le=10_000,
+    ),
+):
+    """Retrieve stock prices for a symbol from a specified end date, looking back a given number of days."""
+    try:
+        # Import services from main to avoid circular imports
+        from main import data_service
+
+        # Validate symbol
+        if not validate_stock_symbol(symbol):
+            raise HTTPException(
+                status_code=400, detail=f"Invalid stock symbol: {symbol}"
+            )
+
+        if not end_date:
+            raise HTTPException(
+                status_code=400,
+                detail="end_date is required for get_historical_stock_prices_from_end_date",
+            )
+
+        if not days_back:
+            raise HTTPException(
+                status_code=400,
+                detail="days_back is required for get_historical_stock_prices_from_end_date",
+            )
+
+        # Get recents N trading days stock prices
+        data, stock_name = await data_service.get_historical_stock_prices_from_end_date(
+            symbol=symbol, days_back=days_back, end_date=end_date
+        )
+
+        return StockDataResponse(
+            symbol=symbol,
+            name=stock_name,
+            data=data.to_dict(orient="records"),
+            meta=MetaInfo(
+                message=f"Stock data retrieved successfully for {symbol}",
+                version=config.api.API_VERSION,
+                documentation="https://api.example.com/docs",
+                endpoints=["/api/data/stock/{symbol}"],
+            ),
+            timestamp=datetime.now().isoformat(),
+        )
+
+    except Exception as e:
+        api_logger.error(f"Failed to get stock data: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get stock data: {str(e)}"
+        )
+
+
+@router.get(
     "/data/news/{symbol}", response_model=NewsDataResponse, tags=["Data Services"]
 )
 async def get_news_data(
@@ -348,7 +411,9 @@ async def get_news_data(
 
 
 # Model management endpoints
-@router.get("/models", response_model=ModelListMlflowResponse, tags=["Model Management"])
+@router.get(
+    "/models", response_model=ModelListMlflowResponse, tags=["Model Management"]
+)
 async def get_models():
     """List all available ML models."""
     try:
@@ -356,9 +421,11 @@ async def get_models():
         from main import deployment_service
 
         models = await deployment_service.list_models()
-        response = ModelListMlflowResponse(models=models,
-                                        total_models=len(models),
-                                        timestamp=datetime.now().isoformat())
+        response = ModelListMlflowResponse(
+            models=models,
+            total_models=len(models),
+            timestamp=datetime.now().isoformat(),
+        )
         return response
 
     except Exception as e:
@@ -446,7 +513,7 @@ async def get_historical_predictions(
     """Get historical predictions for a symbol."""
     try:
         # Import services from main to avoid circular imports
-        from main import prediction_service
+        from main import orchestation_service
 
         # Validate symbol
         if not validate_stock_symbol(symbol):
@@ -458,80 +525,16 @@ async def get_historical_predictions(
         start, end = get_date_range(start_date, end_date)
 
         # Get predictions
-        predictions = await prediction_service.get_historical_predictions(
-            symbol=symbol, start_date=start, end_date=end, model_type=model_type
+        predictions = await orchestation_service.run_historical_prediction_pipeline(
+            model_type=model_type, symbol=symbol, start_date=start, end_date=end
         )
 
-        # Format each prediction
-        formatted_predictions = [
-            format_prediction_response(
-                prediction=p["predicted_price"],
-                confidence=p["confidence"],
-                model_type=p["model_type"],
-                model_version="1.0.0",  # Default version for historical predictions
-                symbol=symbol,
-                date=p.get(
-                    "date", None
-                ),  # Use the date from the prediction if available
-            )
-            for p in predictions
-        ]
-
-        return PredictionsResponse(
-            symbol=symbol,
-            predictions=formatted_predictions,
-            meta=MetaInfo(
-                start_date=start.isoformat(),
-                end_date=end.isoformat(),
-                model_type=model_type,
-            ),
-        )
+        return predictions
     except Exception as e:
         api_logger.error(f"Historical predictions failed: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Historical predictions failed: {str(e)}"
         )
-
-
-@router.get(
-    "/predict/{symbol}/display",
-    response_model=Dict[str, Any],
-    tags=["Prediction Services"],
-)
-async def get_direct_display(symbol: str, model_type: str = "lstm"):
-    """Get formatted prediction display for a symbol."""
-    try:
-        # Import services from main to avoid circular imports
-        from main import prediction_service, news_service
-
-        # Validate symbol
-        if not validate_stock_symbol(symbol):
-            raise HTTPException(
-                status_code=400, detail=f"Invalid stock symbol: {symbol}"
-            )
-
-        # Get prediction and news analysis
-        prediction = await prediction_service.get_next_day_prediction(
-            symbol=symbol, model_type=model_type
-        )
-        news_analysis = await news_service.get_news_analysis(symbol)
-
-        # Format the prediction response
-        formatted_prediction = format_prediction_response(
-            prediction=prediction["prediction"],
-            confidence=prediction["confidence_score"],
-            model_type=prediction["model_type"],
-            model_version=prediction["model_version"],
-            symbol=symbol,
-        )
-
-        return {
-            "prediction": formatted_prediction,
-            "news_analysis": news_analysis.dict(),
-        }
-    except Exception as e:
-        api_logger.error(f"Direct display failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Direct display failed: {str(e)}")
 
 
 # Training endpoints

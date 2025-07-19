@@ -11,6 +11,7 @@ from .flows import (
     run_prediction_flow,
     run_training_flow,
     run_batch_prediction,
+    run_historical_predictions_flow,
 )
 from ..base_service import BaseService
 from ..deployment import DeploymentService
@@ -26,14 +27,14 @@ class OrchestrationService(BaseService):
     def __init__(
         self,
         data_service: DataService,
-        preprocessing_service: DataProcessingService,
+        data_processing_service: DataProcessingService,
         training_service: TrainingService,
         deployment_service: DeploymentService,
         evaluation_service: EvaluationService,
     ):
         super().__init__()
         self.data_service = data_service
-        self.preprocessing_service = preprocessing_service
+        self.data_processing_service = data_processing_service
         self.training_service = training_service
         self.deployment_service = deployment_service
         self.evaluation_service = evaluation_service
@@ -79,7 +80,7 @@ class OrchestrationService(BaseService):
                 model_type,
                 symbol,
                 self.data_service,
-                self.preprocessing_service,
+                self.data_processing_service,
                 self.training_service,
                 self.deployment_service,
                 self.evaluation_service,
@@ -129,7 +130,7 @@ class OrchestrationService(BaseService):
                 model_type,
                 symbol,
                 self.data_service,
-                self.preprocessing_service,
+                self.data_processing_service,
                 self.deployment_service,
             )
 
@@ -200,7 +201,7 @@ class OrchestrationService(BaseService):
                 model_type,
                 symbol,
                 self.data_service,
-                self.preprocessing_service,
+                self.data_processing_service,
                 self.deployment_service,
                 self.evaluation_service,
             )
@@ -214,6 +215,97 @@ class OrchestrationService(BaseService):
         except Exception as e:
             self.logger.error(
                 f"Error running the evaluation pipeline for model {model_type} for {symbol}: {str(e)}"
+            )
+            return {
+                "status": "error",
+                "error": str(e),
+                "symbol": symbol,
+                "model_type": model_type,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+    async def run_historical_prediction_pipeline(
+        self, model_type: str, symbol: str, start_date: datetime, end_date: datetime
+    ):
+        """
+        Run the historical prediction pipeline for a given stock symbol and model type over a specified date range.
+
+        Args:
+            model_type (str): The type of model to be used (e.g., 'LSTM', 'Prophet').
+            symbol (str): The stock symbol for which the model is being evaluated.
+            start_date (datetime): The start of the historical prediction range.
+            end_date (datetime): The end of the historical prediction range.
+
+        Returns:
+            dict: The result of the historical prediction pipeline execution.
+        """
+        try:
+            # Enforce upper case for the symbol
+            symbol = symbol.upper()
+
+            self.logger.info(
+                f"Starting historical prediction for {model_type} model for {symbol} from {start_date} to {end_date}."
+            )
+
+            # Makes predictions
+            predictions_results = run_historical_predictions_flow(
+                model_type=model_type,
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                data_service=self.data_service,
+                processing_service=self.data_processing_service,
+                deployment_service=self.deployment_service,
+            )
+
+            if predictions_results:
+
+                # Extract th dates and predictions
+                dates = predictions_results["dates"]
+                predictions = predictions_results["predictions"]
+
+                # Initialize the results list
+                results = []
+
+                for i in range(len(predictions)):
+
+                    # Extract the prediction results
+                    prediction = predictions[i]["y_pred"][0]
+                    confidence = predictions[i]["confidence"][0]
+                    model_version = predictions[i]["model_version"]
+
+                    # Add formated prediction response to the results list
+                    results.append(
+                        format_prediction_response(
+                            prediction=prediction,
+                            confidence=confidence,
+                            model_type=model_type,
+                            symbol=symbol,
+                            model_version=model_version,
+                            date=dates[i],
+                        )
+                    )
+
+                return {
+                    "symbol": symbol,
+                    "predictions": results,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            else:
+                self.logger.info(
+                    f"No live model available to make predictions with {model_type} model for {symbol}."
+                )
+                return {
+                    "status": "error",
+                    "error": f"No live model available to make predictions with {model_type} model for {symbol}.",
+                    "symbol": symbol,
+                    "model_type": model_type,
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+        except Exception as e:
+            self.logger.error(
+                f"Error running the prediction pipeline for model {model_type} for {symbol}: {str(e)}"
             )
             return {
                 "status": "error",
@@ -260,6 +352,6 @@ class OrchestrationService(BaseService):
             model_types,
             symbols,
             self.data_service,
-            self.preprocessing_service,
+            self.data_processing_service,
             self.deployment_service,
         )
