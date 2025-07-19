@@ -22,7 +22,6 @@ from ..data_processing import DataProcessingService
 from ..evaluation_service import EvaluationService
 from ..data_service import DataService
 from core.logging import logger
-from core.config import config
 
 
 class OrchestrationService(BaseService):
@@ -143,8 +142,8 @@ class OrchestrationService(BaseService):
                 return format_prediction_response(
                     prediction=result["prediction"],
                     confidence=result["confidence"],
-                    model_type=result["model_type"],
-                    symbol=result["symbol"],
+                    model_type=model_type,
+                    symbol=symbol,
                     model_version=result["model_version"],
                     date=next_trading_day,
                 )
@@ -332,28 +331,27 @@ class OrchestrationService(BaseService):
                         confidence = predictions[i]["confidence"][0]
                         model_version = predictions[i]["model_version"]
 
-                        # Get formatted result
-                        formatted_result = format_prediction_response(
-                            prediction=prediction,
-                            confidence=confidence,
-                            model_type=model_type,
-                            symbol=symbol,
-                            model_version=model_version,
-                            date=trading_days[i],
-                        )
-
                         # Save prediction to csv
                         self.prediction_storage.save_prediction_to_csv(
                             model_type=model_type,
                             symbol=symbol,
-                            date=formatted_result["date"],
+                            date=trading_days[i],
                             prediction=prediction,
                             confidence=confidence,
                             model_version=model_version,
                         )
 
                         # Add formated prediction response to the results list
-                        results.append(formatted_result)
+                        results.append(
+                            format_prediction_response(
+                                prediction=prediction,
+                                confidence=confidence,
+                                model_type=model_type,
+                                symbol=symbol,
+                                model_version=model_version,
+                                date=trading_days[i],
+                            )
+                        )
 
                 else:
                     self.logger.info(
@@ -380,8 +378,8 @@ class OrchestrationService(BaseService):
                         format_prediction_response(
                             prediction=prediction_result["prediction"],
                             confidence=prediction_result["confidence"],
-                            model_type=prediction_result["model_type"],
-                            symbol=prediction_result["symbol"],
+                            model_type=model_type,
+                            symbol=symbol,
                             model_version=prediction_result["model_version"],
                             date=date,
                         )

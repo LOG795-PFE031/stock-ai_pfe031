@@ -35,11 +35,7 @@ class PredictionStorage:
         # Convert the date to the format 'YYYY-MM-DD'
         day = date.date().isoformat()
 
-        result = df[
-            (df["symbol"] == symbol.upper())
-            & (df["date"] == day)
-            & (df["model_type"] == model_type)
-        ]
+        result = df[(df["date"] == day)]
 
         return result.iloc[0].to_dict() if not result.empty else None
 
@@ -100,9 +96,7 @@ class PredictionStorage:
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
         new_data = {
-            "symbol": symbol.upper(),
-            "date": date.isoformat(),
-            "model_type": model_type,
+            "date": date.date().isoformat(),
             "prediction": prediction,
             "confidence": confidence,
             "model_version": model_version,
@@ -113,13 +107,7 @@ class PredictionStorage:
             df = pd.read_csv(file_path)
 
             # Drop any existing row for same symbol, date, and model_type
-            df = df[
-                ~(
-                    (df["symbol"] == new_data["symbol"])
-                    & (df["date"] == new_data["date"])
-                    & (df["model_type"] == new_data["model_type"])
-                )
-            ]
+            df = df[~((df["date"] == new_data["date"]))]
 
             # Append new row
             df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
