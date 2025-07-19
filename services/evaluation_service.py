@@ -4,7 +4,13 @@ import numpy as np
 from core.logging import logger
 from .base_service import BaseService
 from core.types import Metrics
-
+from monitoring.prometheus_metrics import (
+    evaluation_time_seconds,
+    evaluation_mae,
+    evaluation_mse,
+    evaluation_rmse,
+    evaluation_r2,
+)
 
 class EvaluationService(BaseService):
 
@@ -24,6 +30,8 @@ class EvaluationService(BaseService):
         self,
         y_true: np.ndarray,
         y_pred: np.ndarray,
+        model_type: str,
+        symbol: str,
     ) -> dict:
         """
         Evaluate the performance of a trained model using predicted and true target values.
@@ -31,21 +39,31 @@ class EvaluationService(BaseService):
         Args:
             y_true (np.ndarray): Ground truth target values.
             y_pred (np.ndarray): Predicted target values by the model.
+            model_type (str): The type of model (e.g., 'lstm', 'prophet').
+            symbol (str): The stock symbol (e.g., 'AAPL').
 
         Returns:
             Metrics: Dictionary of evaluation metrics (e.g., {'mae': ..., 'rmse': ...}).
         """
+        with evaluation_time_seconds.labels(model_type=model_type, symbol=symbol).time():
+            try:
+                self.logger.info(f"Starting evaluation for {model_type}_{symbol}")
 
-        try:
-            self.logger.info(f"Starting evaluation")
+                metrics_obj: Metrics = self._calculate_metrics(y_true, y_pred)
+                metrics = metrics_obj.__dict__
 
-            metrics = self._calculate_metrics(y_true, y_pred)
-
-            # Returns the metrics as a dict
-            return metrics.__dict__
-        except Exception as e:
-            self.logger.error(f"Evaluation failed: {str(e)}")
-            raise
+                # Emit gauges
+                evaluation_mae.labels(model_type=model_type, symbol=symbol).set(metrics['mae'])
+                evaluation_mse.labels(model_type=model_type, symbol=symbol).set(metrics['mse'])
+                evaluation_rmse.labels(model_type=model_type, symbol=symbol).set(metrics['rmse'])
+                evaluation_r2.labels(model_type=model_type, symbol=symbol).set(metrics['r2'])
+                self.logger.debug(f"Emitted evaluation metrics to Prometheus for {model_type}_{symbol}: {metrics}")
+                
+                # Returns the metrics as a dict
+                return metrics
+            except Exception as e:
+                self.logger.error(f"Evaluation failed: {str(e)}")
+                raise
 
     async def is_ready_for_deployment(
         self, candidate_metrics: dict, live_metrics: dict

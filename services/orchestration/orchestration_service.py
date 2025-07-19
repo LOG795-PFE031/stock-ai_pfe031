@@ -23,7 +23,6 @@ from ..evaluation_service import EvaluationService
 from ..data_service import DataService
 from core.logging import logger
 
-
 class OrchestrationService(BaseService):
 
     def __init__(

@@ -83,6 +83,7 @@ def run_inference_flow(
     confidence = (
         calculate_prediction_confidence.submit(
             model_type=model_type,
+            symbol=symbol,
             y_pred=y_pred,
             prediction_input=prediction_input,
             service=deployment_service,

@@ -10,7 +10,7 @@ from services import EvaluationService
     retry_delay_seconds=5,
 )
 async def evaluate(
-    true_target, pred_target, service: EvaluationService
+    true_target, pred_target, model_type: str, symbol: str, service: EvaluationService
 ) -> dict[str, float]:
     """
     Evaluate model predictions using ground truth values.
@@ -18,9 +18,11 @@ async def evaluate(
     Args:
         true_target: Ground truth target values.
         pred_target: Predicted values from the model.
+        model_type: Type of the model. 
+        symbol: Stock symbol. 
         service (EvaluationService): Evaluation service.
 
     Returns:
         dict[str,float]: Dictionary of evaluation metrics (e.g., rmse, r2, etc).
     """
-    return await service.evaluate(y_true=true_target, y_pred=pred_target)
+    return await service.evaluate(y_true=true_target, y_pred=pred_target, model_type=model_type, symbol=symbol)
