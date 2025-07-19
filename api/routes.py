@@ -391,7 +391,7 @@ async def get_model_metadata(model_name: str):
 @router.get(
     "/predict/{symbol}", response_model=PredictionResponse, tags=["Prediction Services"]
 )
-async def get_next_day_prediction(symbol: str, model_type: str = "lstm"):
+async def get_next_day_prediction(symbol: str, model_type: str):
     """Get stock price prediction for the next day."""
     try:
         # Import services from main to avoid circular imports
