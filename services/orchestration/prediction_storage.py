@@ -101,7 +101,7 @@ class PredictionStorage:
 
         new_data = {
             "symbol": symbol.upper(),
-            "date": date,
+            "date": date.isoformat(),
             "model_type": model_type,
             "prediction": prediction,
             "confidence": confidence,
