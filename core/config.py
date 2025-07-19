@@ -11,6 +11,7 @@ class DataConfig(BaseModel):
     """Data collection and storage configuration."""
 
     STOCK_DATA_DIR: Path = Path("data/stock")
+    PREDICT_DATA_DIR: Path = Path("data/predictions")
     NEWS_DATA_DIR: Path = Path("data/news")
     LOGS_DIR: Path = Path("logs")
     LOOKBACK_PERIOD_DAYS: int = 365

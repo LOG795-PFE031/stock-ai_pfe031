@@ -35,8 +35,8 @@ def format_prediction_response(
     confidence: float,
     model_type: str,
     model_version: str,
-    symbol: str = None,
-    date: str = None,
+    symbol: str,
+    date: str,
 ) -> Dict[str, Any]:
     """
     Format prediction response.
@@ -63,7 +63,7 @@ def format_prediction_response(
     return {
         "status": "success",
         "symbol": symbol,
-        "date": get_next_trading_day(date).strftime("%Y-%m-%d"),
+        "date": date.strftime("%Y-%m-%d"),
         "predicted_price": safe_float(prediction),
         "confidence": safe_float(confidence),
         "model_type": model_type,

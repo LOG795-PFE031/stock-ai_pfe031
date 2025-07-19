@@ -3,7 +3,6 @@ from prefect.futures import wait
 from itertools import product
 from typing import Any
 from datetime import datetime, timedelta
-import pandas_market_calendars as mcal
 
 from ..tasks.prediction import predict, calculate_prediction_confidence
 from ..tasks.data import (
@@ -334,13 +333,12 @@ def historical_prediction(
 
 @flow(
     name="Historical Predictions Pipeline",
-    description="Runs predictions for dates in a date ranges (start_date and end_date)",
+    description="Runs predictions for dates in a date range",
 )
 def run_historical_predictions_flow(
     model_type: str,
     symbol: str,
-    start_date: datetime,
-    end_date: datetime,
+    trading_days: list[datetime],
     data_service: DataService,
     processing_service: DataProcessingService,
     deployment_service: DeploymentService,
@@ -351,18 +349,19 @@ def run_historical_predictions_flow(
     Args:
         model_type (str): The type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol
-        start_date (datetime): The start of the historical date range.
-        end_date (datetime): The end of the historical date range.
+        trading_days (list[datetime]): The trading days we want to predict
         data_service (DataService): Service to retrieve stock data.
         processing_service (DataProcessingService): Service to preprocess ata.
         deployment_service (DeploymentService): Deployment service.
 
     Returns:
-        dict|None: A dictionary containing:
-            - "dates": List of trading dates used for prediction.
-            - "predictions": List of prediction results corresponding to those dates.
-        Returns None if no production model is available.
+        list|None: List of prediction results corresponding to those dates.
+            Returns None if no production model is available.
     """
+
+    # Shift all the dates by minus 1 (because we want all the sequence before the date to not see in the future)
+    dates = [d - timedelta(days=1) for d in trading_days]
+
     # Generate the production model name
     production_model_name = get_model_name(model_type, symbol)
 
@@ -372,14 +371,6 @@ def run_historical_predictions_flow(
     ).result()
 
     if prod_model_exist:
-
-        # Generate the list of dates (only keep valid trading days)
-        nyse = mcal.get_calendar("NYSE")
-        schedule = nyse.schedule(start_date=start_date, end_date=end_date)
-        trading_days = schedule.index.to_pydatetime().tolist()
-
-        # Shift all the dates by minus 1
-        dates = [d - timedelta(days=1) for d in trading_days]
 
         # Make predictions
         prediction_futures = historical_prediction.map(
@@ -394,7 +385,7 @@ def run_historical_predictions_flow(
         # Wait for predictions and collect results
         prediction_results = [future.result() for future in prediction_futures]
 
-        return {"dates": dates, "predictions": prediction_results}
+        return prediction_results
 
     # There is no available production model
     return None

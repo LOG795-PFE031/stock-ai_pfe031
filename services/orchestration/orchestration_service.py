@@ -2,10 +2,12 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from asyncio import run
 from datetime import datetime
+import pandas_market_calendars as mcal
 from pytz import timezone
 
 from core.logging import logger
-from core.utils import format_prediction_response
+from core.utils import format_prediction_response, get_next_trading_day
+from .prediction_storage import PredictionStorage
 from .flows import (
     run_evaluation_flow,
     run_prediction_flow,
@@ -20,6 +22,7 @@ from ..data_processing import DataProcessingService
 from ..evaluation_service import EvaluationService
 from ..data_service import DataService
 from core.logging import logger
+from core.config import config
 
 
 class OrchestrationService(BaseService):
@@ -39,6 +42,7 @@ class OrchestrationService(BaseService):
         self.deployment_service = deployment_service
         self.evaluation_service = evaluation_service
         self.logger = logger["orchestration"]
+        self.prediction_storage = PredictionStorage(self.logger)
 
         # Scheduler (use to schdule all predictions)
         self.scheduler = AsyncIOScheduler()
@@ -125,6 +129,30 @@ class OrchestrationService(BaseService):
                 f"Starting prediction pipeline for {model_type} model for {symbol}."
             )
 
+            # Get the predicted price date
+            next_trading_day = get_next_trading_day()
+
+            result = self.prediction_storage.load_prediction_csv(
+                model_type=model_type, symbol=symbol, date=next_trading_day
+            )
+
+            if result is not None:
+                self.logger.info(
+                    f"Serving prediction from cache for {model_type} model for {symbol}."
+                )
+                return format_prediction_response(
+                    prediction=result["prediction"],
+                    confidence=result["confidence"],
+                    model_type=result["model_type"],
+                    symbol=result["symbol"],
+                    model_version=result["model_version"],
+                    date=next_trading_day,
+                )
+
+            self.logger.info(
+                f"Computing the prediction for {model_type} model for {symbol}..."
+            )
+
             # Run the prediction pipeline
             prediction_result = run_prediction_flow(
                 model_type,
@@ -145,14 +173,24 @@ class OrchestrationService(BaseService):
                     f"Prediction pipeline completed successfully for {model_type} model for {symbol}."
                 )
 
+                # Save prediction to csv
+                self.prediction_storage.save_prediction_to_csv(
+                    model_type=model_type,
+                    symbol=symbol,
+                    date=next_trading_day,
+                    prediction=prediction,
+                    confidence=confidence,
+                    model_version=model_version,
+                )
+
                 return format_prediction_response(
                     prediction=prediction,
                     confidence=confidence,
                     model_type=model_type,
                     symbol=symbol,
                     model_version=model_version,
+                    date=next_trading_day,
                 )
-
             else:
                 self.logger.info(
                     f"No live model available to make prediction with {model_type} model for {symbol}."
@@ -247,61 +285,113 @@ class OrchestrationService(BaseService):
                 f"Starting historical prediction for {model_type} model for {symbol} from {start_date} to {end_date}."
             )
 
-            # Makes predictions
-            predictions_results = run_historical_predictions_flow(
-                model_type=model_type,
-                symbol=symbol,
-                start_date=start_date,
-                end_date=end_date,
-                data_service=self.data_service,
-                processing_service=self.data_processing_service,
-                deployment_service=self.deployment_service,
+            # Get trading dates range
+            nyse = mcal.get_calendar("NYSE")
+            schedule = nyse.schedule(start_date=start_date, end_date=end_date)
+            trading_days = schedule.index.to_pydatetime().tolist()
+
+            # Get the iso format of the trading days
+            target_dates = [dt.date().isoformat() for dt in trading_days]
+
+            # Get the existing dates in the csv file (db)
+            existing_dates = self.prediction_storage.get_existing_prediction_dates(
+                model_type=model_type, symbol=symbol
             )
 
-            if predictions_results:
+            # Check if any date in the target range is missing
+            missing_dates = [
+                dt
+                for dt, dt_str in zip(trading_days, target_dates)
+                if dt_str not in existing_dates
+            ]
 
-                # Extract th dates and predictions
-                dates = predictions_results["dates"]
-                predictions = predictions_results["predictions"]
+            if missing_dates:
+                self.logger.info(
+                    f"Computing predictions for {model_type} model for {symbol}..."
+                )
 
-                # Initialize the results list
-                results = []
+                # Makes predictions
+                predictions = run_historical_predictions_flow(
+                    model_type=model_type,
+                    symbol=symbol,
+                    trading_days=trading_days,
+                    data_service=self.data_service,
+                    processing_service=self.data_processing_service,
+                    deployment_service=self.deployment_service,
+                )
 
-                for i in range(len(predictions)):
+                if predictions:
 
-                    # Extract the prediction results
-                    prediction = predictions[i]["y_pred"][0]
-                    confidence = predictions[i]["confidence"][0]
-                    model_version = predictions[i]["model_version"]
+                    # Initialize the results list
+                    results = []
 
-                    # Add formated prediction response to the results list
-                    results.append(
-                        format_prediction_response(
+                    for i in range(len(predictions)):
+
+                        # Extract the prediction results
+                        prediction = predictions[i]["y_pred"][0]
+                        confidence = predictions[i]["confidence"][0]
+                        model_version = predictions[i]["model_version"]
+
+                        # Get formatted result
+                        formatted_result = format_prediction_response(
                             prediction=prediction,
                             confidence=confidence,
                             model_type=model_type,
                             symbol=symbol,
                             model_version=model_version,
-                            date=dates[i],
+                            date=trading_days[i],
+                        )
+
+                        # Save prediction to csv
+                        self.prediction_storage.save_prediction_to_csv(
+                            model_type=model_type,
+                            symbol=symbol,
+                            date=formatted_result["date"],
+                            prediction=prediction,
+                            confidence=confidence,
+                            model_version=model_version,
+                        )
+
+                        # Add formated prediction response to the results list
+                        results.append(formatted_result)
+
+                else:
+                    self.logger.info(
+                        f"No live model available to make predictions with {model_type} model for {symbol}."
+                    )
+                    return {
+                        "status": "error",
+                        "error": f"No live model available to make predictions with {model_type} model for {symbol}.",
+                        "symbol": symbol,
+                        "model_type": model_type,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+            else:
+                self.logger.info(
+                    f"Serving predictions from cache for {model_type} model for {symbol}."
+                )
+                results = []
+                for date in trading_days:
+                    prediction_result = self.prediction_storage.load_prediction_csv(
+                        model_type=model_type, symbol=symbol, date=date
+                    )
+
+                    results.append(
+                        format_prediction_response(
+                            prediction=prediction_result["prediction"],
+                            confidence=prediction_result["confidence"],
+                            model_type=prediction_result["model_type"],
+                            symbol=prediction_result["symbol"],
+                            model_version=prediction_result["model_version"],
+                            date=date,
                         )
                     )
 
-                return {
-                    "symbol": symbol,
-                    "predictions": results,
-                    "timestamp": datetime.now().isoformat(),
-                }
-            else:
-                self.logger.info(
-                    f"No live model available to make predictions with {model_type} model for {symbol}."
-                )
-                return {
-                    "status": "error",
-                    "error": f"No live model available to make predictions with {model_type} model for {symbol}.",
-                    "symbol": symbol,
-                    "model_type": model_type,
-                    "timestamp": datetime.now().isoformat(),
-                }
+            return {
+                "symbol": symbol,
+                "predictions": results,
+                "timestamp": datetime.now().isoformat(),
+            }
 
         except Exception as e:
             self.logger.error(
