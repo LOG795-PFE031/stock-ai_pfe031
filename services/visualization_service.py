@@ -5,6 +5,7 @@ Stock visualization service using Plotly.
 from typing import Dict, Any, List
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import plotly.express as px
 import pandas as pd
 from datetime import datetime
 
@@ -21,8 +22,16 @@ class VisualizationService(BaseService):
         self.data_service = data_service
         self.logger = logger["visualization"]
 
+    def initialize(self):
+        return super().initialize()
+
+    def cleanup(self):
+        return super().cleanup()
+
     async def get_stock_chart(
-        self, symbol: str, days: int = 30, include_indicators: bool = True
+        self,
+        symbol: str,
+        days: int = 30,
     ) -> Dict[str, Any]:
         """
         Generate an interactive stock chart with technical indicators.
@@ -37,98 +46,36 @@ class VisualizationService(BaseService):
         """
         try:
             # Get historical data
-            data_result = await self.data_service.get_historical_data(symbol, days=days)
-            if data_result["status"] != "success":
-                raise RuntimeError(f"Failed to get historical data for {symbol}")
-
-            df = data_result["data"]
-
-            # Create figure with secondary y-axis
-            fig = make_subplots(
-                rows=2 if include_indicators else 1,
-                cols=1,
-                shared_xaxes=True,
-                vertical_spacing=0.05,
-                row_heights=[0.7, 0.3] if include_indicators else [1.0],
+            df, symbol_name = await self.data_service.get_recent_data(
+                symbol, days_back=days
             )
 
-            # Add candlestick chart
-            fig.add_trace(
-                go.Candlestick(
-                    x=df["Date"],
-                    open=df["Open"],
-                    high=df["High"],
-                    low=df["Low"],
-                    close=df["Close"],
-                    name="OHLC",
-                ),
-                row=1,
-                col=1,
+            fig = go.Figure(
+                data=[
+                    go.Candlestick(
+                        x=df["Date"],
+                        open=df["Open"],
+                        high=df["High"],
+                        low=df["Low"],
+                        close=df["Close"],
+                    )
+                ]
             )
-
-            # Add volume
-            fig.add_trace(
-                go.Bar(x=df["Date"], y=df["Volume"], name="Volume", opacity=0.5),
-                row=1,
-                col=1,
-            )
-
-            if include_indicators:
-                # Add technical indicators
-                if "RSI" in df.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=df["Date"],
-                            y=df["RSI"],
-                            name="RSI",
-                            line=dict(color="purple"),
-                        ),
-                        row=2,
-                        col=1,
-                    )
-                    # Add RSI overbought/oversold lines
-                    fig.add_hline(
-                        y=70, line_dash="dash", line_color="red", row=2, col=1
-                    )
-                    fig.add_hline(
-                        y=30, line_dash="dash", line_color="green", row=2, col=1
-                    )
-
-                if "MACD" in df.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=df["Date"],
-                            y=df["MACD"],
-                            name="MACD",
-                            line=dict(color="blue"),
-                        ),
-                        row=2,
-                        col=1,
-                    )
-                    if "MACD_Signal" in df.columns:
-                        fig.add_trace(
-                            go.Scatter(
-                                x=df["Date"],
-                                y=df["MACD_Signal"],
-                                name="MACD Signal",
-                                line=dict(color="orange"),
-                            ),
-                            row=2,
-                            col=1,
-                        )
 
             # Update layout
             fig.update_layout(
-                title=f"{symbol} Stock Price and Indicators",
+                title=f"{symbol_name} ({symbol}) Stock Price",
                 yaxis_title="Price",
                 xaxis_rangeslider_visible=False,
                 height=800,
                 template="plotly_dark",
             )
 
-            if include_indicators:
-                fig.update_yaxes(title_text="Price", row=1, col=1)
-                fig.update_yaxes(title_text="Indicators", row=2, col=1)
+            # If we want a quick look at the chart
+            # fig.show()
+
+            fig2 = px.line(df, x="Date", y="Close")
+            fig2.show()
 
             return {
                 "status": "success",
@@ -146,6 +93,7 @@ class VisualizationService(BaseService):
 
         except Exception as e:
             self.logger.error(f"Error generating stock chart for {symbol}: {str(e)}")
+            print(str(e))
             return {"status": "error", "error": str(e)}
 
     async def get_prediction_chart(
@@ -318,4 +266,5 @@ class VisualizationService(BaseService):
 
         except Exception as e:
             self.logger.error(f"Error generating correlation matrix: {str(e)}")
+            print(str(e))
             return {"status": "error", "error": str(e)}
