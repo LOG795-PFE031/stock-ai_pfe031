@@ -42,26 +42,26 @@ from services.orchestration import OrchestrationService
 
 # Create service instances in dependency order
 data_service = DataService()
-preprocessing_service = DataProcessingService()
+data_processing_service = DataProcessingService()
 training_service = TrainingService()
 news_service = NewsService()
 deployment_service = DeploymentService()
 evaluation_service = EvaluationService()
 orchestation_service = OrchestrationService(
     data_service=data_service,
-    preprocessing_service=preprocessing_service,
+    data_processing_service=data_processing_service,
     training_service=training_service,
     deployment_service=deployment_service,
     evaluation_service=evaluation_service,
 )
 rabbitmq_service = RabbitMQService()
 monitoring_service = MonitoringService(
-    deployment_service, 
-    orchestation_service, 
+    deployment_service,
+    orchestation_service,
     data_service,
-    preprocessing_service,
-    check_interval_seconds=24*60*60, # 86400 sec in a day
-    data_interval_seconds=7*24*60*60,
+    data_processing_service,
+    check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
+    data_interval_seconds=7 * 24 * 60 * 60,
 )
 
 
@@ -75,13 +75,13 @@ async def lifespan(app: FastAPI):
         # Initialize services in order of dependencies
         await data_service.initialize()
         await news_service.initialize()
-        await preprocessing_service.initialize()
+        await data_processing_service.initialize()
         await training_service.initialize()
         await deployment_service.initialize()
         await evaluation_service.initialize()
         await orchestation_service.initialize()
         await monitoring_service.initialize()
-        
+
         # Start auto-publishing predictions
         # await prediction_service.start_auto_publishing(interval_minutes=15) # TDOO
 
@@ -102,7 +102,7 @@ async def lifespan(app: FastAPI):
             await deployment_service.cleanup()
             await orchestation_service.cleanup()
             await evaluation_service.cleanup()
-            await preprocessing_service.cleanup()
+            await data_processing_service.cleanup()
             await training_service.cleanup()
             await news_service.cleanup()
             await data_service.cleanup()

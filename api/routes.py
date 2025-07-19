@@ -77,7 +77,7 @@ async def health_check():
             news_service,
             training_service,
             data_service,
-            preprocessing_service,
+            data_processing_service,
             evaluation_service,
         )
 
@@ -86,7 +86,7 @@ async def health_check():
         news_health = await news_service.health_check()
         training_health = await training_service.health_check()
         data_health = await data_service.health_check()
-        preprocessing_health = await preprocessing_service.health_check()
+        preprocessing_health = await data_processing_service.health_check()
         evaluation_health = await evaluation_service.health_check()
 
         # Create response with boolean values
