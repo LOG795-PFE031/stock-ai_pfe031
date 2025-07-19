@@ -25,7 +25,7 @@ console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setFormatter(formatter)
 
 # Create file handler
-file_handler = logging.FileHandler("stock-ai.log")
+file_handler = logging.FileHandler("stock-ai.log", encoding="utf-8")
 file_handler.setFormatter(formatter)
 
 # Configure root logger
@@ -48,12 +48,13 @@ loggers: Dict[str, logging.Logger] = {
     "training": logging.getLogger("training"),
     "orchestration": logging.getLogger("orchestration"),
     "news": logging.getLogger("news"),
+    "visualization": logging.getLogger("visualization"),
     "monitoring": logging.getLogger("monitoring"),
 }
 
 # Configure each logger
 for name, logger in loggers.items():
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
     logger.addHandler(console_handler)
     logger.addHandler(file_handler)
     logger.propagate = False  # Prevent messages from being handled by root logger

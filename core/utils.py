@@ -35,8 +35,8 @@ def format_prediction_response(
     confidence: float,
     model_type: str,
     model_version: str,
-    symbol: str = None,
-    date: str = None,
+    symbol: str,
+    date: str,
 ) -> Dict[str, Any]:
     """
     Format prediction response.
@@ -63,7 +63,7 @@ def format_prediction_response(
     return {
         "status": "success",
         "symbol": symbol,
-        "date": get_next_trading_day().strftime("%Y-%m-%d"),
+        "date": date.strftime("%Y-%m-%d"),
         "predicted_price": safe_float(prediction),
         "confidence": safe_float(confidence),
         "model_type": model_type,
@@ -125,22 +125,28 @@ def get_latest_trading_day():
     return datetime.combine(latest_trading_day, datetime.min.time())
 
 
-def get_next_trading_day() -> datetime:
+def get_next_trading_day(date: datetime = None) -> datetime:
     """
-    Get the next valid trading day
+    Get the next valid trading day with the provided date
+
+    Args:
+        date (datetime): Provided date to look for next trading day
 
     Returns:
         str: the next valid trading day (in string format)
     """
     nyse = mcal.get_calendar("NYSE")
-    today = datetime.now()
 
-    # Get the next few trading days (starting tomorrow)
+    if date is None:
+        # If there is no provided date, we look for next trading day from today
+        date = datetime.now()
+
+    # Get the next few trading days (starting the day after the provided date)
     schedule = nyse.schedule(
-        start_date=today + timedelta(days=1), end_date=today + timedelta(days=10)
+        start_date=date + timedelta(days=1), end_date=date + timedelta(days=10)
     )
 
-    # Return the first valid trading day after today
+    # Return the first valid trading day after the provided date
     return schedule.index[0].to_pydatetime()
 
 

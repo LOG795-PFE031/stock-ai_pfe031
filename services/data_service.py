@@ -269,6 +269,53 @@ class DataService(BaseService):
             )
             raise
 
+    async def get_historical_stock_prices_from_end_date(
+        self, symbol: str, end_date: datetime, days_back: int
+    ):
+        """
+        Retrieve historical stock prices for a symbol from a specified end date, looking back a given number of trading days.
+
+        Args:
+            symbol (str): The stock symbol (e.g., "AAPL").
+            end_date: The end date to retrieve stock data from.
+            days_back: The number of trading days to look back from the end date.
+
+        Returns:
+            - (tuple): A tuple containing a DataFrame with stock data and the stock symbol name.
+        """
+        try:
+            # Ensure end date is timezone-aware
+            if end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=timezone.utc)
+
+            # Get the start date
+            start_date = get_start_date_from_trading_days(end_date, days_back)
+
+            # Retrieve stock data prices
+            df = await self._get_stock_data(symbol, start_date, end_date)
+
+            # Filter data for requested date range
+            mask = (df["Date"].dt.date >= start_date.date()) & (
+                df["Date"].dt.date <= end_date.date()
+            )
+            df = df[mask]
+
+            # Get the stock_name
+            stock_name = await self.get_stock_name(symbol)
+
+            self.logger.info(
+                f"Retrieved recent stock prices for {symbol} looking back for {days_back} "
+                + "trading days from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
+            )
+
+            return df, stock_name
+
+        except Exception as e:
+            self.logger.error(
+                f"Error getting historical stock data from end date {end_date} for {symbol}: {str(e)}"
+            )
+            raise
+
     async def get_historical_stock_prices(
         self, symbol: str, start_date: datetime, end_date: datetime
     ) -> pd.DataFrame:

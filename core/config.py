@@ -11,6 +11,7 @@ class DataConfig(BaseModel):
     """Data collection and storage configuration."""
 
     STOCK_DATA_DIR: Path = Path("data/stock")
+    PREDICT_DATA_DIR: Path = Path("data/predictions")
     NEWS_DATA_DIR: Path = Path("data/news")
     LOGS_DIR: Path = Path("logs")
     LOOKBACK_PERIOD_DAYS: int = 365
@@ -22,7 +23,7 @@ class DataConfig(BaseModel):
 class PreprocessingConfig(BaseModel):
     """Preprocessing service configuration"""
 
-    SCALERS_DIR: Path = Path("data_processing/scalers")
+    SCALERS_DIR: Path = Path("data/scalers")
     SCALER_REGISTRY_JSON: Path = SCALERS_DIR / "scaler_registry.json"
     TRAINING_SPLIT_RATIO: float = 0.8
     SEQUENCE_LENGTH: int = 60

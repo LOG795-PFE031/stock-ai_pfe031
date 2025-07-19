@@ -56,11 +56,9 @@ class DeploymentService(BaseService):
                 f"Checking if the prodcution model '{prod_model_name}' exists."
             )
             # Get all the list of the registred (production) models corresponding to the production model name
-            prod_models = await self.mlflow_model_manager.find_registred_model(
-                prod_model_name
-            )
+            prod_model = self.mlflow_model_manager.find_registred_model(prod_model_name)
 
-            if prod_models:
+            if prod_model:
                 self.logger.info(f"Prodcution model '{prod_model_name}' exists.")
                 return True
             else:
@@ -150,9 +148,9 @@ class DeploymentService(BaseService):
                     self.logger.debug(f"Cache key generated: {cache_key}")
 
                 # Load model version
-                model, current_version = await self.mlflow_model_manager.load_model(
-                    model_identifier
-                )
+                model_result = await self.mlflow_model_manager.load_model(model_identifier)
+                model = model_result["model"]
+                current_version = model_result["version"]
 
                 # Log the successful loading of the model
                 self.logger.debug(f"Model {model_identifier} successfully loaded.")

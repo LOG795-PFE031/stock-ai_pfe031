@@ -2,13 +2,20 @@ from prefect import flow, task
 from prefect.futures import wait
 from itertools import product
 from typing import Any
+from datetime import datetime, timedelta
 
 from ..tasks.prediction import predict, calculate_prediction_confidence
-from ..tasks.data import load_recent_stock_data, postprocess_data, preprocess_data
+from ..tasks.data import (
+    load_recent_stock_data,
+    postprocess_data,
+    preprocess_data,
+    load_historical_stock_prices_from_end_date,
+)
 from ..tasks.deployment import production_model_exists
 from core.utils import get_model_name
 from services import DataService, DataProcessingService, DeploymentService
 from core.types import ProcessedData
+from core.config import config
 
 PHASE = "prediction"
 
@@ -255,3 +262,131 @@ def run_batch_prediction(
 
     # Wait for all predictions to complete
     wait(predictions)
+
+
+@task(
+    name="Historical Predictions Pipeline Task",
+    description="Runs a prediction pipeline for a given symbol and date, using a deployed production model.",
+)
+def historical_prediction(
+    model_type: str,
+    symbol: str,
+    end_date: datetime,
+    data_service: DataService,
+    processing_service: DataProcessingService,
+    deployment_service: DeploymentService,
+) -> dict[str, Any]:
+    """
+    Run a historical prediction for a given stock symbol and date.
+
+    Args:
+        model_type (str): The type of model (e.g., "lstm", "prophet").
+        symbol (str): Stock ticker sym
+        end_date (datetime): The day before the day to predict
+        data_service (DataService): Service to retrieve stock data.
+        processing_service (DataProcessingService): Service to preprocess ata.
+        deployment_service (DeploymentService): Deployment service
+
+    Returns:
+        dict: A dictionary containing the prediction results:
+            - processed_y_pred (Any): Postprocessed prediction object.
+            - confidence (float or None): Optional prediction confidence score.
+            - model_version (int): Version number of the model that made the prediction.
+    """
+
+    # Load the raw historical data
+    raw_data = load_historical_stock_prices_from_end_date.submit(
+        service=data_service,
+        symbol=symbol,
+        end_date=end_date,
+        days_back=config.preprocessing.SEQUENCE_LENGTH,
+    )
+
+    # Preprocess the raw data
+    prediction_input = preprocess_data.submit(
+        model_type=model_type,
+        symbol=symbol,
+        data=raw_data,
+        service=processing_service,
+        phase=PHASE,
+    )
+
+    # Generate the production model name
+    production_model_name = get_model_name(model_type, symbol)
+
+    # Make prediction (prediction and confidence included)
+    prediction_result = run_inference_flow(
+        model_identifier=production_model_name,
+        model_type=model_type,
+        symbol=symbol,
+        phase=PHASE,
+        prediction_input=prediction_input,
+        processing_service=processing_service,
+        deployment_service=deployment_service,
+    )
+
+    return {
+        "y_pred": prediction_result["prediction"].y,
+        "confidence": prediction_result["confidence"],
+        "model_version": prediction_result["model_version"],
+    }
+
+
+@flow(
+    name="Historical Predictions Pipeline",
+    description="Runs predictions for dates in a date range",
+)
+def run_historical_predictions_flow(
+    model_type: str,
+    symbol: str,
+    trading_days: list[datetime],
+    data_service: DataService,
+    processing_service: DataProcessingService,
+    deployment_service: DeploymentService,
+):
+    """
+    Run historical predictions for a given symbol and date range using a production model.
+
+    Args:
+        model_type (str): The type of model (e.g., "lstm", "prophet").
+        symbol (str): Stock ticker symbol
+        trading_days (list[datetime]): The trading days we want to predict
+        data_service (DataService): Service to retrieve stock data.
+        processing_service (DataProcessingService): Service to preprocess ata.
+        deployment_service (DeploymentService): Deployment service.
+
+    Returns:
+        list|None: List of prediction results corresponding to those dates.
+            Returns None if no production model is available.
+    """
+
+    # Shift all the dates by minus 1 (because we want all the sequence before the date to not see in the future)
+    dates = [d - timedelta(days=1) for d in trading_days]
+
+    # Generate the production model name
+    production_model_name = get_model_name(model_type, symbol)
+
+    # Check if it exist
+    prod_model_exist = production_model_exists.submit(
+        production_model_name, deployment_service
+    ).result()
+
+    if prod_model_exist:
+
+        # Make predictions
+        prediction_futures = historical_prediction.map(
+            model_type=model_type,
+            symbol=symbol,
+            end_date=dates,
+            data_service=data_service,
+            processing_service=processing_service,
+            deployment_service=deployment_service,
+        )
+
+        # Wait for predictions and collect results
+        prediction_results = [future.result() for future in prediction_futures]
+
+        return prediction_results
+
+    # There is no available production model
+    return None
