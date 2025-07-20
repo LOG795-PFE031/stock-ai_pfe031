@@ -118,13 +118,11 @@ class MLflowModelManager:
         """
         try:
             if model_identifier not in self.models_cache:
-
+                version = None
+                
                 if self._run_exists(model_identifier):
                     # Path to the logged trained model
                     model_uri = f"runs:/{model_identifier}/model"
-
-                    # There is no model version for a logged model
-                    version = None
                 else:
                     # Path to the production model (live model)
                     model_uri = f"models:/{model_identifier}@{self.PRODUCTION_ALIAS}"
