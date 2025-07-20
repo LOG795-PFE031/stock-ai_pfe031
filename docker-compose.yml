@@ -107,7 +107,10 @@ services:
     ports:
       - "3000:3000"
     volumes:
+      # persist Grafana DB, plugins, etc.
       - ./monitoring/grafana:/var/lib/grafana
+      # provisioning folder (YAML), it imports all those JSONs automatically every few sec and where to find them.
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
     networks:
       - microservices_auth
     depends_on:
