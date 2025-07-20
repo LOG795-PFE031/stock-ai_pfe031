@@ -7,13 +7,13 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - .:/app                 
-      - /app/__pycache__        
-      - ./logs:/app/logs       
-      - ./data:/app/data       
-      - ./models:/app/models   
-      - ./mlruns:/app/mlruns   
-      - ./scalers:/app/scalers 
+      - .:/app
+      - /app/__pycache__
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./mlruns:/app/mlruns
+      - ./scalers:/app/scalers
     environment:
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
@@ -64,7 +64,10 @@ services:
     ports:
       - "3000:3000"
     volumes:
+      # persist Grafana DB, plugins, etc.
       - ./monitoring/grafana:/var/lib/grafana
+      # provisioning folder (YAML), it imports all those JSONs automatically every few sec and where to find them.
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
     networks:
       - microservices_auth
     depends_on:
