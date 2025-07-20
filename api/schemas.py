@@ -206,7 +206,7 @@ class ModelMlflowInfo(BaseModel):
     creation_timestamp: Optional[int]
     last_updated_timestamp: Optional[int]
     tags: Dict[str, str]
-    aliases: Dict[str, str]
+    aliases: Dict[str, Any]
     latest_versions: List[ModelVersionInfo]
 
 

@@ -1,4 +1,60 @@
 services:
+  postgres:
+    image: postgres:14
+    container_name: postgres-stock-ai
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: postgres
+    volumes:
+      - ./data/postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - microservices_auth
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d prefect"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    container_name: prefect-server
+    ports:
+      - "4200:4200"
+    volumes:
+      - ./data/prefect_data:/root/.prefect
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://admin:admin@postgres-stock-ai:5432/prefect
+    command: prefect server start --host 0.0.0.0
+    networks:
+      - microservices_auth
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
+  mlflow-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.mlflow
+    container_name: mlflow-server
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/mlflow/mlruns
+    command: ["mlflow", "server", "--host", "0.0.0.0", "--port", "5000"]
+    working_dir: /mlflow
+    networks:
+      - microservices_auth
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
   stock-ai:
     build:
       context: .
@@ -8,12 +64,8 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
-      - /app/__pycache__
-      - ./logs:/app/logs
       - ./data:/app/data
-      - ./models:/app/models
       - ./mlruns:/app/mlruns
-      - ./scalers:/app/scalers
     environment:
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
@@ -21,6 +73,7 @@ services:
       - RABBITMQ_PASS=guest
       - API_HOST=0.0.0.0
       - API_PORT=8000
+      - PREFECT_API_URL=http://prefect-server:4200/api
     networks:
       - microservices_auth
     restart: on-failure:3
@@ -30,21 +83,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
-
-  monitor:
-    build:
-      context: .
-      dockerfile: tests/Dockerfile.monitor
-    container_name: stock-ai-monitor
-    environment:
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
-      - RABBITMQ_USER=guest
-      - RABBITMQ_PASS=guest
-    networks:
-      - microservices_auth
     depends_on:
-      - stock-ai
+      prefect-server:
+        condition: service_started
+      mlflow-server:
+        condition: service_healthy
 
   prometheus:
     image: prom/prometheus
@@ -52,7 +95,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
     networks:
       - microservices_auth
     depends_on:

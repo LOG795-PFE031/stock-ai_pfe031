@@ -1,22 +1,38 @@
 from datetime import date, datetime, timedelta
-from .mlflow_model_manager import MLflowModelManager
-from .confidence import ConfidenceCalculator
-from services.base_service import BaseService
-from core.logging import logger
-from core.utils import get_model_name
 import hashlib
 import json
+from typing import Any, Union
+
 import numpy as np
 import pandas as pd
-from typing import Any, Union
+
+from core.logging import logger
 from monitoring.prometheus_metrics import (
     predictions_total,
     prediction_time_seconds,
     prediction_confidence,
 )
+from services.base_service import BaseService
+from .mlflow_model_manager import MLflowModelManager
+from .confidence import ConfidenceCalculator
 
 
 class DeploymentService(BaseService):
+    """
+    Handles the deployment and management of MLflow models.
+
+    This service supports:
+    - Initialization and loading of production models.
+    - Checking model existence in the MLflow registry.
+    - Performing predictions.
+    - Computing prediction confidence scores.
+    - Logging evaluation metrics to MLflow.
+    - Promoting trained models to production in the MLflow registry.
+    - Managing model metadata and lifecycle.
+
+    It integrates with MLflow, Prometheus, and supports safe error logging and resource cleanup.
+    """
+
     def __init__(self):
         super().__init__()
         self.logger = logger["deployment"]
@@ -28,17 +44,12 @@ class DeploymentService(BaseService):
     async def initialize(self) -> None:
         """Initialize the Deployment service."""
         try:
-            await self._load_models()
             self.mlflow_model_manager = MLflowModelManager()
             self._initialized = True
             self.logger.info("Deployment service initialized successfully")
         except Exception as e:
-            self.logger.error(f"Failed to initialize deployment service: {str(e)}")
+            self.logger.error("Failed to initialize deployment service: %s", str(e))
             raise
-
-    async def _load_models(self) -> None:
-        """Load all models from disk."""
-        pass
 
     async def production_model_exists(self, prod_model_name: str) -> bool:
         """
@@ -53,24 +64,23 @@ class DeploymentService(BaseService):
         """
         try:
             self.logger.info(
-                f"Checking if the prodcution model '{prod_model_name}' exists."
+                "Checking if the prodcution model '%s' exists.", prod_model_name
             )
-            # Get all the list of the registred (production) models corresponding to the production model name
-            prod_models = await self.mlflow_model_manager.find_registred_model(
-                prod_model_name
-            )
+            # Get all the list of the registred (production) models corresponding to
+            # the production model name
+            prod_model = self.mlflow_model_manager.find_registred_model(prod_model_name)
 
-            if prod_models:
-                self.logger.info(f"Prodcution model '{prod_model_name}' exists.")
+            if prod_model:
+                self.logger.info("Prodcution model '%s' exists.", prod_model_name)
                 return True
-            else:
-                self.logger.info(
-                    f"Prodcution model '{prod_model_name}' does not exists."
-                )
-                return False
+
+            self.logger.info("Prodcution model '%s' does not exists.", prod_model_name)
+            return False
         except Exception as e:
             self.logger.error(
-                f"Failed to check if {prod_model_name} production model exists: {str(e)}"
+                "Failed to check if %sproduction model exists: %s",
+                prod_model_name,
+                str(e),
             )
             raise
 
@@ -88,7 +98,7 @@ class DeploymentService(BaseService):
 
             return available_models
         except Exception as e:
-            self.logger.error(f"Failed to list the models: {str(e)}")
+            self.logger.error("Failed to list the models: %s", str(e))
             raise
 
     async def get_model_metadata(self, model_name: str) -> dict[str, Any]:
@@ -102,11 +112,11 @@ class DeploymentService(BaseService):
             dict[str, Any]: A dictionary containing model metadata.
         """
         try:
-            self.logger.info(f"Retrieving metadata for model {model_name}.")
+            self.logger.info("Retrieving metadata for model %s.", model_name)
             metadata = await self.mlflow_model_manager.get_model_metadata(model_name)
             return metadata
         except Exception as e:
-            self.logger.error(f"Failed to get model metadata: {str(e)}")
+            self.logger.error("Failed to get model metadata: %s", str(e))
             raise
 
     async def predict(
@@ -122,21 +132,24 @@ class DeploymentService(BaseService):
 
         Returns:
             dict[str,Any]: A dictionary containing:
-                - "predictions": The prediction output from the model (e.g., list, ndarray, or DataFrame).
+                - "predictions": The prediction output from the model (e.g., list, ndarray,
+                    or DataFrame).
                 - "model_version": The version of the model used for prediction.
         """
-        
+
         try:
             model_type, symbol, _ = model_identifier.split("_", 2)
         except ValueError:
             model_type, symbol = model_identifier, ""
-        
+
         # Time the prediction
         with prediction_time_seconds.labels(
             model_type=model_type, symbol=symbol
         ).time():
             try:
-                self.logger.info(f"Starting prediction using model {model_identifier}.")
+                self.logger.info(
+                    "Starting prediction using model %s.", model_identifier
+                )
 
                 # Generate input hash for caching
                 input_hash = self._hash_input(X)
@@ -147,41 +160,57 @@ class DeploymentService(BaseService):
                     cache_key = None
                 else:
                     cache_key = (model_identifier, input_hash)
-                    self.logger.debug(f"Cache key generated: {cache_key}")
+                    self.logger.debug("Cache key generated: %s", cache_key)
 
                 # Load model version
-                model, current_version = await self.mlflow_model_manager.load_model(
-                    model_identifier
-                )
+                model_result = self.mlflow_model_manager.load_model(model_identifier)
+                model = model_result["model"]
+                current_version = model_result["version"]
 
                 # Log the successful loading of the model
-                self.logger.debug(f"Model {model_identifier} successfully loaded.")
+                self.logger.debug(
+                    "Model %s successfully loaded with version %s.",
+                    model_identifier,
+                    current_version,
+                )
 
                 # Use cache if available and version matches
                 if cache_key and cache_key in self._prediction_cache:
                     cached_pred, cached_ver = self._prediction_cache[cache_key]
                     if cached_ver == current_version:
-                        self.logger.info(
-                            f"Using cached prediction for model {model_identifier} with input hash {input_hash}"
+                        self.logger.debug(
+                            "Using cached prediction for model %s with input hash %s",
+                            model_identifier,
+                            input_hash,
                         )
                         return {"predictions": cached_pred, "model_version": cached_ver}
 
                 # Perform prediction
                 predictions = model.predict(X)
 
+                # Add succesful prediction
+                predictions_total.labels(
+                    model_type=model_type, symbol=symbol, result="sucess"
+                ).inc()
+
                 # Log the completion of the prediction
-                self.logger.info(f"Prediction completed for model {model_identifier}.")
+                self.logger.info("Prediction completed for model %s.", model_identifier)
 
                 # Cache the result
                 if cache_key:
                     self._prediction_cache[cache_key] = (predictions, current_version)
-                    self.logger.debug(f"Prediction cached for key {cache_key}.")
-                
+                    self.logger.debug("Prediction cached for key %s.", cache_key)
+
                 return {"predictions": predictions, "model_version": current_version}
 
             except Exception as e:
+                # Add unsuccesful prediction
+                predictions_total.labels(
+                    model_type=model_type, symbol=symbol, result="error"
+                ).inc()
+
                 self.logger.error(
-                    f"Failed to predict with model {model_identifier} : {str(e)}"
+                    "Failed to predict with model %s: %s", model_identifier, str(e)
                 )
                 raise
 
@@ -202,7 +231,7 @@ class DeploymentService(BaseService):
         """
         try:
             self.logger.info(
-                f"Starting prediction confidence calculation with {model_type} model."
+                "Starting prediction confidence calculation with %s model.", model_type
             )
             # Confidences calculation
             confidences = ConfidenceCalculator(model_type).calculate_confidence(
@@ -211,21 +240,26 @@ class DeploymentService(BaseService):
 
             # emit the gauge for each value (gauge holds last)
             if confidences is not None:
-                vals = confidences if isinstance(confidences, (list, tuple)) else [confidences]
+                vals = (
+                    confidences
+                    if isinstance(confidences, (list, tuple))
+                    else [confidences]
+                )
                 for c in vals:
                     prediction_confidence.labels(
-                        model_type=model_type,
-                        symbol=symbol
+                        model_type=model_type, symbol=symbol
                     ).set(float(c))
-            
+
             self.logger.info(
-                f"Prediction confidence calculation doned with {model_type} model."
+                "Prediction confidence calculation doned with %s model.", model_type
             )
             return confidences
 
         except Exception as e:
             self.logger.error(
-                f"Failed to calculate prediction confidence score with model {model_type} : {str(e)}"
+                "Failed to calculate prediction confidence score with model %s : %s",
+                model_type,
+                str(e),
             )
             raise
 
@@ -244,13 +278,15 @@ class DeploymentService(BaseService):
         try:
             self.mlflow_model_manager.log_metrics(model_identifier, metrics)
             self.logger.info(
-                f"Metrics successfully logged to MLflow for model {model_identifier}"
+                "Metrics successfully logged to MLflow for model %s", model_identifier
             )
 
             return True
         except Exception as e:
             self.logger.error(
-                f"Failed to log metrics to MLFlow with model {model_identifier} : {str(e)}"
+                "Failed to log metrics to MLFlow with model %s : %s",
+                model_identifier,
+                str(e),
             )
             return False
 
@@ -268,14 +304,14 @@ class DeploymentService(BaseService):
         try:
             # Promotion
             mv = self.mlflow_model_manager.promote(run_id, prod_model_name)
-            self.logger.info(f"Successfully promoted {mv.name} model to MLflow")
+            self.logger.info("Successfully promoted %s model to MLflow", mv.name)
 
             # Invalidate all cache entries for the production model name
             to_remove = [k for k in self._prediction_cache if k[0] == prod_model_name]
             for key in to_remove:
                 del self._prediction_cache[key]
                 self.logger.info(
-                    f"Invalidated prediction cache for model {key[0]} after promotion"
+                    "Invalidated prediction cache for model %s after promotion", key[0]
                 )
 
             return {
@@ -287,7 +323,9 @@ class DeploymentService(BaseService):
 
         except Exception as e:
             self.logger.error(
-                f"Failed to promote the training model for {prod_model_name} model : {str(e)}"
+                "Failed to promote the training model for %s model : %s",
+                prod_model_name,
+                str(e),
             )
             raise
 
@@ -297,7 +335,7 @@ class DeploymentService(BaseService):
             self._initialized = False
             self.logger.info("Deployment service cleaned up successfully")
         except Exception as e:
-            self.logger.error(f"Error during deployment service cleanup: {str(e)}")
+            self.logger.error("Error during deployment service cleanup: %s", str(e))
 
     def _hash_input(self, X) -> str:
         """
@@ -331,5 +369,5 @@ class DeploymentService(BaseService):
             input_str = json.dumps(X, sort_keys=True, default=convert)
             return hashlib.md5(input_str.encode()).hexdigest()
         except Exception as e:
-            self.logger.error(f"Failed to hash input for caching: {str(e)}")
+            self.logger.error("Failed to hash input for caching: %s", str(e))
             return None

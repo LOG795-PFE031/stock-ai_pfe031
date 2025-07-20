@@ -2,13 +2,12 @@
 API routes for the Stock AI system.
 """
 
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import RedirectResponse
 from typing import Dict, Any, Optional
 from datetime import datetime
-from core.utils import get_next_trading_day
-from monitoring.prometheus_metrics import prediction_time_seconds
 import time
+
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import RedirectResponse
 
 from api.schemas import (
     ModelListMlflowResponse,
@@ -21,16 +20,14 @@ from api.schemas import (
     TrainingTrainersResponse,
     TrainingStatusResponse,
     TrainingTasksResponse,
-    DataUpdateResponse,
     StockDataResponse,
     StocksListDataResponse,
     NewsDataResponse,
-    ModelListResponse,
-    ModelMetadataResponse,
 )
 from core.config import config
 from core.logging import logger
-from core.utils import validate_stock_symbol, format_prediction_response, get_date_range
+from core.utils import validate_stock_symbol, get_date_range
+from monitoring.prometheus_metrics import prediction_time_seconds
 
 # Create router
 router = APIRouter()
@@ -77,7 +74,8 @@ async def health_check():
             news_service,
             training_service,
             data_service,
-            preprocessing_service,
+            data_processing_service,
+            orchestation_service,
             evaluation_service,
         )
 
@@ -86,8 +84,9 @@ async def health_check():
         news_health = await news_service.health_check()
         training_health = await training_service.health_check()
         data_health = await data_service.health_check()
-        preprocessing_health = await preprocessing_service.health_check()
+        preprocessing_health = await data_processing_service.health_check()
         evaluation_health = await evaluation_service.health_check()
+        orchestation_health = await orchestation_service.health_check()
 
         # Create response with boolean values
         return HealthResponse(
@@ -102,6 +101,7 @@ async def health_check():
                         data_health,
                         preprocessing_health,
                         evaluation_health,
+                        orchestation_health,
                     ]
                 )
                 else "unhealthy"
@@ -113,12 +113,15 @@ async def health_check():
                 "data_service": data_health["status"] == "healthy",
                 "preprocessing_health": preprocessing_health["status"] == "healthy",
                 "evaluation_health": evaluation_health["status"] == "healthy",
+                "orchestation_health": orchestation_health["status"] == "healthy",
             },
             timestamp=datetime.utcnow().isoformat(),
         )
     except Exception as e:
         api_logger.error(f"Health check failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Health check failed: {str(e)}"
+        ) from e
 
 
 # Data collection endpoints
@@ -146,7 +149,7 @@ async def get_stocks_list():
         api_logger.error(f"Failed to get stock list: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get stock list: {str(e)}"
-        )
+        ) from e
 
 
 @router.get(
@@ -186,7 +189,7 @@ async def get_current_stock_data(
         api_logger.error(f"Failed to get stock data: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get stock data: {str(e)}"
-        )
+        ) from e
 
 
 @router.get(
@@ -248,7 +251,7 @@ async def get_historical_stock_data(
         api_logger.error(f"Failed to get stock data: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get stock data: {str(e)}"
-        )
+        ) from e
 
 
 @router.get(
@@ -300,7 +303,73 @@ async def get_reccent_stock_data(
         api_logger.error(f"Failed to get stock data: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get stock data: {str(e)}"
+        ) from e
+
+
+@router.get(
+    "/data/stock/{symbol}/from-end-date",
+    response_model=StockDataResponse,
+    tags=["Data Services"],
+)
+async def get_historical_stock_prices_from_end_date(
+    symbol: str,
+    end_date: datetime = Query(None, description="End date to retrieve the data from"),
+    days_back: int = Query(
+        None,
+        description="Number of days to look back from the end date",
+        ge=1,
+        le=10_000,
+    ),
+):
+    """
+    Retrieve stock prices for a symbol from a specified end date, looking back a given number
+    of days.
+    """
+    try:
+        # Import services from main to avoid circular imports
+        from main import data_service
+
+        # Validate symbol
+        if not validate_stock_symbol(symbol):
+            raise HTTPException(
+                status_code=400, detail=f"Invalid stock symbol: {symbol}"
+            )
+
+        if not end_date:
+            raise HTTPException(
+                status_code=400,
+                detail="end_date is required for get_historical_stock_prices_from_end_date",
+            )
+
+        if not days_back:
+            raise HTTPException(
+                status_code=400,
+                detail="days_back is required for get_historical_stock_prices_from_end_date",
+            )
+
+        # Get recents N trading days stock prices
+        data, stock_name = await data_service.get_historical_stock_prices_from_end_date(
+            symbol=symbol, days_back=days_back, end_date=end_date
         )
+
+        return StockDataResponse(
+            symbol=symbol,
+            name=stock_name,
+            data=data.to_dict(orient="records"),
+            meta=MetaInfo(
+                message=f"Stock data retrieved successfully for {symbol}",
+                version=config.api.API_VERSION,
+                documentation="https://api.example.com/docs",
+                endpoints=["/api/data/stock/{symbol}"],
+            ),
+            timestamp=datetime.now().isoformat(),
+        )
+
+    except Exception as e:
+        api_logger.error(f"Failed to get stock data: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get stock data: {str(e)}"
+        ) from e
 
 
 @router.get(
@@ -344,11 +413,13 @@ async def get_news_data(
         api_logger.error(f"Failed to get news data: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get news data: {str(e)}"
-        )
+        ) from e
 
 
 # Model management endpoints
-@router.get("/models", response_model=ModelListMlflowResponse, tags=["Model Management"])
+@router.get(
+    "/models", response_model=ModelListMlflowResponse, tags=["Model Management"]
+)
 async def get_models():
     """List all available ML models."""
     try:
@@ -356,14 +427,18 @@ async def get_models():
         from main import deployment_service
 
         models = await deployment_service.list_models()
-        response = ModelListMlflowResponse(models=models,
-                                        total_models=len(models),
-                                        timestamp=datetime.now().isoformat())
+        response = ModelListMlflowResponse(
+            models=models,
+            total_models=len(models),
+            timestamp=datetime.now().isoformat(),
+        )
         return response
 
     except Exception as e:
         api_logger.error(f"Failed to get models: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to get models: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get models: {str(e)}"
+        ) from e
 
 
 @router.get(
@@ -384,7 +459,7 @@ async def get_model_metadata(model_name: str):
         api_logger.error(f"Failed to get model metadata: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get model metadata: {str(e)}"
-        )
+        ) from e
 
 
 # Prediction endpoints
@@ -420,16 +495,15 @@ async def get_next_day_prediction(symbol: str, model_type: str = "lstm"):
 
             return prediction
 
-        else:
-            error_msg = prediction.get("error", "Unknown error")
-            api_logger.error(f"Prediction failed for {symbol}: {error_msg}")
-            raise HTTPException(
-                status_code=500, detail=f"Prediction failed: {error_msg}"
-            )
+        error_msg = prediction.get("error", "Unknown error")
+        api_logger.error(f"Prediction failed for {symbol}: {error_msg}")
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {error_msg}")
 
     except Exception as e:
         api_logger.error(f"Prediction failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Prediction failed: {str(e)}"
+        ) from e
 
 
 @router.get(
@@ -446,7 +520,7 @@ async def get_historical_predictions(
     """Get historical predictions for a symbol."""
     try:
         # Import services from main to avoid circular imports
-        from main import prediction_service
+        from main import orchestation_service
 
         # Validate symbol
         if not validate_stock_symbol(symbol):
@@ -458,80 +532,16 @@ async def get_historical_predictions(
         start, end = get_date_range(start_date, end_date)
 
         # Get predictions
-        predictions = await prediction_service.get_historical_predictions(
-            symbol=symbol, start_date=start, end_date=end, model_type=model_type
+        predictions = await orchestation_service.run_historical_prediction_pipeline(
+            model_type=model_type, symbol=symbol, start_date=start, end_date=end
         )
 
-        # Format each prediction
-        formatted_predictions = [
-            format_prediction_response(
-                prediction=p["predicted_price"],
-                confidence=p["confidence"],
-                model_type=p["model_type"],
-                model_version="1.0.0",  # Default version for historical predictions
-                symbol=symbol,
-                date=p.get(
-                    "date", None
-                ),  # Use the date from the prediction if available
-            )
-            for p in predictions
-        ]
-
-        return PredictionsResponse(
-            symbol=symbol,
-            predictions=formatted_predictions,
-            meta=MetaInfo(
-                start_date=start.isoformat(),
-                end_date=end.isoformat(),
-                model_type=model_type,
-            ),
-        )
+        return predictions
     except Exception as e:
         api_logger.error(f"Historical predictions failed: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Historical predictions failed: {str(e)}"
-        )
-
-
-@router.get(
-    "/predict/{symbol}/display",
-    response_model=Dict[str, Any],
-    tags=["Prediction Services"],
-)
-async def get_direct_display(symbol: str, model_type: str = "lstm"):
-    """Get formatted prediction display for a symbol."""
-    try:
-        # Import services from main to avoid circular imports
-        from main import prediction_service, news_service
-
-        # Validate symbol
-        if not validate_stock_symbol(symbol):
-            raise HTTPException(
-                status_code=400, detail=f"Invalid stock symbol: {symbol}"
-            )
-
-        # Get prediction and news analysis
-        prediction = await prediction_service.get_next_day_prediction(
-            symbol=symbol, model_type=model_type
-        )
-        news_analysis = await news_service.get_news_analysis(symbol)
-
-        # Format the prediction response
-        formatted_prediction = format_prediction_response(
-            prediction=prediction["prediction"],
-            confidence=prediction["confidence_score"],
-            model_type=prediction["model_type"],
-            model_version=prediction["model_version"],
-            symbol=symbol,
-        )
-
-        return {
-            "prediction": formatted_prediction,
-            "news_analysis": news_analysis.dict(),
-        }
-    except Exception as e:
-        api_logger.error(f"Direct display failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Direct display failed: {str(e)}")
+        ) from e
 
 
 # Training endpoints
@@ -571,7 +581,7 @@ async def get_trainers():
         api_logger.error(f"Failed to retrieve the list of available trainers: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get the trainers: {str(e)}"
-        )
+        ) from e
 
 
 @router.post(
@@ -607,14 +617,14 @@ async def train_model(
                 deployment_results=training_result["deployment_results"],
                 timestamp=datetime.now().isoformat(),
             )
-        else:
-            error_msg = training_result.get("error", "Unknown error")
-            api_logger.error(f"Training failed for {symbol}: {error_msg}")
-            raise HTTPException(status_code=500, detail=f"Training failed: {error_msg}")
+
+        error_msg = training_result.get("error", "Unknown error")
+        api_logger.error(f"Training failed for {symbol}: {error_msg}")
+        raise HTTPException(status_code=500, detail=f"Training failed: {error_msg}")
 
     except Exception as e:
         api_logger.error(f"Training failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}") from e
 
 
 @router.get(
@@ -634,7 +644,7 @@ async def get_training_status(task_id: str):
         api_logger.error(f"Failed to get training status: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get training status: {str(e)}"
-        )
+        ) from e
 
 
 @router.get(
@@ -652,12 +662,10 @@ async def get_training_tasks():
         api_logger.error(f"Failed to get training tasks: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get training tasks: {str(e)}"
-        )
+        ) from e
 
 
-@router.post(
-    "/data/cleanup/{symbol}", response_model=Dict[str, Any], tags=["Data Services"]
-)
+@router.post("/data/cleanup", response_model=Dict[str, Any], tags=["Data Services"])
 async def cleanup_stock_data(symbol: Optional[str] = None):
     """Clean up and maintain stock data files."""
     try:
@@ -677,4 +685,6 @@ async def cleanup_stock_data(symbol: Optional[str] = None):
 
     except Exception as e:
         api_logger.error(f"Data cleanup failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Data cleanup failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Data cleanup failed: {str(e)}"
+        ) from e

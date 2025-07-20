@@ -1,10 +1,28 @@
+from typing import Any
 import mlflow
 from mlflow import MlflowClient
+from mlflow.exceptions import MlflowException
 
 from api.schemas import ModelMlflowInfo, ModelVersionInfo
 
 
 class MLflowModelManager:
+    """
+    A utility class to manage MLflow models, versions, and metrics.
+
+    This class provides a high-level interface to interact with MLflow's tracking
+    and model registry features. It supports operations such as listing models,
+    loading and caching production or training models, logging evaluation metrics,
+    promoting trained models to production, and retrieving model metadata.
+
+    Attributes:
+        models_cache (dict): A shared cache of loaded models.
+        PRODUCTION_ALIAS (str): The alias used to identify production models.
+        client (MlflowClient): MLflow client instance for registry and tracking operations.
+    """
+
+    # Loaded models cache
+    models_cache = {}
 
     # Production alias (used to identify the production model)
     PRODUCTION_ALIAS = "production"
@@ -12,7 +30,17 @@ class MLflowModelManager:
     def __init__(self):
         self.client = MlflowClient()
 
-    async def list_models(self):
+    async def list_models(self) -> list:
+        """
+        Retrieve a list of all registered MLflow models along with their metadata.
+
+        This method queries the MLflow Model Registry and returns detailed information
+        about each registered model, including its name, description, creation and update
+        timestamps, aliases, tags, and metadata about its latest versions.
+
+        Returns:
+            list[dict]: A list of dictionaries, each containing metadata for a registered model.
+        """
         try:
             models = self.client.search_registered_models(max_results=500)
             return [
@@ -80,23 +108,26 @@ class MLflowModelManager:
                 f"Error retrieving metadata for model '{model_name}': {str(e)}"
             ) from e
 
-    async def find_registred_model(self, prod_model_name: str) -> list:
+    def find_registred_model(self, prod_model_name: str) -> list:
         """
-        Find if a production model exists
+        Find if a registered model exists by name.
 
         Args:
-            prod_model_name (str): Production model name to check
+            prod_model_name (str): The name of the registered model to look for.
+
+        Returns:
+            RegisteredModel object if found, None otherwise.
         """
         try:
-            models = self.client.search_registered_models(
-                filter_string=f"name='{prod_model_name}'"
-            )
+            model = self.client.get_registered_model(prod_model_name)
+            return model
+        except MlflowException as e:
+            if "not found" in str(e):
+                return None  # Model does not exist
+            else:
+                raise RuntimeError(f"Error retrieving model: {str(e)}") from e
 
-            return models
-        except Exception as e:
-            raise RuntimeError(f"Error listing the models: {str(e)}") from e
-
-    async def load_model(self, model_identifier: str):
+    def load_model(self, model_identifier: str) -> dict[str, Any]:
         """
         Load the latest MLflow model
 
@@ -109,29 +140,42 @@ class MLflowModelManager:
             int: Version of the loaded MLflow model
         """
         try:
-            if self._run_exists(model_identifier):
-                # Path to the logged trained model
-                model_uri = f"runs:/{model_identifier}/model"
-
-                # There is no model version for a logged model
+            if model_identifier not in self.models_cache:
                 version = None
-            else:
-                # Path to the production model (live model)
-                model_uri = f"models:/{model_identifier}@{self.PRODUCTION_ALIAS}"
 
-                # Get the version of the registred model
-                versions = self.client.search_model_versions(
-                    f"name='{model_identifier}'"
-                )
-                for v in versions:
-                    if self.PRODUCTION_ALIAS in v.aliases:
-                        version = v.version
-                        break
+                if self._run_exists(model_identifier):
+                    # Path to the logged trained model
+                    model_uri = f"runs:/{model_identifier}/model"
+                else:
+                    # Path to the production model (live model)
+                    model_uri = f"models:/{model_identifier}@{self.PRODUCTION_ALIAS}"
 
-            # Load the model
-            model = mlflow.pyfunc.load_model(model_uri)
+                    # Get the version of the registred model
+                    versions = self.client.search_model_versions(
+                        f"name='{model_identifier}'"
+                    )
 
-            return model, version
+                    for v in versions:
+
+                        detailed = self.client.get_model_version(
+                            name=model_identifier, version=v.version
+                        )
+
+                        if "production" in detailed.aliases:
+                            version = v.version
+                            break
+
+                # Load the model
+                model = mlflow.pyfunc.load_model(model_uri)
+
+                # Store it to cache
+                self.models_cache[model_identifier] = {
+                    "model": model,
+                    "version": version,
+                }
+
+            # Return cache
+            return self.models_cache[model_identifier]
 
         except Exception as e:
             raise RuntimeError(
@@ -176,7 +220,8 @@ class MLflowModelManager:
 
         Args:
             train_run_id (str): The MLflow run ID where the trained model is logged.
-            prod_model_name (str): The name to register the model under in the MLflow model registry.
+            prod_model_name (str): The name to register the model under in the MLflow model
+                registry.
 
         Returns:
             ModelVersion: The registered MLflow ModelVersion object.
@@ -187,6 +232,10 @@ class MLflowModelManager:
 
             # Promote the model (training to prediction (prod))
             mv = mlflow.register_model(train_model_uri, prod_model_name)
+
+            # Delete cache entry if the model was in the cached
+            if prod_model_name in self.models_cache:
+                del self.models_cache[prod_model_name]
 
             # Add the alias production to the model
             self.client.set_registered_model_alias(

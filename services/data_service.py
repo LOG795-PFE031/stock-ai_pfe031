@@ -3,19 +3,17 @@ Data service for fetching and processing stock data.
 """
 
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta, timezone, time
-import pytz
+from datetime import datetime, timezone, time
 import pandas as pd
 import yfinance as yf
 import pandas_market_calendars as mcal
 import requests
-import json
 
-from .base_service import BaseService
-from core.config import config
-from core.logging import logger
 from core.utils import get_start_date_from_trading_days, get_latest_trading_day
 from monitoring.prometheus_metrics import external_requests_total
+from db.session import SessionLocal
+from db.models.stock_price import StockPrice
+from .base_service import BaseService
 
 
 class DataService(BaseService):
@@ -23,21 +21,18 @@ class DataService(BaseService):
 
     def __init__(self):
         super().__init__()
-        self.logger = logger["data"]
-        self.config = config
-        self.stock_data_dir = self.config.data.STOCK_DATA_DIR
+        self.logger = self.logger["data"]
         self.news_data_dir = self.config.data.NEWS_DATA_DIR
 
     async def initialize(self) -> None:
         """Initialize the data service."""
         try:
             # Create necessary directories
-            self.stock_data_dir.mkdir(parents=True, exist_ok=True)
             self.news_data_dir.mkdir(parents=True, exist_ok=True)
             self._initialized = True
             self.logger.info("Data service initialized successfully")
         except Exception as e:
-            self.logger.error(f"Failed to initialize data service: {str(e)}")
+            self.logger.error("Failed to initialize data service: %s", str(e))
             raise
 
     async def cleanup(self) -> None:
@@ -46,9 +41,9 @@ class DataService(BaseService):
             self._initialized = False
             self.logger.info("Data service cleaned up successfully")
         except Exception as e:
-            self.logger.error(f"Error during data service cleanup: {str(e)}")
+            self.logger.error("Error during data service cleanup: %s", str(e))
 
-    async def get_stock_name(self, symbol: str) -> str:
+    def get_stock_name(self, symbol: str) -> str:
         """
         Get the name of a stock given its symbol
 
@@ -60,7 +55,7 @@ class DataService(BaseService):
         """
 
         symbol = symbol.upper()
-        data_file = self.stock_data_dir / "stock_names.csv"
+        data_file = self.config.data.DATA_ROOT_DIR / "stock_names.csv"
 
         try:
             # Check if cache exist
@@ -82,7 +77,7 @@ class DataService(BaseService):
             # Get the stock name (company)
             name = stock.info.get("shortName")
 
-            self.logger.info(f"Collected stock name for {symbol}")
+            self.logger.info("Collected stock name for %s", symbol)
 
             # Add new entry
             df.loc[symbol] = name
@@ -93,7 +88,7 @@ class DataService(BaseService):
             return name
 
         except Exception as e:
-            self.logger.error(f"Error collecting stock name for {symbol}: {str(e)}")
+            self.logger.error("Error collecting stock name for %s: %s", symbol, str(e))
 
             # Log the unsuccessful external request to Yahoo Finance (Prometheuss)
             external_requests_total.labels(site="yahoo_finance", result="error").inc()
@@ -111,7 +106,8 @@ class DataService(BaseService):
         def parse_percentage_change(pct_str):
             """Parse the percentage change of a stock (absolute value)"""
             try:
-                return abs(float(pct_str.strip("%").replace(",", "")))
+                per_change = abs(float(pct_str.strip("%").replace(",", "")))
+                return per_change
             except:
                 return 0.0
 
@@ -137,10 +133,200 @@ class DataService(BaseService):
             # Return the stock data
             return stocks_data
         except Exception as e:
-            self.logger.error(f"Error collecting NASDAQ 100 stocks data: {str(e)}")
+            self.logger.error("Error collecting NASDAQ 100 stocks data: %s", str(e))
             raise
 
-    async def collect_stock_data(
+    async def get_current_price(self, symbol: str):
+        """
+        Retrieves the stock price for the given symbol on the latest trading day.
+
+        Args:
+            symbol (str): The stock symbol (e.g., "AAPL").
+
+        Returns:
+            pandas.DataFrame: A DataFrame containing the stock data for the latest trading day.
+            str: Stock Company Name
+        """
+        try:
+            # Get start and end dates (as today)
+            start_date = get_latest_trading_day()
+            end_date = start_date
+
+            # Retrieve stock data prices
+            df = await self._get_stock_data(symbol, start_date, end_date)
+
+            # Retrieve the latest trading day
+            current_price = df[df["Date"].dt.date == end_date.date()]
+
+            # Get the stock_name
+            stock_name = self.get_stock_name(symbol)
+
+            self.logger.info("Retrieved current stock price for %s", symbol)
+
+            return current_price, stock_name
+        except Exception as e:
+            self.logger.error(
+                "Error getting current stock price for %s: %s", symbol, str(e)
+            )
+            raise
+
+    async def get_recent_data(self, symbol: str, days_back: int = None):
+        """
+        Retrieves recent stock data for a given symbol looking back a specified number of trading
+        days.
+
+        If no specific number of days is provided, the default lookback period from the
+        configuration is used.
+
+        Args:
+            symbol (str): The stock symbol (e.g., "AAPL", "GOOG").
+            days_back (int, optional): The number of trading days to look back from the current
+                date. If not provided, the default lookback period from the configuration is used.
+
+        Returns:
+            tuple: A tuple containing:
+                - `pd.DataFrame`: A DataFrame containing stock price data for the requested symbol
+                    and date range.
+                - `str`: The name of the stock corresponding to the given symbol.
+        """
+        try:
+            # If there is no number of days back, use the default config lookback period days
+            if days_back is None:
+                days_back = self.config.data.LOOKBACK_PERIOD_DAYS
+
+            # Get start and end dates
+            end_date = datetime.now()
+            start_date = get_start_date_from_trading_days(end_date, days_back)
+
+            # Retrieve stock data prices
+            df = await self._get_stock_data(symbol, start_date, end_date)
+
+            # Filter data for requested date range
+            mask = (df["Date"].dt.date >= start_date.date()) & (
+                df["Date"].dt.date <= end_date.date()
+            )
+            df = df[mask]
+
+            # Get the stock_name
+            stock_name = self.get_stock_name(symbol)
+
+            self.logger.info(
+                "Retrieved recent stock prices for %s looking back for %d trading days",
+                symbol,
+                days_back,
+            )
+
+            return df, stock_name
+        except Exception as e:
+            self.logger.error(
+                "Error getting recent stock prices for %s looking back for %d trading days : %s",
+                symbol,
+                days_back,
+                str(e),
+            )
+            raise
+
+    async def get_historical_stock_prices_from_end_date(
+        self, symbol: str, end_date: datetime, days_back: int
+    ):
+        """
+        Retrieve historical stock prices for a symbol from a specified end date, looking back a
+        given number of trading days.
+
+        Args:
+            symbol (str): The stock symbol (e.g., "AAPL").
+            end_date: The end date to retrieve stock data from.
+            days_back: The number of trading days to look back from the end date.
+
+        Returns:
+            - (tuple): A tuple containing a DataFrame with stock data and the stock symbol name.
+        """
+        try:
+            # Ensure end date is timezone-aware
+            if end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=timezone.utc)
+
+            # Get the start date
+            start_date = get_start_date_from_trading_days(end_date, days_back)
+
+            # Retrieve stock data prices
+            df = await self._get_stock_data(symbol, start_date, end_date)
+
+            # Filter data for requested date range
+            mask = (df["Date"].dt.date >= start_date.date()) & (
+                df["Date"].dt.date <= end_date.date()
+            )
+            df = df[mask]
+
+            # Get the stock_name
+            stock_name = self.get_stock_name(symbol)
+
+            self.logger.info(
+                "Retrieved recent stock prices for %s looking back for %d trading days from %s to %s",
+                symbol,
+                days_back,
+                start_date.strftime("%Y-%m-%d"),
+                end_date.strftime("%Y-%m-%d"),
+            )
+
+            return df, stock_name
+
+        except Exception as e:
+            self.logger.error(
+                "Error getting historical stock data from end date %s for %s: %s",
+                end_date,
+                symbol,
+                str(e),
+            )
+            raise
+
+    async def get_historical_stock_prices(
+        self, symbol: str, start_date: datetime, end_date: datetime
+    ) -> pd.DataFrame:
+        """
+        Get historical stock prices for a symbol. If data doesn't exist or is outdated, collect
+        new data.
+
+        Args:
+            symbol: Stock symbol
+            start_date: Start date for data retrieval
+            end_date: End date for data retrieval
+
+        Returns:
+            pd.DataFrame: DataFrame containing stock data
+            str: Stock Company Name
+        """
+        try:
+            # Retrieve stock data prices
+            df = await self._get_stock_data(symbol, start_date, end_date)
+
+            # Ensure dates are timezone-aware
+            if start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=timezone.utc)
+            if end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=timezone.utc)
+
+            # Filter data for requested date range
+            mask = (df["Date"].dt.date >= start_date.date()) & (
+                df["Date"].dt.date <= end_date.date()
+            )
+            df = df[mask]
+
+            # Sort by date
+            df = df.sort_values("Date")
+
+            # Get the stock_name
+            stock_name = self.get_stock_name(symbol)
+
+            self.logger.info("Retrieved historical stock data for %s", symbol)
+
+            return df, stock_name
+
+        except Exception as e:
+            self.logger.error("Error getting stock data for %s: %s", symbol, str(e))
+            raise
+
+    def _collect_stock_data(
         self,
         symbol: str,
         start_date: Optional[datetime] = None,
@@ -179,149 +365,82 @@ class DataService(BaseService):
             # Log the successful external request to Yahoo Finance (Prometheus)
             external_requests_total.labels(site="yahoo_finance", result="success").inc()
 
+            # Retrieve the data
             df = stock.history(start=start_date, end=end_date)
-
-            # TODO Save raw data ?
-            # data_file = self.stock_data_dir / f"raw_{symbol}.csv"
-            # df.to_csv(data_file, index=False)
 
             # Reset index to make Date a column
             df = df.reset_index()
 
-            # Save data
-            data_file = self.stock_data_dir / f"{symbol}_data.csv"
-            df.to_csv(data_file, index=False)
+            # Get the stock_name
+            stock_name = self.get_stock_name(symbol)
 
-            self.logger.info(f"Collected stock data for {symbol}")
+            # Create a new SQLAlchemy session to interact with the database
+            session = SessionLocal()
+
+            try:
+                for _, row in df.iterrows():
+
+                    # Check if there is already an entry in the db (given the symbol ticker
+                    # and the date)
+                    existing = (
+                        session.query(StockPrice)
+                        .filter(
+                            StockPrice.stock_symbol == symbol,
+                            StockPrice.date == row["Date"].date(),
+                        )
+                        .first()
+                    )
+
+                    if not existing:
+
+                        # Create a StockPrice object model
+                        price = StockPrice(
+                            stock_symbol=symbol.upper(),
+                            stock_name=stock_name,
+                            date=row["Date"].date(),
+                            open=row.get("Open"),
+                            high=row.get("High"),
+                            low=row.get("Low"),
+                            close=row.get("Close"),
+                            volume=(
+                                int(row.get("Volume", 0)) if row.get("Volume") else None
+                            ),
+                            dividends=row.get("Dividends"),
+                            stock_splits=row.get("Stock Splits"),
+                        )
+
+                        # Add it to the db
+                        session.add(price)
+                        self.logger.debug(
+                            "Added new row to database for symbol '%s' on date %s",
+                            symbol,
+                            price.date,
+                        )
+
+                # Commit the changes
+                session.commit()
+            finally:
+                # Close the session
+                session.close()
+
+            self.logger.info("Collected stock data for %s", symbol)
             return df
 
         except Exception as e:
-            self.logger.error(f"Error collecting stock data for {symbol}: {str(e)}")
+            self.logger.error("Error collecting stock data for %s: %s", symbol, str(e))
 
             # Log the unsuccessful external request to Yahoo Finance (Prometheus)
             external_requests_total.labels(site="yahoo_finance", result="error").inc()
-            raise
-
-    async def get_current_price(self, symbol: str):
-        """
-        Retrieves the stock price for the given symbol on the latest trading day.
-
-        Args:
-            symbol (str): The stock symbol (e.g., "AAPL").
-
-        Returns:
-            pandas.DataFrame: A DataFrame containing the stock data for the latest trading day.
-            str: Stock Company Name
-        """
-        try:
-            # Get start and end dates (as today)
-            start_date = get_latest_trading_day()
-            end_date = start_date
-
-            # Retrieve stock data prices
-            df = await self._get_stock_data(symbol, start_date, end_date)
-
-            # Retrieve the latest trading day
-            current_price = df[df["Date"].dt.date == end_date.date()]
-
-            # Get the stock_name
-            stock_name = await self.get_stock_name(symbol)
-
-            self.logger.info(f"Retrieved current stock price for {symbol}")
-
-            return current_price, stock_name
-        except Exception as e:
-            self.logger.error(
-                f"Error getting current stock price for {symbol}: {str(e)}"
-            )
-            raise
-
-    async def get_recent_data(self, symbol: str, days_back: int = None):
-        try:
-            # If there is no number of days back, use the default config lookback period days
-            if days_back is None:
-                days_back = self.config.data.LOOKBACK_PERIOD_DAYS
-
-            # Get start and end dates
-            end_date = datetime.now()
-            start_date = get_start_date_from_trading_days(end_date, days_back)
-
-            # Retrieve stock data prices
-            df = await self._get_stock_data(symbol, start_date, end_date)
-
-            # Filter data for requested date range
-            mask = (df["Date"].dt.date >= start_date.date()) & (
-                df["Date"].dt.date <= end_date.date()
-            )
-            df = df[mask]
-
-            # Get the stock_name
-            stock_name = await self.get_stock_name(symbol)
-
-            self.logger.info(
-                f"Retrieved recent stock prices for {symbol} looking back for {days_back} trading days"
-            )
-
-            return df, stock_name
-        except Exception as e:
-            self.logger.error(
-                f"Error getting recent stock prices for {symbol} looking back for {days_back} trading days : {str(e)}"
-            )
-            raise
-
-    async def get_historical_stock_prices(
-        self, symbol: str, start_date: datetime, end_date: datetime
-    ) -> pd.DataFrame:
-        """
-        Get historical stock prices for a symbol. If data doesn't exist or is outdated, collect new data.
-
-        Args:
-            symbol: Stock symbol
-            start_date: Start date for data retrieval
-            end_date: End date for data retrieval
-
-        Returns:
-            pd.DataFrame: DataFrame containing stock data
-            str: Stock Company Name
-        """
-        try:
-            # Retrieve stock data prices
-            df = await self._get_stock_data(symbol, start_date, end_date)
-
-            # Ensure dates are timezone-aware
-            if start_date.tzinfo is None:
-                start_date = start_date.replace(tzinfo=timezone.utc)
-            if end_date.tzinfo is None:
-                end_date = end_date.replace(tzinfo=timezone.utc)
-
-            # Filter data for requested date range
-            mask = (df["Date"].dt.date >= start_date.date()) & (
-                df["Date"].dt.date <= end_date.date()
-            )
-            df = df[mask]
-
-            # Sort by date
-            df = df.sort_values("Date")
-
-            # Get the stock_name
-            stock_name = await self.get_stock_name(symbol)
-
-            self.logger.info(f"Retrieved historical stock data for {symbol}")
-
-            return df, stock_name
-
-        except Exception as e:
-            self.logger.error(f"Error getting stock data for {symbol}: {str(e)}")
             raise
 
     async def _get_stock_data(
         self, symbol: str, start_date: datetime, end_date: datetime
     ):
         """
-        Retrieves stock data for a given symbol and date range, using a cached CSV file if available and valid.
+        Retrieves stock data for a given symbol and date range.
 
-        If a cached file exists and contains valid data for the requested date range, it is returned.
-        Otherwise, new data is fetched via `collect_stock_data()`.
+        If the data exists and contains valid data in the db (postgres) for the requested date
+        range, it is returned. Otherwise, new data is fetched via `collect_stock_data()`.
 
         Args:
             symbol (str): The stock symbol (e.g., "AAPL", "GOOG").
@@ -329,14 +448,44 @@ class DataService(BaseService):
             end_date (datetime): The end date of the desired data range.
 
         Returns:
-            pd.DataFrame: A DataFrame containing the stock data for the specified symbol and date range.
+            pd.DataFrame: A DataFrame containing the stock data for the specified symbol and date
+                range.
         """
         try:
-            # Check if we have recent data
-            data_file = self.stock_data_dir / f"{symbol}_data.csv"
+            # Create a new SQLAlchemy session to interact with the database
+            session = SessionLocal()
 
-            if data_file.exists():
-                df = pd.read_csv(data_file)
+            # Query the prices between the start and end date for the symbol
+            records = (
+                session.query(StockPrice)
+                .filter(
+                    StockPrice.stock_symbol == symbol.upper(),
+                    StockPrice.date >= start_date,
+                    StockPrice.date <= end_date,
+                )
+                .all()
+            )
+
+            if records:
+
+                # Convert to DataFrame
+                df = pd.DataFrame(
+                    [
+                        {
+                            "Date": r.date,
+                            "Open": float(r.open) if r.open else None,
+                            "High": float(r.high) if r.high else None,
+                            "Low": float(r.low) if r.low else None,
+                            "Close": float(r.close) if r.close else None,
+                            "Volume": r.volume,
+                            "Dividends": float(r.dividends) if r.dividends else None,
+                            "Stock Splits": (
+                                float(r.stock_splits) if r.stock_splits else None
+                            ),
+                        }
+                        for r in records
+                    ]
+                )
 
                 # Convert dates to timezone-aware UTC
                 df["Date"] = pd.to_datetime(df["Date"], format="mixed", utc=True)
@@ -345,15 +494,19 @@ class DataService(BaseService):
                 reload = self._is_cache_valid(df, start_date, end_date)
 
                 if not reload:
-                    self.logger.info(f"Load data from cache for {symbol}")
+                    self.logger.info("Load data from cache for %s", symbol)
                     # Return data from cache
-                    return df
+                    return df.sort_values("Date")
 
             # No data exists or need reload, collect new data
-            return await self.collect_stock_data(symbol, start_date, end_date)
+            return self._collect_stock_data(symbol, start_date, end_date)
+
         except Exception as e:
-            self.logger.error(f"Error getting stock data for {symbol}: {str(e)}")
+            self.logger.error("Error getting stock data for %s: %s", symbol, str(e))
             raise
+        finally:
+            # Close the db session
+            session.close()
 
     def _is_cache_valid(self, df, start_date, end_date):
         """
@@ -391,74 +544,45 @@ class DataService(BaseService):
         Returns:
             Dictionary containing cleanup results
         """
+
         try:
-            cleaned_files = []
-            failed_files = []
+            # Create a new session
+            session = SessionLocal()
 
-            # Get list of files to clean
+            # If symbol is provided, delete the specific data for that symbol.
             if symbol:
-                files = [self.stock_data_dir / f"{symbol}_data.csv"]
+                deleted_count = (
+                    session.query(StockPrice)
+                    .filter(StockPrice.stock_symbol == symbol)
+                    .delete()
+                )
+
+                self.logger.info(
+                    "Deleted %d records for symbol: %s", deleted_count, symbol
+                )
             else:
-                files = list(self.stock_data_dir.glob("*_data.csv"))
+                deleted_count = session.query(StockPrice).delete()
+                self.logger.info("Deleted all %d stock price records", deleted_count)
 
-            for data_file in files:
-                try:
-                    # Skip if file doesn't exist
-                    if not data_file.exists():
-                        continue
-
-                    # Read and validate data
-                    df = pd.read_csv(data_file)
-                    df["Date"] = pd.to_datetime(df["Date"], format="mixed", utc=True)
-
-                    # Check for issues
-                    needs_cleanup = False
-                    if len(df) < 80:
-                        self.logger.warning(
-                            f"Data file {data_file.name} has insufficient data points: {len(df)}"
-                        )
-                        needs_cleanup = True
-                    elif (
-                        get_latest_trading_day().astimezone(timezone.utc)
-                        - df["Date"].max()
-                    ).days > 1:
-                        self.logger.warning(
-                            f"Data file {data_file.name} is outdated: {df['Date'].max()}"
-                        )
-                        needs_cleanup = True
-                    elif df.isna().any().any():
-                        self.logger.warning(
-                            f"Data file {data_file.name} contains NaN values"
-                        )
-                        needs_cleanup = True
-
-                    # Clean up if needed
-                    if needs_cleanup:
-                        # Backup the file
-                        backup_file = data_file.with_suffix(".csv.bak")
-                        data_file.rename(backup_file)
-
-                        # Collect fresh data
-                        symbol = data_file.stem.split("_")[0]
-                        await self.collect_stock_data(symbol)
-
-                        cleaned_files.append(data_file.name)
-
-                except Exception as e:
-                    self.logger.error(f"Error cleaning up {data_file.name}: {str(e)}")
-                    failed_files.append(data_file.name)
+            # Commit the transaction if records were deleted
+            session.commit()
 
             return {
                 "status": "success",
-                "cleaned_files": cleaned_files,
-                "failed_files": failed_files,
-                "timestamp": datetime.now().isoformat(),
+                "symbol": symbol if symbol else "all",
+                "deleted_count": deleted_count,
             }
 
         except Exception as e:
-            self.logger.error(f"Error during data cleanup: {str(e)}")
+            # Rollback in case of error
+            session.rollback()
+            self.logger.error("Error during cleanup: %s", str(e))
+
             return {
                 "status": "error",
                 "message": str(e),
                 "timestamp": datetime.now().isoformat(),
             }
+        finally:
+            # Close the session
+            session.close()

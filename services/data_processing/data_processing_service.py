@@ -206,12 +206,12 @@ class DataProcessingService(BaseService):
         )
 
         # Retrieve training dataset start and end dates
-        train_start_date = dates[0]
-        train_end_date = dates[len(train_data.X) - 1]
+        train_start_date = dates.iloc[0]
+        train_end_date = dates.iloc[len(train_data.X) - 1]
 
         # Retrieve test dataset start and end dates
-        test_start_date = dates[len(train_data.X)]
-        test_end_date = dates[len(dates) - 1]
+        test_start_date = dates.iloc[len(train_data.X)]
+        test_end_date = dates.iloc[len(dates) - 1]
 
         # Normalize the training data
         norm_train_data = DataNormalizer(symbol=symbol, model_type=model_type).process(
@@ -265,8 +265,8 @@ class DataProcessingService(BaseService):
         )
 
         # Retrieve the start and end dates
-        eval_start_date = dates[len(dates) - len(norm_eval_data.X)]
-        eval_end_date = dates[len(dates) - 1]
+        eval_start_date = dates.iloc[len(dates) - len(norm_eval_data.X)]
+        eval_end_date = dates.iloc[len(dates) - 1]
 
         # Add start and end dates to preprocessed data
         norm_eval_data.start_date = eval_start_date
@@ -293,8 +293,8 @@ class DataProcessingService(BaseService):
         )
 
         # Retrieve the start and end dates
-        pred_start_date = dates[len(dates) - len(norm_features.X)]
-        pred_end_date = dates[len(dates) - 1]
+        pred_start_date = dates.iloc[len(dates) - len(norm_features.X)]
+        pred_end_date = dates.iloc[len(dates) - 1]
 
         # Add start and end dates to preprocessed data
         norm_features.start_date = pred_start_date

@@ -73,13 +73,19 @@ sandbox/lstm-stock-price-prediction/models/
 data/news/
 data/stock/
 
-/models/
+data/models/
 
 # Ignore MlFlow files
 mlruns/
 
+# Ignore Prefect files
+prefect_data/
+
+# Ignore PosgreSQL data
+postgres_data/
+
 # Ignore Scaler data infos (registry)
-data_processing/scalers/scaler_registry.json
+data/scalers/scaler_registry.json
 
 stock-ai.code-workspace
 

@@ -64,7 +64,8 @@ ENV PYTHONPATH=/app \
     HF_HUB_OFFLINE=0 \
     HF_HUB_DISABLE_TELEMETRY=1 \
     #Sets PyTorch as the Keras backend
-    KERAS_BACKEND="torch" 
+    KERAS_BACKEND="torch" \
+    GIT_PYTHON_REFRESH="quiet"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
