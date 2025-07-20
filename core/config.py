@@ -3,17 +3,15 @@ Configuration settings for the Stock AI system.
 """
 
 from pathlib import Path
-from typing import Dict, Any
 from pydantic import BaseModel
 
 
 class DataConfig(BaseModel):
     """Data collection and storage configuration."""
 
-    STOCK_DATA_DIR: Path = Path("data/stock")
+    DATA_ROOT_DIR: Path = Path("data")
     PREDICT_DATA_DIR: Path = Path("data/predictions")
     NEWS_DATA_DIR: Path = Path("data/news")
-    LOGS_DIR: Path = Path("logs")
     LOOKBACK_PERIOD_DAYS: int = 365
     NEWS_HISTORY_DAYS: int = 7
     MAX_NEWS_ARTICLES: int = 100
@@ -32,10 +30,7 @@ class PreprocessingConfig(BaseModel):
 class ModelConfig(BaseModel):
     """Model configuration."""
 
-    MODELS_ROOT_DIR: Path = Path("models")
-    PREDICTION_MODELS_DIR: Path = Path("models/specific")
-    PROPHET_MODELS_DIR: Path = Path("models/prophet")
-    NEWS_MODELS_DIR: Path = Path("models/news")
+    MODELS_ROOT_DIR: Path = Path("data/models")
     SENTIMENT_MODEL_NAME: str = "distilbert-base-uncased-finetuned-sst-2-english"
     FEATURES: list = [
         "Open",
@@ -79,6 +74,21 @@ class RabbitMQConfig(BaseModel):
     QUEUE_PREFIX: str = "stock_ai"
 
 
+class PostgresDatabaseConfig(BaseModel):
+    """PostgreSQL configuration"""
+
+    HOST: str = "postgres-stock-ai"
+    PORT: int = 5432
+    USER: str = "admin"
+    PASSWORD: str = "admin"
+
+    @property
+    def URL(self) -> str:
+        return (
+            f"postgresql://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/stocks"
+        )
+
+
 class Config:
     """Main configuration class."""
 
@@ -88,6 +98,7 @@ class Config:
         self.model = ModelConfig()
         self.api = APIConfig()
         self.rabbitmq = RabbitMQConfig()
+        self.postgres = PostgresDatabaseConfig()
 
         # Create necessary directories
         self._create_directories()
@@ -95,12 +106,9 @@ class Config:
     def _create_directories(self) -> None:
         """Create necessary directories."""
         directories = [
-            self.data.STOCK_DATA_DIR,
+            self.data.PREDICT_DATA_DIR,
             self.data.NEWS_DATA_DIR,
-            self.data.LOGS_DIR,
-            self.model.PREDICTION_MODELS_DIR,
-            self.model.PROPHET_MODELS_DIR,
-            self.model.NEWS_MODELS_DIR,
+            self.preprocessing.SCALERS_DIR,
         ]
 
         for directory in directories:

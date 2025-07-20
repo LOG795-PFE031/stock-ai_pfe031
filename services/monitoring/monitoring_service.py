@@ -11,10 +11,9 @@ from services.orchestration.orchestration_service import OrchestrationService
 from services.deployment.deployment_service import DeploymentService
 from services.data_service import DataService
 from services.data_processing.data_processing_service import DataProcessingService
-from monitoring.prometheus_metrics import (
-    evaluation_mae
-)
+from monitoring.prometheus_metrics import evaluation_mae
 from core.config import config
+
 
 class MonitoringService(BaseService):
     def __init__(
@@ -24,7 +23,7 @@ class MonitoringService(BaseService):
         data_service: DataService,
         preprocessing_service: DataProcessingService,
         check_interval_seconds: int = 24 * 60 * 60,  # default: once per day
-        data_interval_seconds: int = 7 * 24 * 60 * 60, # once per week
+        data_interval_seconds: int = 7 * 24 * 60 * 60,  # once per week
         max_drift_samples: int = 500,
         drift_stat_threshold: float = 0.1,
     ):
@@ -39,7 +38,7 @@ class MonitoringService(BaseService):
         self.max_drift_samples = max_drift_samples
         self.drift_stat_threshold = drift_stat_threshold
         self._last_mae: Dict[Tuple[str, str], float] = {}
-        
+
         # Background tasks for performance and data loops
         self._perf_task: asyncio.Task | None = None
         self._data_task: asyncio.Task | None = None
@@ -71,7 +70,7 @@ class MonitoringService(BaseService):
                 await asyncio.sleep(self.check_interval_seconds)
         except asyncio.CancelledError:
             pass
-    
+
     async def _data_loop(self) -> None:
         """Run weekly data drift checks."""
         try:
@@ -128,12 +127,14 @@ class MonitoringService(BaseService):
                         model_type, symbol
                     )
                 else:
-                    self.logger.info(f"No retraining needed for {model}, prev MAE: {prev} vs current MAE: {current}")
+                    self.logger.info(
+                        f"No retraining needed for {model}, prev MAE: {prev} vs current MAE: {current}"
+                    )
         except Exception as e:
             self.logger.error(f"Error in daily drift check: {e}")
         finally:
             self.logger.info("🏁 Daily drift check complete")
-            
+
     async def _run_data_drift_check(self) -> None:
         """
         For each live model, fetch recent and historical data,
@@ -152,12 +153,10 @@ class MonitoringService(BaseService):
                 # now split on the first underscore
                 model_type, symbol = full_name.split("_", 1)
                 symbol = symbol.upper()
-                
+
                 await self._check_data_drift(model_type, symbol)
         except Exception as e:
-            self.logger.error(
-                f"Error in weekly data drift check: {e}", exc_info=True
-            )
+            self.logger.error(f"Error in weekly data drift check: {e}", exc_info=True)
         finally:
             self.logger.info("✅ Weekly data drift check complete")
 
@@ -174,7 +173,7 @@ class MonitoringService(BaseService):
                 symbol, days_back=days_back
             )
             # Evaluation window must cover at least the model's sequence length
-            seq_len = getattr(config.model, 'SEQUENCE_LENGTH', 60)
+            seq_len = getattr(config.preprocessing, "SEQUENCE_LENGTH", 60)
             days_needed = max(seq_len, days_back)
             raw_recent_df, _ = await self.data_service.get_recent_data(
                 symbol, days_back=days_needed
@@ -199,8 +198,8 @@ class MonitoringService(BaseService):
             recent_proc = recent_res[0] if isinstance(recent_res, tuple) else recent_res
 
             # ensure features exist (Extract feature matrices)
-            train_arr = np.asarray(getattr(train_proc, 'X', []))
-            recent_arr = np.asarray(getattr(recent_proc, 'X', []))
+            train_arr = np.asarray(getattr(train_proc, "X", []))
+            recent_arr = np.asarray(getattr(recent_proc, "X", []))
             if train_arr.size == 0 or recent_arr.size == 0:
                 self.logger.warning(
                     f"No preprocessed features for {model_type}_{symbol}, skipping drift"
@@ -209,15 +208,19 @@ class MonitoringService(BaseService):
 
             # flatten & numeric filter values
             # meaning turn them into a simple 1D list and keep only the numbers and Convert everything to floats, because compare two sets of numbers which only works on clean numeric data
-            train_vals = np.array([float(v) for v in train_arr.ravel() if isinstance(v, (int, float))])
-            recent_vals = np.array([float(v) for v in recent_arr.ravel() if isinstance(v, (int, float))])
+            train_vals = np.array(
+                [float(v) for v in train_arr.ravel() if isinstance(v, (int, float))]
+            )
+            recent_vals = np.array(
+                [float(v) for v in recent_arr.ravel() if isinstance(v, (int, float))]
+            )
             if train_vals.size == 0 or recent_vals.size == 0:
                 self.logger.warning(
                     f"No numeric features for {model_type}_{symbol}, skipping drift"
                 )
                 return
 
-            # Subsample for reliability (if too many numberse, randomly pick smaller, equally from each set (but no dupes)) 
+            # Subsample for reliability (if too many numberse, randomly pick smaller, equally from each set (but no dupes))
             n_sub = min(len(train_vals), len(recent_vals), self.max_drift_samples)
             if len(train_vals) > n_sub:
                 train_vals = np.random.choice(train_vals, size=n_sub, replace=False)
@@ -226,16 +229,16 @@ class MonitoringService(BaseService):
 
             # Compute KS statistic
             stat, _ = ks_2samp(train_vals, recent_vals)
-            self.logger.info(
-                f"KS stat {symbol}: stat={stat:.4f} (n_sub={n_sub})"
-            )
+            self.logger.info(f"KS stat {symbol}: stat={stat:.4f} (n_sub={n_sub})")
 
             # Compare against threshold & retrain if they stick out more than the allowed threshold
             if stat > self.drift_stat_threshold:
                 self.logger.info(
                     f"Data drift detected for {model_type}_{symbol} (stat={stat:.4f}>{self.drift_stat_threshold}); retraining"
                 )
-                await self.orchestration_service.run_training_pipeline(model_type, symbol)
+                await self.orchestration_service.run_training_pipeline(
+                    model_type, symbol
+                )
             else:
                 self.logger.info(
                     f"No data drift for {model_type}_{symbol} (stat={stat:.4f}<={self.drift_stat_threshold})"
@@ -243,5 +246,5 @@ class MonitoringService(BaseService):
         except Exception as e:
             self.logger.error(
                 f"Error in data drift check for {model_type}_{symbol}: {e}",
-                exc_info=True
+                exc_info=True,
             )

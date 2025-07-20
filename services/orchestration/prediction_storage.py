@@ -1,18 +1,30 @@
-from core.config import config
-
 from datetime import datetime
 import pandas as pd
 
+from db.session import SessionLocal
+from db.models.prediction import Prediction
+
 
 class PredictionStorage:
+    """
+    Handles saving, loading, and retrieving stock prediction data
+    from a PostgreSQL database using SQLAlchemy.
+
+    This class provides methods to:
+    - Save predictions made by different models (e.g., LSTM, Prophet).
+    - Load a prediction for a given stock, model type, and date.
+    - Retrieve all dates for which predictions exist for a given stock and model.
+
+    Attributes:
+        logger (logging.Logger): Logger instance for tracking operations and errors.
+    """
 
     def __init__(self, logger):
-        self.base_dir = config.data.PREDICT_DATA_DIR
         self.logger = logger
 
-    def load_prediction_csv(self, model_type: str, symbol: str, date: datetime):
+    def load_prediction_from_db(self, model_type: str, symbol: str, date: datetime):
         """
-        Load prediction results from the corresponding CSV file for a specified date.
+        Load prediction results from the postgres db for a specified date.
 
         Args:
             model_type (str): The type of model used for prediction (e.g., LSTM, Prophet).
@@ -23,26 +35,46 @@ class PredictionStorage:
             dict|None: The prediction results if Any, else None
         """
 
-        # Generate the file path
-        file_path = self.base_dir / model_type / f"{symbol}_predictions.csv"
+        # Create a new SQLAlchemy session to interact with the database
+        session = SessionLocal()
 
-        if not file_path.exists():
+        try:
+            # Check if there is a prediction given the symbol, the date and the model_type
+            prediction = (
+                session.query(Prediction)
+                .filter(
+                    Prediction.stock_symbol == symbol,
+                    Prediction.date == date.date(),
+                    Prediction.model_type == model_type,
+                )
+                .first()
+            )
+
+            # Commit the changes
+            session.commit()
+
+            if prediction:
+                return {
+                    "date": prediction.date.isoformat(),
+                    "stock_symbol": prediction.stock_symbol,
+                    "prediction": float(prediction.prediction),
+                    "confidence": float(prediction.confidence),
+                    "model_type": prediction.model_type,
+                    "model_version": prediction.model_version,
+                }
+
             return None
-
-        # Load existing CSV
-        df = pd.read_csv(file_path)
-
-        # Convert the date to the format 'YYYY-MM-DD'
-        day = date.date().isoformat()
-
-        result = df[(df["date"] == day)]
-
-        return result.iloc[0].to_dict() if not result.empty else None
+        except Exception as e:
+            self.logger.error("Error loading prediction for %s: %s", symbol, str(e))
+            raise e
+        finally:
+            # Close the session
+            session.close()
 
     def get_existing_prediction_dates(self, model_type: str, symbol: str) -> list[str]:
         """
         Get a list of existing dates for which predictions have already been computed and stored
-        in the csv file.
+        in the postgres db.
 
         Args:
             model_type (str): Model type (e.g., "lstm", "prophet").
@@ -52,22 +84,34 @@ class PredictionStorage:
             list[str]: List of dates (in 'YYYY-MM-DD' format) that already have predictions.
         """
 
-        # Generate the file path
-        file_path = self.base_dir / model_type / f"{symbol}_predictions.csv"
+        # Create a new SQLAlchemy session to interact with the database
+        session = SessionLocal()
 
-        # If the CSV does not exist
-        if not file_path.exists():
+        # Query predictions for the given symbol
+        results = (
+            session.query(Prediction.date)
+            .filter(
+                Prediction.stock_symbol == symbol,
+                Prediction.model_type == model_type,
+            )
+            .all()
+        )
+
+        if not results:
             return []
 
-        # Load existing CSV
-        df = pd.read_csv(file_path)
+        # Use DataFrame for optional further processing
+        df = pd.DataFrame(results)
+
+        # Convert 'date' column to datetime if it's not already
+        df["date"] = pd.to_datetime(df["date"])
 
         # Extract the unique list of dates for which predictions have been made
-        existing_dates = df["date"].unique().tolist()
+        existing_dates = df["date"].dt.strftime("%Y-%m-%d").unique().tolist()
 
         return existing_dates
 
-    def save_prediction_to_csv(
+    def save_prediction_to_db(
         self,
         model_type: str,
         symbol: str,
@@ -77,7 +121,7 @@ class PredictionStorage:
         model_version: str,
     ):
         """
-        Save the prediction results to a CSV file.
+        Save the prediction results to the postgres db.
 
         Args:
             model_type (str): The type of model used for prediction (e.g., LSTM, Prophet).
@@ -86,38 +130,49 @@ class PredictionStorage:
             prediction (float): The predicted value from the model.
             confidence (float): The confidence score of the prediction.
             model_version (str): The version of the model used.
-            file_path (str): Path to the CSV file where the results will be stored.
         """
 
-        # Generate the file path
-        file_path = self.base_dir / model_type / f"{symbol}_predictions.csv"
+        # Create a new SQLAlchemy session to interact with the database
+        session = SessionLocal()
 
-        # Make sure the parent directory exists
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # Check if prediction already exists for that symbol and date
+            existing = (
+                session.query(Prediction)
+                .filter(
+                    Prediction.stock_symbol == symbol,
+                    Prediction.date == date.date(),
+                    Prediction.model_type == model_type,
+                )
+                .first()
+            )
 
-        new_data = {
-            "date": date.date().isoformat(),
-            "prediction": prediction,
-            "confidence": confidence,
-            "model_version": model_version,
-        }
+            if existing:
+                # Update
+                existing.prediction = float(prediction)
+                existing.confidence = float(confidence)
+                existing.model_version = model_version
+            else:
+                # Insert
+                new_prediction = Prediction(
+                    date=date.date(),
+                    stock_symbol=symbol,
+                    prediction=float(prediction),
+                    confidence=float(confidence),
+                    model_version=model_version,
+                    model_type=model_type,
+                )
+                session.add(new_prediction)
 
-        # Load existing CSV if exists
-        if file_path.exists():
-            df = pd.read_csv(file_path)
-
-            # Drop any existing row for same symbol, date, and model_type
-            df = df[~((df["date"] == new_data["date"]))]
-
-            # Append new row
-            df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
-        else:
-            df = pd.DataFrame([new_data])
-
-        # Save back
-        df = df.sort_values(by=["date"])
-        df.to_csv(file_path, index=False)
-
-        self.logger.debug(
-            f"Saved prediction result for model {model_type} for symbol {symbol} for date {date} to {file_path}"
-        )
+            session.commit()
+            self.logger.debug(
+                "Saved prediction for %s on %s using model {model_type}",
+                symbol,
+                date.date(),
+            )
+        except Exception as e:
+            self.logger.error("Error saving prediction for %s: %s", symbol, str(e))
+            raise e
+        finally:
+            # Close the session
+            session.close()

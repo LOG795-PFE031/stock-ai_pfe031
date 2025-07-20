@@ -1,0 +1,2 @@
+CREATE DATABASE prefect;
+CREATE DATABASE stocks;

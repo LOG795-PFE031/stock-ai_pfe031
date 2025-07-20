@@ -1,12 +1,25 @@
+from typing import Any
 import mlflow
 from mlflow import MlflowClient
 from mlflow.exceptions import MlflowException
-from typing import Any
 
 from api.schemas import ModelMlflowInfo, ModelVersionInfo
 
 
 class MLflowModelManager:
+    """
+    A utility class to manage MLflow models, versions, and metrics.
+
+    This class provides a high-level interface to interact with MLflow's tracking
+    and model registry features. It supports operations such as listing models,
+    loading and caching production or training models, logging evaluation metrics,
+    promoting trained models to production, and retrieving model metadata.
+
+    Attributes:
+        models_cache (dict): A shared cache of loaded models.
+        PRODUCTION_ALIAS (str): The alias used to identify production models.
+        client (MlflowClient): MLflow client instance for registry and tracking operations.
+    """
 
     # Loaded models cache
     models_cache = {}
@@ -17,7 +30,17 @@ class MLflowModelManager:
     def __init__(self):
         self.client = MlflowClient()
 
-    async def list_models(self):
+    async def list_models(self) -> list:
+        """
+        Retrieve a list of all registered MLflow models along with their metadata.
+
+        This method queries the MLflow Model Registry and returns detailed information
+        about each registered model, including its name, description, creation and update
+        timestamps, aliases, tags, and metadata about its latest versions.
+
+        Returns:
+            list[dict]: A list of dictionaries, each containing metadata for a registered model.
+        """
         try:
             models = self.client.search_registered_models(max_results=500)
             return [
@@ -104,7 +127,7 @@ class MLflowModelManager:
             else:
                 raise RuntimeError(f"Error retrieving model: {str(e)}") from e
 
-    async def load_model(self, model_identifier: str) -> dict[str, Any]:
+    def load_model(self, model_identifier: str) -> dict[str, Any]:
         """
         Load the latest MLflow model
 
@@ -118,13 +141,11 @@ class MLflowModelManager:
         """
         try:
             if model_identifier not in self.models_cache:
+                version = None
 
                 if self._run_exists(model_identifier):
                     # Path to the logged trained model
                     model_uri = f"runs:/{model_identifier}/model"
-
-                    # There is no model version for a logged model
-                    version = None
                 else:
                     # Path to the production model (live model)
                     model_uri = f"models:/{model_identifier}@{self.PRODUCTION_ALIAS}"
@@ -133,8 +154,14 @@ class MLflowModelManager:
                     versions = self.client.search_model_versions(
                         f"name='{model_identifier}'"
                     )
+
                     for v in versions:
-                        if self.PRODUCTION_ALIAS in v.aliases:
+
+                        detailed = self.client.get_model_version(
+                            name=model_identifier, version=v.version
+                        )
+
+                        if "production" in detailed.aliases:
                             version = v.version
                             break
 
@@ -193,7 +220,8 @@ class MLflowModelManager:
 
         Args:
             train_run_id (str): The MLflow run ID where the trained model is logged.
-            prod_model_name (str): The name to register the model under in the MLflow model registry.
+            prod_model_name (str): The name to register the model under in the MLflow model
+                registry.
 
         Returns:
             ModelVersion: The registered MLflow ModelVersion object.

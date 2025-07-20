@@ -1,7 +1,8 @@
+import asyncio
+from datetime import datetime
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from asyncio import run
-from datetime import datetime
 import pandas_market_calendars as mcal
 from pytz import timezone
 
@@ -21,9 +22,14 @@ from ..training import TrainingService
 from ..data_processing import DataProcessingService
 from ..evaluation_service import EvaluationService
 from ..data_service import DataService
-from core.logging import logger
+
 
 class OrchestrationService(BaseService):
+    """
+    OrchestrationService manages the full lifecycle of ML workflows, including training,
+    prediction, evaluation, and historical analysis. It integrates multiple services and
+    handles scheduling for automated batch predictions.
+    """
 
     def __init__(
         self,
@@ -42,9 +48,6 @@ class OrchestrationService(BaseService):
         self.logger = logger["orchestration"]
         self.prediction_storage = PredictionStorage(self.logger)
 
-        # Scheduler (use to schdule all predictions)
-        self.scheduler = AsyncIOScheduler()
-
     async def initialize(self) -> None:
         """Initialize the orchestration service."""
         try:
@@ -54,7 +57,7 @@ class OrchestrationService(BaseService):
             self._initialized = True
             self.logger.info("Orchestration service initialized successfully")
         except Exception as e:
-            self.logger.error(f"Failed to initialize orchestration service: {str(e)}")
+            self.logger.error("Failed to initialize orchestration service: %s", str(e))
             raise
 
     async def run_training_pipeline(self, model_type: str, symbol: str):
@@ -74,11 +77,12 @@ class OrchestrationService(BaseService):
             symbol = symbol.upper()
 
             self.logger.info(
-                f"Starting training pipeline for {model_type} model for {symbol}."
+                "Starting training pipeline for %s model for %s.", model_type, symbol
             )
 
-            # Run the training pipeline
-            result = run_training_flow(
+            # Run the training pipeline in a background thread to avoid blocking the event loop
+            result = await asyncio.to_thread(
+                run_training_flow,
                 model_type,
                 symbol,
                 self.data_service,
@@ -89,7 +93,9 @@ class OrchestrationService(BaseService):
             )
 
             self.logger.info(
-                f"Training pipeline completed successfully for {model_type} model for {symbol}."
+                "Training pipeline completed successfully for %s model for %s.",
+                model_type,
+                symbol,
             )
 
             # Add a success status to the result
@@ -98,8 +104,12 @@ class OrchestrationService(BaseService):
             return result
         except Exception as e:
             self.logger.error(
-                f"Error running the training pipeline for model {model_type} for {symbol}: {str(e)}"
+                "Error running the training pipeline for model %s for %s: %s",
+                model_type,
+                symbol,
+                str(e),
             )
+
             return {
                 "status": "error",
                 "error": str(e),
@@ -124,20 +134,23 @@ class OrchestrationService(BaseService):
             symbol = symbol.upper()
 
             self.logger.info(
-                f"Starting prediction pipeline for {model_type} model for {symbol}."
+                "Starting prediction pipeline for %s model for %s.", model_type, symbol
             )
 
             # Get the predicted price date
             next_trading_day = get_next_trading_day()
 
-            result = self.prediction_storage.load_prediction_csv(
+            result = self.prediction_storage.load_prediction_from_db(
                 model_type=model_type, symbol=symbol, date=next_trading_day
             )
 
             if result is not None:
                 self.logger.info(
-                    f"Serving prediction from cache for {model_type} model for {symbol}."
+                    "Serving prediction from cache for %s model for %s.",
+                    model_type,
+                    symbol,
                 )
+
                 return format_prediction_response(
                     prediction=result["prediction"],
                     confidence=result["confidence"],
@@ -148,11 +161,12 @@ class OrchestrationService(BaseService):
                 )
 
             self.logger.info(
-                f"Computing the prediction for {model_type} model for {symbol}..."
+                "Computing the prediction for %s model for %s...", model_type, symbol
             )
 
             # Run the prediction pipeline
-            prediction_result = run_prediction_flow(
+            prediction_result = await asyncio.to_thread(
+                run_prediction_flow,
                 model_type,
                 symbol,
                 self.data_service,
@@ -168,11 +182,14 @@ class OrchestrationService(BaseService):
                 model_version = prediction_result["model_version"]
 
                 self.logger.info(
-                    f"Prediction pipeline completed successfully for {model_type} model for {symbol}."
+                    "Prediction pipeline completed for %s model for %s with version %d.",
+                    model_type,
+                    symbol,
+                    model_version,
                 )
 
-                # Save prediction to csv
-                self.prediction_storage.save_prediction_to_csv(
+                # Save prediction to db
+                self.prediction_storage.save_prediction_to_db(
                     model_type=model_type,
                     symbol=symbol,
                     date=next_trading_day,
@@ -189,21 +206,29 @@ class OrchestrationService(BaseService):
                     model_version=model_version,
                     date=next_trading_day,
                 )
-            else:
-                self.logger.info(
-                    f"No live model available to make prediction with {model_type} model for {symbol}."
-                )
-                return {
-                    "status": "error",
-                    "error": f"No live model available to make prediction with {model_type} model for {symbol}.",
-                    "symbol": symbol,
-                    "model_type": model_type,
-                    "timestamp": datetime.now().isoformat(),
-                }
+
+            self.logger.info(
+                "No live model available to make prediction with %s model for %s.",
+                model_type,
+                symbol,
+            )
+
+            return {
+                "status": "error",
+                "error": f"No live model available to make prediction with {model_type} "
+                + "model for {symbol}.",
+                "symbol": symbol,
+                "model_type": model_type,
+                "timestamp": datetime.now().isoformat(),
+            }
         except Exception as e:
             self.logger.error(
-                f"Error running the prediction pipeline for model {model_type} for {symbol}: {str(e)}"
+                "Error running the prediction pipeline for model %s for %s: %s",
+                model_type,
+                symbol,
+                str(e),
             )
+
             return {
                 "status": "error",
                 "error": str(e),
@@ -229,11 +254,12 @@ class OrchestrationService(BaseService):
             symbol = symbol.upper()
 
             self.logger.info(
-                f"Starting evaluation pipeline for {model_type} model for {symbol}."
+                "Starting evaluation pipeline for %s model for %s.", model_type, symbol
             )
 
             # Run the evaluation pipeline
-            result = run_evaluation_flow(
+            result = await asyncio.to_thread(
+                run_evaluation_flow,
                 model_type,
                 symbol,
                 self.data_service,
@@ -244,14 +270,20 @@ class OrchestrationService(BaseService):
 
             # Log the successful completion of the pipeline
             self.logger.info(
-                f"Evaluation pipeline completed successfully for {model_type} model for {symbol}."
+                "Evaluation pipeline completed successfully for %s model for %s.",
+                model_type,
+                symbol,
             )
 
             return result
         except Exception as e:
             self.logger.error(
-                f"Error running the evaluation pipeline for model {model_type} for {symbol}: {str(e)}"
+                "Error running the evaluation pipeline for model %s for %s: %s",
+                model_type,
+                symbol,
+                str(e),
             )
+
             return {
                 "status": "error",
                 "error": str(e),
@@ -264,7 +296,8 @@ class OrchestrationService(BaseService):
         self, model_type: str, symbol: str, start_date: datetime, end_date: datetime
     ):
         """
-        Run the historical prediction pipeline for a given stock symbol and model type over a specified date range.
+        Run the historical prediction pipeline for a given stock symbol and model type over a
+            specified date range.
 
         Args:
             model_type (str): The type of model to be used (e.g., 'LSTM', 'Prophet').
@@ -280,7 +313,11 @@ class OrchestrationService(BaseService):
             symbol = symbol.upper()
 
             self.logger.info(
-                f"Starting historical prediction for {model_type} model for {symbol} from {start_date} to {end_date}."
+                "Starting historical prediction for %s model for %s from %s to %s.",
+                model_type,
+                symbol,
+                start_date,
+                end_date,
             )
 
             # Get trading dates range
@@ -291,7 +328,7 @@ class OrchestrationService(BaseService):
             # Get the iso format of the trading days
             target_dates = [dt.date().isoformat() for dt in trading_days]
 
-            # Get the existing dates in the csv file (db)
+            # Get the existing dates (in the db)
             existing_dates = self.prediction_storage.get_existing_prediction_dates(
                 model_type=model_type, symbol=symbol
             )
@@ -305,17 +342,18 @@ class OrchestrationService(BaseService):
 
             if missing_dates:
                 self.logger.info(
-                    f"Computing predictions for {model_type} model for {symbol}..."
+                    "Computing predictions for %s model for %s...", model_type, symbol
                 )
 
                 # Makes predictions
-                predictions = run_historical_predictions_flow(
-                    model_type=model_type,
-                    symbol=symbol,
-                    trading_days=trading_days,
-                    data_service=self.data_service,
-                    processing_service=self.data_processing_service,
-                    deployment_service=self.deployment_service,
+                predictions = await asyncio.to_thread(
+                    run_historical_predictions_flow,
+                    model_type,
+                    symbol,
+                    trading_days,
+                    self.data_service,
+                    self.data_processing_service,
+                    self.deployment_service,
                 )
 
                 if predictions:
@@ -330,8 +368,8 @@ class OrchestrationService(BaseService):
                         confidence = predictions[i]["confidence"][0]
                         model_version = predictions[i]["model_version"]
 
-                        # Save prediction to csv
-                        self.prediction_storage.save_prediction_to_csv(
+                        # Save prediction to db
+                        self.prediction_storage.save_prediction_to_db(
                             model_type=model_type,
                             symbol=symbol,
                             date=trading_days[i],
@@ -354,22 +392,29 @@ class OrchestrationService(BaseService):
 
                 else:
                     self.logger.info(
-                        f"No live model available to make predictions with {model_type} model for {symbol}."
+                        "No live model available to make predictions with %s model for %s.",
+                        model_type,
+                        symbol,
                     )
+
                     return {
                         "status": "error",
-                        "error": f"No live model available to make predictions with {model_type} model for {symbol}.",
+                        "error": f"No live model available to make predictions with {model_type} "
+                        + "model for {symbol}.",
                         "symbol": symbol,
                         "model_type": model_type,
                         "timestamp": datetime.now().isoformat(),
                     }
             else:
                 self.logger.info(
-                    f"Serving predictions from cache for {model_type} model for {symbol}."
+                    "Serving predictions from cache for %s model for %s.",
+                    model_type,
+                    symbol,
                 )
+
                 results = []
                 for date in trading_days:
-                    prediction_result = self.prediction_storage.load_prediction_csv(
+                    prediction_result = self.prediction_storage.load_prediction_from_db(
                         model_type=model_type, symbol=symbol, date=date
                     )
 
@@ -392,8 +437,12 @@ class OrchestrationService(BaseService):
 
         except Exception as e:
             self.logger.error(
-                f"Error running the prediction pipeline for model {model_type} for {symbol}: {str(e)}"
+                "Error running the historical prediction pipeline for model %s for %s: %s",
+                model_type,
+                symbol,
+                str(e),
             )
+
             return {
                 "status": "error",
                 "error": str(e),
@@ -408,12 +457,14 @@ class OrchestrationService(BaseService):
             self._initialized = False
             self.logger.info("Orchestration service cleaned up successfully")
         except Exception as e:
-            self.logger.error(f"Error during orchestration service cleanup: {str(e)}")
+            self.logger.error("Error during orchestration service cleanup: %s", str(e))
 
     def _set_prediction_scheduler(self):
         """Set the prediction scheduler"""
-        # Start the scheduler
-        self.scheduler.start()
+
+        # Create and start the scheduler
+        scheduler = AsyncIOScheduler()
+        scheduler.start()
 
         # Configure a trigger for the scheduler (15 mins after the market close on weekdays)
         eastern = timezone("US/Eastern")
@@ -422,7 +473,7 @@ class OrchestrationService(BaseService):
         )
 
         # Add job to the scheduler
-        self.scheduler.add_job(self._predict_all, trigger=trigger)
+        scheduler.add_job(self._predict_all, trigger=trigger)
 
     async def _predict_all(self):
         """Run batch prediction for all configured model types and symbols."""

@@ -7,9 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from api.routes import router
-from core.logging import logger
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, start_http_server
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from starlette.requests import Request
 from starlette.responses import Response
 import time
@@ -18,15 +16,9 @@ from monitoring.prometheus_metrics import (
     http_request_duration_seconds,
     http_errors_total,
 )
-
-# Create necessary directories
-os.makedirs("data/stock", exist_ok=True)
-os.makedirs("data/news", exist_ok=True)
-os.makedirs("logs", exist_ok=True)
-os.makedirs("models", exist_ok=True)
-os.makedirs("scalers", exist_ok=True)
-
-# Initialize services
+from api.routes import router
+from core.logging import logger
+from db.init_db import create_database
 from services import (
     DataService,
     NewsService,
@@ -39,6 +31,8 @@ from services import (
 )
 from services.orchestration import OrchestrationService
 
+# Create necessary directories
+os.makedirs("data/news", exist_ok=True)
 
 # Create service instances in dependency order
 data_service = DataService()
@@ -82,8 +76,8 @@ async def lifespan(app: FastAPI):
         await orchestation_service.initialize()
         await monitoring_service.initialize()
 
-        # Start auto-publishing predictions
-        # await prediction_service.start_auto_publishing(interval_minutes=15) # TDOO
+        # Create the tables
+        create_database()
 
         logger["main"].info("All services initialized successfully")
         yield
