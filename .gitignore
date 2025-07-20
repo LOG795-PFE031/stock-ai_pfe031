@@ -87,5 +87,5 @@ stock-ai.code-workspace
 monitoring/grafana/grafana.db
 monitoring/grafana/plugins/
 
-# Ignore Prometheus persistence data directory
+# Ignore Prometheus persistence data directory 
 prometheus/data

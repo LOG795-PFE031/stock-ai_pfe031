@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Dict, Tuple
 import numpy as np
 from scipy.stats import ks_2samp
+from collections import deque
 
 from services.base_service import BaseService
 from core.logging import logger
@@ -27,6 +28,8 @@ class MonitoringService(BaseService):
         data_interval_seconds: int = 7 * 24 * 60 * 60, # once per week
         max_drift_samples: int = 500,
         drift_stat_threshold: float = 0.1,
+        data_drift_history_length: int = 8,
+        data_drift_zscore: float = 2.0,
     ):
         super().__init__()
         self.logger = logger["monitoring"]
@@ -39,6 +42,9 @@ class MonitoringService(BaseService):
         self.max_drift_samples = max_drift_samples
         self.drift_stat_threshold = drift_stat_threshold
         self._last_mae: Dict[Tuple[str, str], float] = {}
+        self._drift_history_length = data_drift_history_length
+        self._drift_zscore = data_drift_zscore
+        self._drift_history: Dict[Tuple[str, str], deque] = {}
         
         # Background tasks for performance and data loops
         self._perf_task: asyncio.Task | None = None
@@ -61,7 +67,7 @@ class MonitoringService(BaseService):
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
-        self.logger.info("MonitoringService cleaned up")
+        self.logger.info("MonitoringService cleaned up successfully.")
 
     async def _performance_loop(self) -> None:
         """Run daily performance drift checks."""
@@ -163,85 +169,74 @@ class MonitoringService(BaseService):
 
     async def _check_data_drift(self, model_type: str, symbol: str) -> None:
         """
-        Fetch raw training and recent data, preprocess both, then run KS-test.
-        Retrain if p-value < threshold. a
+        Fetch training and recent data, preprocess&filter both, then run KS-test on the 2 distributions.
+        Maintain a rolling history of KS stats to compute a dynamic threshold = mean + zscore * std.
+        Retrain only if the current KS stat exceeds dynamic threshold.
         """
-        self.logger.debug(f"Checking data drift for {model_type}_{symbol}")
+        self.logger.debug(f"Starting data drift for {model_type}_{symbol}")
         try:
-            # fetch raw train/recent data
+            # Load data windows
             days_back = config.data.LOOKBACK_PERIOD_DAYS
-            raw_train_df, _ = await self.data_service.get_recent_data(
-                symbol, days_back=days_back
-            )
+            train_df, _ = await self.data_service.get_recent_data(symbol, days_back=days_back)
             # Evaluation window must cover at least the model's sequence length
             seq_len = getattr(config.model, 'SEQUENCE_LENGTH', 60)
             days_needed = max(seq_len, days_back)
-            raw_recent_df, _ = await self.data_service.get_recent_data(
-                symbol, days_back=days_needed
-            )
-            # if not enough recent stock data to run the model properly
-            if len(raw_recent_df) < seq_len:
-                self.logger.warning(
-                    f"Not enough recent data ({len(raw_recent_df)}) for sequence length {seq_len} on {symbol}, skipping"
-                )
+            recent_df, _ = await self.data_service.get_recent_data(symbol, days_back=days_needed)
+            # Skip if no full sequence available
+            if len(recent_df) < seq_len:
+                self.logger.warning(f"Insufficient recent data ({len(recent_df)}) for sequence, skip")
                 return
-
+            
             # Preprocess
             # Perform training-phase preprocessing to get baseline features
-            train_res = await self.preprocessing_service.preprocess_data(
-                symbol, raw_train_df, model_type, phase="training"
-            )
+            train_res = await self.preprocessing_service.preprocess_data(symbol, train_df, model_type, phase="training")
             train_proc = train_res[0] if isinstance(train_res, tuple) else train_res
             # Perform evaluation-phase preprocessing to get current features?
-            recent_res = await self.preprocessing_service.preprocess_data(
-                symbol, raw_recent_df, model_type, phase="evaluation"
-            )
+            recent_res = await self.preprocessing_service.preprocess_data(symbol, recent_df, model_type, phase="evaluation")
             recent_proc = recent_res[0] if isinstance(recent_res, tuple) else recent_res
-
-            # ensure features exist (Extract feature matrices)
-            train_arr = np.asarray(getattr(train_proc, 'X', []))
-            recent_arr = np.asarray(getattr(recent_proc, 'X', []))
-            if train_arr.size == 0 or recent_arr.size == 0:
-                self.logger.warning(
-                    f"No preprocessed features for {model_type}_{symbol}, skipping drift"
-                )
+            
+            # Extract features 
+            t_arr = np.asarray(getattr(train_proc, 'X', []))
+            r_arr = np.asarray(getattr(recent_proc, 'X', []))
+            if t_arr.size==0 or r_arr.size==0:
+                self.logger.warning("No features, skip drift")
                 return
-
-            # flatten & numeric filter values
+            
+            # Flatten & numeric
             # meaning turn them into a simple 1D list and keep only the numbers and Convert everything to floats, because compare two sets of numbers which only works on clean numeric data
-            train_vals = np.array([float(v) for v in train_arr.ravel() if isinstance(v, (int, float))])
-            recent_vals = np.array([float(v) for v in recent_arr.ravel() if isinstance(v, (int, float))])
-            if train_vals.size == 0 or recent_vals.size == 0:
-                self.logger.warning(
-                    f"No numeric features for {model_type}_{symbol}, skipping drift"
-                )
+            t_vals = np.array([float(v) for v in t_arr.ravel() if isinstance(v,(int,float))])
+            r_vals = np.array([float(v) for v in r_arr.ravel() if isinstance(v,(int,float))])
+            if t_vals.size==0 or r_vals.size==0:
+                self.logger.warning("No numeric data, skip drift")
                 return
-
-            # Subsample for reliability (if too many numberse, randomly pick smaller, equally from each set (but no dupes)) 
-            n_sub = min(len(train_vals), len(recent_vals), self.max_drift_samples)
-            if len(train_vals) > n_sub:
-                train_vals = np.random.choice(train_vals, size=n_sub, replace=False)
-            if len(recent_vals) > n_sub:
-                recent_vals = np.random.choice(recent_vals, size=n_sub, replace=False)
-
+            
+            # Subsample for reliability (if too many numberse, randomly pick smaller, equally from each set (but no dupes))
+            n = min(len(t_vals), len(r_vals), self.max_drift_samples)
+            if len(t_vals)>n: t_vals = np.random.choice(t_vals,n,replace=False)
+            if len(r_vals)>n: r_vals = np.random.choice(r_vals,n,replace=False)
+            
             # Compute KS statistic
-            stat, _ = ks_2samp(train_vals, recent_vals)
-            self.logger.info(
-                f"KS stat {symbol}: stat={stat:.4f} (n_sub={n_sub})"
-            )
-
-            # Compare against threshold & retrain if they stick out more than the allowed threshold
-            if stat > self.drift_stat_threshold:
-                self.logger.info(
-                    f"Data drift detected for {model_type}_{symbol} (stat={stat:.4f}>{self.drift_stat_threshold}); retraining"
-                )
+            stat, _ = ks_2samp(t_vals, r_vals)
+            
+            # Update rolling history & compute dynamic threshold (key is model_type,symbol)
+            hist = self._drift_history.setdefault((model_type,symbol), deque(maxlen=self._drift_history_length))
+            hist.append(stat)
+            
+            # Compute dynamic threshold
+            if len(hist)>=3:
+                m = np.mean(hist)
+                s = np.std(hist)
+                threshold = m + self._drift_zscore*s
+                self.logger.debug(f"Dynamic threshold for {symbol}: {threshold:.4f} (mean={m:.4f},std={s:.4f})")
+            else:
+                threshold = m if (hist and (m:=np.mean(hist))) else stat*1.0
+            self.logger.info(f"KS stat={stat:.4f}, threshold={threshold:.4f}")
+            
+            # Decision and retraining if necessary
+            if stat>threshold:
+                self.logger.info(f"Drift detected for {model_type}_{symbol}, retraining")
                 await self.orchestration_service.run_training_pipeline(model_type, symbol)
             else:
-                self.logger.info(
-                    f"No data drift for {model_type}_{symbol} (stat={stat:.4f}<={self.drift_stat_threshold})"
-                )
+                self.logger.debug(f"No drift for {model_type}_{symbol}")
         except Exception as e:
-            self.logger.error(
-                f"Error in data drift check for {model_type}_{symbol}: {e}",
-                exc_info=True
-            )
+            self.logger.error(f"Error in data drift for {model_type}_{symbol}: {e}", exc_info=True)
