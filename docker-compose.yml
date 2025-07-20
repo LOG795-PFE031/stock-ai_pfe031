@@ -64,9 +64,7 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
-      - ./logs:/app/logs
       - ./data:/app/data
-      - ./models:/app/models
       - ./mlruns:/app/mlruns
     environment:
       - RABBITMQ_HOST=rabbitmq
