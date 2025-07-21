@@ -10,7 +10,6 @@ class DataConfig(BaseModel):
     """Data collection and storage configuration."""
 
     DATA_ROOT_DIR: Path = Path("data")
-    PREDICT_DATA_DIR: Path = Path("data/predictions")
     NEWS_DATA_DIR: Path = Path("data/news")
     LOOKBACK_PERIOD_DAYS: int = 365
     NEWS_HISTORY_DAYS: int = 7
@@ -106,7 +105,6 @@ class Config:
     def _create_directories(self) -> None:
         """Create necessary directories."""
         directories = [
-            self.data.PREDICT_DATA_DIR,
             self.data.NEWS_DATA_DIR,
             self.preprocessing.SCALERS_DIR,
         ]
