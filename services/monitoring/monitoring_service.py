@@ -1,21 +1,17 @@
 import asyncio
+from collections import deque
 import contextlib
-from datetime import datetime
 from typing import Dict, Tuple
+
 import numpy as np
 from scipy.stats import ks_2samp
-from collections import deque
 
-from services.base_service import BaseService
 from core.logging import logger
-from services.orchestration.orchestration_service import OrchestrationService
-from services.deployment.deployment_service import DeploymentService
-from services.data_service import DataService
-from services.data_processing.data_processing_service import DataProcessingService
-from monitoring.prometheus_metrics import (
-    evaluation_mae
-)
 from core.config import config
+from monitoring.prometheus_metrics import evaluation_mae
+from services import BaseService, DeploymentService, DataProcessingService, DataService
+from services.orchestration import OrchestrationService
+
 
 class MonitoringService(BaseService):
     def __init__(
@@ -25,7 +21,7 @@ class MonitoringService(BaseService):
         data_service: DataService,
         preprocessing_service: DataProcessingService,
         check_interval_seconds: int = 24 * 60 * 60,  # default: once per day
-        data_interval_seconds: int = 7 * 24 * 60 * 60, # once per week
+        data_interval_seconds: int = 7 * 24 * 60 * 60,  # once per week
         max_drift_samples: int = 500,
         drift_stat_threshold: float = 0.1,
         data_drift_history_length: int = 8,
@@ -45,7 +41,7 @@ class MonitoringService(BaseService):
         self._drift_history_length = data_drift_history_length
         self._drift_zscore = data_drift_zscore
         self._drift_history: Dict[Tuple[str, str], deque] = {}
-        
+
         # Background tasks for performance and data loops
         self._perf_task: asyncio.Task | None = None
         self._data_task: asyncio.Task | None = None
@@ -77,7 +73,7 @@ class MonitoringService(BaseService):
                 await asyncio.sleep(self.check_interval_seconds)
         except asyncio.CancelledError:
             pass
-    
+
     async def _data_loop(self) -> None:
         """Run weekly data drift checks."""
         try:
@@ -134,12 +130,14 @@ class MonitoringService(BaseService):
                         model_type, symbol
                     )
                 else:
-                    self.logger.info(f"No retraining needed for {model}, prev MAE: {prev} vs current MAE: {current}")
+                    self.logger.info(
+                        f"No retraining needed for {model}, prev MAE: {prev} vs current MAE: {current}"
+                    )
         except Exception as e:
             self.logger.error(f"Error in daily drift check: {e}")
         finally:
             self.logger.info("🏁 Daily drift check complete")
-            
+
     async def _run_data_drift_check(self) -> None:
         """
         For each live model, fetch recent and historical data,
@@ -158,12 +156,10 @@ class MonitoringService(BaseService):
                 # now split on the first underscore
                 model_type, symbol = full_name.split("_", 1)
                 symbol = symbol.upper()
-                
+
                 await self._check_data_drift(model_type, symbol)
         except Exception as e:
-            self.logger.error(
-                f"Error in weekly data drift check: {e}", exc_info=True
-            )
+            self.logger.error(f"Error in weekly data drift check: {e}", exc_info=True)
         finally:
             self.logger.info("✅ Weekly data drift check complete")
 
@@ -177,66 +173,92 @@ class MonitoringService(BaseService):
         try:
             # Load data windows
             days_back = config.data.LOOKBACK_PERIOD_DAYS
-            train_df, _ = await self.data_service.get_recent_data(symbol, days_back=days_back)
+            train_df, _ = await self.data_service.get_recent_data(
+                symbol, days_back=days_back
+            )
             # Evaluation window must cover at least the model's sequence length
-            seq_len = getattr(config.model, 'SEQUENCE_LENGTH', 60)
+            seq_len = getattr(config.model, "SEQUENCE_LENGTH", 60)
             days_needed = max(seq_len, days_back)
-            recent_df, _ = await self.data_service.get_recent_data(symbol, days_back=days_needed)
+            recent_df, _ = await self.data_service.get_recent_data(
+                symbol, days_back=days_needed
+            )
             # Skip if no full sequence available
             if len(recent_df) < seq_len:
-                self.logger.warning(f"Insufficient recent data ({len(recent_df)}) for sequence, skip")
+                self.logger.warning(
+                    f"Insufficient recent data ({len(recent_df)}) for sequence, skip"
+                )
                 return
-            
+
             # Preprocess
             # Perform training-phase preprocessing to get baseline features
-            train_res = await self.preprocessing_service.preprocess_data(symbol, train_df, model_type, phase="training")
+            train_res = await self.preprocessing_service.preprocess_data(
+                symbol, train_df, model_type, phase="training"
+            )
             train_proc = train_res[0] if isinstance(train_res, tuple) else train_res
             # Perform evaluation-phase preprocessing to get current features?
-            recent_res = await self.preprocessing_service.preprocess_data(symbol, recent_df, model_type, phase="evaluation")
+            recent_res = await self.preprocessing_service.preprocess_data(
+                symbol, recent_df, model_type, phase="evaluation"
+            )
             recent_proc = recent_res[0] if isinstance(recent_res, tuple) else recent_res
-            
-            # Extract features 
-            t_arr = np.asarray(getattr(train_proc, 'X', []))
-            r_arr = np.asarray(getattr(recent_proc, 'X', []))
-            if t_arr.size==0 or r_arr.size==0:
+
+            # Extract features
+            t_arr = np.asarray(getattr(train_proc, "X", []))
+            r_arr = np.asarray(getattr(recent_proc, "X", []))
+            if t_arr.size == 0 or r_arr.size == 0:
                 self.logger.warning("No features, skip drift")
                 return
-            
+
             # Flatten & numeric
             # meaning turn them into a simple 1D list and keep only the numbers and Convert everything to floats, because compare two sets of numbers which only works on clean numeric data
-            t_vals = np.array([float(v) for v in t_arr.ravel() if isinstance(v,(int,float))])
-            r_vals = np.array([float(v) for v in r_arr.ravel() if isinstance(v,(int,float))])
-            if t_vals.size==0 or r_vals.size==0:
+            t_vals = np.array(
+                [float(v) for v in t_arr.ravel() if isinstance(v, (int, float))]
+            )
+            r_vals = np.array(
+                [float(v) for v in r_arr.ravel() if isinstance(v, (int, float))]
+            )
+            if t_vals.size == 0 or r_vals.size == 0:
                 self.logger.warning("No numeric data, skip drift")
                 return
-            
+
             # Subsample for reliability (if too many numberse, randomly pick smaller, equally from each set (but no dupes))
             n = min(len(t_vals), len(r_vals), self.max_drift_samples)
-            if len(t_vals)>n: t_vals = np.random.choice(t_vals,n,replace=False)
-            if len(r_vals)>n: r_vals = np.random.choice(r_vals,n,replace=False)
-            
+            if len(t_vals) > n:
+                t_vals = np.random.choice(t_vals, n, replace=False)
+            if len(r_vals) > n:
+                r_vals = np.random.choice(r_vals, n, replace=False)
+
             # Compute KS statistic
             stat, _ = ks_2samp(t_vals, r_vals)
-            
+
             # Update rolling history & compute dynamic threshold (key is model_type,symbol)
-            hist = self._drift_history.setdefault((model_type,symbol), deque(maxlen=self._drift_history_length))
+            hist = self._drift_history.setdefault(
+                (model_type, symbol), deque(maxlen=self._drift_history_length)
+            )
             hist.append(stat)
-            
+
             # Compute dynamic threshold
-            if len(hist)>=3:
+            if len(hist) >= 3:
                 m = np.mean(hist)
                 s = np.std(hist)
-                threshold = m + self._drift_zscore*s
-                self.logger.debug(f"Dynamic threshold for {symbol}: {threshold:.4f} (mean={m:.4f},std={s:.4f})")
+                threshold = m + self._drift_zscore * s
+                self.logger.debug(
+                    f"Dynamic threshold for {symbol}: {threshold:.4f} (mean={m:.4f},std={s:.4f})"
+                )
             else:
-                threshold = m if (hist and (m:=np.mean(hist))) else stat*1.0
+                threshold = m if (hist and (m := np.mean(hist))) else stat * 1.0
             self.logger.info(f"KS stat={stat:.4f}, threshold={threshold:.4f}")
-            
+
             # Decision and retraining if necessary
-            if stat>threshold:
-                self.logger.info(f"Drift detected for {model_type}_{symbol}, retraining")
-                await self.orchestration_service.run_training_pipeline(model_type, symbol)
+            if stat > threshold:
+                self.logger.info(
+                    f"Drift detected for {model_type}_{symbol}, retraining"
+                )
+                await self.orchestration_service.run_training_pipeline(
+                    model_type, symbol
+                )
             else:
                 self.logger.debug(f"No drift for {model_type}_{symbol}")
         except Exception as e:
-            self.logger.error(f"Error in data drift for {model_type}_{symbol}: {e}", exc_info=True)
+            self.logger.error(
+                f"Error in data drift for {model_type}_{symbol}: {e}", exc_info=True
+            )
