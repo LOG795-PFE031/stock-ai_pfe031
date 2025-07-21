@@ -66,6 +66,9 @@ async def lifespan(app: FastAPI):
     try:
         logger["main"].info("Starting up services...")
 
+        # Create the tables
+        create_database()
+
         # Initialize services in order of dependencies
         await data_service.initialize()
         await news_service.initialize()
@@ -75,9 +78,6 @@ async def lifespan(app: FastAPI):
         await evaluation_service.initialize()
         await orchestation_service.initialize()
         await monitoring_service.initialize()
-
-        # Create the tables
-        create_database()
 
         logger["main"].info("All services initialized successfully")
         yield
