@@ -91,6 +91,7 @@ stock-ai.code-workspace
 
 # Ignore Grafana DB and plugins
 monitoring/grafana/grafana.db
+monitoring/grafana/grafana.db-journal
 monitoring/grafana/plugins/
 
 # Ignore Prometheus persistence data directory 
