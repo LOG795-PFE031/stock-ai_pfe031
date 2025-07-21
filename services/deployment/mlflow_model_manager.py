@@ -1,4 +1,6 @@
+import asyncio
 from typing import Any
+
 import mlflow
 from mlflow import MlflowClient
 from mlflow.exceptions import MlflowException
@@ -42,7 +44,10 @@ class MLflowModelManager:
             list[dict]: A list of dictionaries, each containing metadata for a registered model.
         """
         try:
-            models = self.client.search_registered_models(max_results=500)
+            # Run the blocking search in a background thread
+            models = await asyncio.to_thread(
+                self.client.search_registered_models, max_results=500
+            )
             return [
                 {
                     "name": model.name,
