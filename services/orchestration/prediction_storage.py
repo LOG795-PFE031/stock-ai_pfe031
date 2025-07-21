@@ -1,7 +1,9 @@
 from datetime import datetime
-import pandas as pd
 
-from db.session import SessionLocal
+import pandas as pd
+from sqlalchemy import select
+
+from db.session import get_async_session
 from db.models.prediction import Prediction
 
 
@@ -22,7 +24,9 @@ class PredictionStorage:
     def __init__(self, logger):
         self.logger = logger
 
-    def load_prediction_from_db(self, model_type: str, symbol: str, date: datetime):
+    async def load_prediction_from_db(
+        self, model_type: str, symbol: str, date: datetime
+    ):
         """
         Load prediction results from the postgres db for a specified date.
 
@@ -36,42 +40,40 @@ class PredictionStorage:
         """
 
         # Create a new SQLAlchemy session to interact with the database
-        session = SessionLocal()
-
-        try:
-            # Check if there is a prediction given the symbol, the date and the model_type
-            prediction = (
-                session.query(Prediction)
-                .filter(
+        AsyncSessionLocal = get_async_session()
+        async with AsyncSessionLocal() as session:
+            try:
+                # Check if there is a prediction given the symbol, the date and the model_type
+                stmt = select(Prediction).filter(
                     Prediction.stock_symbol == symbol,
                     Prediction.date == date.date(),
                     Prediction.model_type == model_type,
                 )
-                .first()
-            )
+                result = await session.execute(stmt)
 
-            # Commit the changes
-            session.commit()
+                # Retrieve the first matching prediction (if any)
+                prediction = result.scalars().first()
 
-            if prediction:
-                return {
-                    "date": prediction.date.isoformat(),
-                    "stock_symbol": prediction.stock_symbol,
-                    "prediction": float(prediction.prediction),
-                    "confidence": float(prediction.confidence),
-                    "model_type": prediction.model_type,
-                    "model_version": prediction.model_version,
-                }
+                if prediction:
+                    return {
+                        "date": prediction.date.isoformat(),
+                        "stock_symbol": prediction.stock_symbol,
+                        "prediction": float(prediction.prediction),
+                        "confidence": float(prediction.confidence),
+                        "model_type": prediction.model_type,
+                        "model_version": prediction.model_version,
+                    }
 
-            return None
-        except Exception as e:
-            self.logger.error("Error loading prediction for %s: %s", symbol, str(e))
-            raise e
-        finally:
-            # Close the session
-            session.close()
+                # If no prediction
+                return None
 
-    def get_existing_prediction_dates(self, model_type: str, symbol: str) -> list[str]:
+            except Exception as e:
+                self.logger.error("Error loading prediction for %s: %s", symbol, str(e))
+                raise e
+
+    async def get_existing_prediction_dates(
+        self, model_type: str, symbol: str
+    ) -> list[str]:
         """
         Get a list of existing dates for which predictions have already been computed and stored
         in the postgres db.
@@ -85,33 +87,40 @@ class PredictionStorage:
         """
 
         # Create a new SQLAlchemy session to interact with the database
-        session = SessionLocal()
+        AsyncSessionLocal = get_async_session()
+        async with AsyncSessionLocal() as session:
+            try:
 
-        # Query predictions for the given symbol
-        results = (
-            session.query(Prediction.date)
-            .filter(
-                Prediction.stock_symbol == symbol,
-                Prediction.model_type == model_type,
-            )
-            .all()
-        )
+                # Query predictions for the given symbol
+                query = select(Prediction.date).where(
+                    Prediction.stock_symbol == symbol,
+                    Prediction.model_type == model_type,
+                )
+                result = await session.execute(query)
+                results = result.scalars().all()
 
-        if not results:
-            return []
+                if not results:
+                    return []
 
-        # Use DataFrame for optional further processing
-        df = pd.DataFrame(results)
+                # Use DataFrame for further processing
+                df = pd.DataFrame(results)
 
-        # Convert 'date' column to datetime if it's not already
-        df["date"] = pd.to_datetime(df["date"])
+                # Convert 'date' column to datetime if it's not already
+                df["date"] = pd.to_datetime(df["date"])
 
-        # Extract the unique list of dates for which predictions have been made
-        existing_dates = df["date"].dt.strftime("%Y-%m-%d").unique().tolist()
+                # Extract the unique list of dates for which predictions have been made
+                existing_dates = df["date"].dt.strftime("%Y-%m-%d").unique().tolist()
 
-        return existing_dates
+                return existing_dates
+            except Exception as e:
+                self.logger.error(
+                    "Error fetching existing prediction dates for symbol %s: %s",
+                    symbol,
+                    str(e),
+                )
+                raise e
 
-    def save_prediction_to_db(
+    async def save_prediction_to_db(
         self,
         model_type: str,
         symbol: str,
@@ -133,46 +142,45 @@ class PredictionStorage:
         """
 
         # Create a new SQLAlchemy session to interact with the database
-        session = SessionLocal()
-
-        try:
-            # Check if prediction already exists for that symbol and date
-            existing = (
-                session.query(Prediction)
-                .filter(
+        AsyncSessionLocal = get_async_session()
+        async with AsyncSessionLocal() as session:
+            try:
+                # Check if prediction already exists for that symbol and date
+                query = select(Prediction).where(
                     Prediction.stock_symbol == symbol,
                     Prediction.date == date.date(),
                     Prediction.model_type == model_type,
                 )
-                .first()
-            )
+                result = await session.execute(query)
+                existing = result.scalars().first()
 
-            if existing:
-                # Update
-                existing.prediction = float(prediction)
-                existing.confidence = float(confidence)
-                existing.model_version = model_version
-            else:
-                # Insert
-                new_prediction = Prediction(
-                    date=date.date(),
-                    stock_symbol=symbol,
-                    prediction=float(prediction),
-                    confidence=float(confidence),
-                    model_version=model_version,
-                    model_type=model_type,
+                if existing:
+                    # Update
+                    existing.prediction = float(prediction)
+                    existing.confidence = float(confidence)
+                    existing.model_version = model_version
+
+                else:
+                    # Insert
+                    new_prediction = Prediction(
+                        date=date.date(),
+                        stock_symbol=symbol,
+                        prediction=float(prediction),
+                        confidence=float(confidence),
+                        model_version=model_version,
+                        model_type=model_type,
+                    )
+                    session.add(new_prediction)
+
+                # Commit the transaction
+                await session.commit()
+
+                self.logger.debug(
+                    "Saved prediction for %s on %s using model {model_type}",
+                    symbol,
+                    date.date(),
                 )
-                session.add(new_prediction)
 
-            session.commit()
-            self.logger.debug(
-                "Saved prediction for %s on %s using model {model_type}",
-                symbol,
-                date.date(),
-            )
-        except Exception as e:
-            self.logger.error("Error saving prediction for %s: %s", symbol, str(e))
-            raise e
-        finally:
-            # Close the session
-            session.close()
+            except Exception as e:
+                self.logger.error("Error saving prediction for %s: %s", symbol, str(e))
+                raise e

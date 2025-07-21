@@ -140,7 +140,7 @@ class OrchestrationService(BaseService):
             # Get the predicted price date
             next_trading_day = get_next_trading_day()
 
-            result = self.prediction_storage.load_prediction_from_db(
+            result = await self.prediction_storage.load_prediction_from_db(
                 model_type=model_type, symbol=symbol, date=next_trading_day
             )
 
@@ -189,7 +189,7 @@ class OrchestrationService(BaseService):
                 )
 
                 # Save prediction to db
-                self.prediction_storage.save_prediction_to_db(
+                await self.prediction_storage.save_prediction_to_db(
                     model_type=model_type,
                     symbol=symbol,
                     date=next_trading_day,
@@ -329,8 +329,10 @@ class OrchestrationService(BaseService):
             target_dates = [dt.date().isoformat() for dt in trading_days]
 
             # Get the existing dates (in the db)
-            existing_dates = self.prediction_storage.get_existing_prediction_dates(
-                model_type=model_type, symbol=symbol
+            existing_dates = (
+                await self.prediction_storage.get_existing_prediction_dates(
+                    model_type=model_type, symbol=symbol
+                )
             )
 
             # Check if any date in the target range is missing
@@ -369,7 +371,7 @@ class OrchestrationService(BaseService):
                         model_version = predictions[i]["model_version"]
 
                         # Save prediction to db
-                        self.prediction_storage.save_prediction_to_db(
+                        await self.prediction_storage.save_prediction_to_db(
                             model_type=model_type,
                             symbol=symbol,
                             date=trading_days[i],
@@ -414,8 +416,10 @@ class OrchestrationService(BaseService):
 
                 results = []
                 for date in trading_days:
-                    prediction_result = self.prediction_storage.load_prediction_from_db(
-                        model_type=model_type, symbol=symbol, date=date
+                    prediction_result = (
+                        await self.prediction_storage.load_prediction_from_db(
+                            model_type=model_type, symbol=symbol, date=date
+                        )
                     )
 
                     results.append(

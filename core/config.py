@@ -83,9 +83,7 @@ class PostgresDatabaseConfig(BaseModel):
 
     @property
     def URL(self) -> str:
-        return (
-            f"postgresql://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/stocks"
-        )
+        return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/stocks"
 
 
 class Config:

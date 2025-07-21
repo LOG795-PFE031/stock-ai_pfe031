@@ -14,7 +14,9 @@ def create_database():
     """
 
     database_url = config.postgres.URL
-    engine = create_engine(database_url)
+
+    # Use sync engine for table creation
+    engine = create_engine(database_url.replace("postgresql+asyncpg", "postgresql"))
     Base.metadata.create_all(engine)
     print("Stock price table created successfully!")
 
