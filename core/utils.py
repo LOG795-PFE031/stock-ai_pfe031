@@ -4,6 +4,7 @@ Utility functions for the Stock AI system.
 
 import pandas as pd
 import pandas_market_calendars as mcal
+import pytz
 import numpy as np
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
@@ -109,7 +110,11 @@ def get_latest_trading_day():
         str: the latest valid trading day (in string format)
     """
     nyse = mcal.get_calendar("NYSE")
-    today = datetime.now().date()
+    eastern = pytz.timezone("US/Eastern")
+
+    now_utc = datetime.utcnow().replace(tzinfo=pytz.utc)
+    now_est = now_utc.astimezone(eastern)
+    today = now_est.date()
 
     # Look back over the past 10 days to find the most recent trading day
     start_date = today - timedelta(days=10)
@@ -136,10 +141,18 @@ def get_next_trading_day(date: datetime = None) -> datetime:
         str: the next valid trading day (in string format)
     """
     nyse = mcal.get_calendar("NYSE")
+    eastern = pytz.timezone("US/Eastern")
 
     if date is None:
         # If there is no provided date, we look for next trading day from today
-        date = datetime.now()
+        now_utc = datetime.utcnow().replace(tzinfo=pytz.utc)
+        date = now_utc.astimezone(eastern)
+    elif date.tzinfo is None:
+        # Make naive datetime Eastern-aware
+        date = eastern.localize(date)
+    else:
+        # Normalize to Eastern
+        date = date.astimezone(eastern)
 
     # Get the next few trading days (starting the day after the provided date)
     schedule = nyse.schedule(

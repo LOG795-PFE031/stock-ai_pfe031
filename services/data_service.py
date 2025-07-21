@@ -2,17 +2,21 @@
 Data service for fetching and processing stock data.
 """
 
-from typing import Dict, Any, Optional
+import asyncio
 from datetime import datetime, timezone, time
+from typing import Dict, Any, Optional
+
 import pandas as pd
-import yfinance as yf
 import pandas_market_calendars as mcal
 import requests
+from sqlalchemy import select, delete
+import yfinance as yf
+
 
 from core.utils import get_start_date_from_trading_days, get_latest_trading_day
-from monitoring.prometheus_metrics import external_requests_total
-from db.session import SessionLocal
+from db.session import get_async_session
 from db.models.stock_price import StockPrice
+from monitoring.prometheus_metrics import external_requests_total
 from .base_service import BaseService
 
 
@@ -326,7 +330,7 @@ class DataService(BaseService):
             self.logger.error("Error getting stock data for %s: %s", symbol, str(e))
             raise
 
-    def _collect_stock_data(
+    async def _collect_stock_data(
         self,
         symbol: str,
         start_date: Optional[datetime] = None,
@@ -362,11 +366,13 @@ class DataService(BaseService):
             # Download data from Yahoo Finance
             stock = yf.Ticker(symbol)
 
-            # Log the successful external request to Yahoo Finance (Prometheus)
-            external_requests_total.labels(site="yahoo_finance", result="success").inc()
-
             # Retrieve the data
             df = stock.history(start=start_date, end=end_date)
+
+            df = await asyncio.to_thread(stock.history, start=start_date, end=end_date)
+
+            # Log the successful external request to Yahoo Finance (Prometheus)
+            external_requests_total.labels(site="yahoo_finance", result="success").inc()
 
             # Reset index to make Date a column
             df = df.reset_index()
@@ -374,54 +380,61 @@ class DataService(BaseService):
             # Get the stock_name
             stock_name = self.get_stock_name(symbol)
 
-            # Create a new SQLAlchemy session to interact with the database
-            session = SessionLocal()
+            # Create a new async SQLAlchemy session to interact with the database
+            AsyncSessionLocal = get_async_session()
+            async with AsyncSessionLocal() as session:
 
-            try:
-                for _, row in df.iterrows():
-
-                    # Check if there is already an entry in the db (given the symbol ticker
-                    # and the date)
-                    existing = (
-                        session.query(StockPrice)
-                        .filter(
-                            StockPrice.stock_symbol == symbol,
-                            StockPrice.date == row["Date"].date(),
-                        )
-                        .first()
+                try:
+                    # Get all the prices given the symbol
+                    query = select(StockPrice).where(
+                        StockPrice.stock_symbol == symbol.upper()
                     )
+                    result = await session.execute(query)
 
-                    if not existing:
+                    # Get all the existing dates in the db
+                    existing_dates = {row.date for row in result.scalars().all()}
 
-                        # Create a StockPrice object model
-                        price = StockPrice(
-                            stock_symbol=symbol.upper(),
-                            stock_name=stock_name,
-                            date=row["Date"].date(),
-                            open=row.get("Open"),
-                            high=row.get("High"),
-                            low=row.get("Low"),
-                            close=row.get("Close"),
-                            volume=(
-                                int(row.get("Volume", 0)) if row.get("Volume") else None
-                            ),
-                            dividends=row.get("Dividends"),
-                            stock_splits=row.get("Stock Splits"),
-                        )
+                    new_entries = []
 
-                        # Add it to the db
-                        session.add(price)
-                        self.logger.debug(
-                            "Added new row to database for symbol '%s' on date %s",
-                            symbol,
-                            price.date,
-                        )
+                    for _, row in df.iterrows():
+                        # Check if there is already an entry in the db (given the symbol ticker
+                        # and the date)
+                        date_only = row["Date"].date()
 
-                # Commit the changes
-                session.commit()
-            finally:
-                # Close the session
-                session.close()
+                        if date_only not in existing_dates:
+                            # Add the new entry
+                            new_entries.append(
+                                StockPrice(
+                                    stock_symbol=symbol.upper(),
+                                    stock_name=stock_name,
+                                    date=row["Date"].date(),
+                                    open=row.get("Open"),
+                                    high=row.get("High"),
+                                    low=row.get("Low"),
+                                    close=row.get("Close"),
+                                    volume=(
+                                        int(row.get("Volume", 0))
+                                        if row.get("Volume")
+                                        else None
+                                    ),
+                                    dividends=row.get("Dividends"),
+                                    stock_splits=row.get("Stock Splits"),
+                                )
+                            )
+
+                    # Add all the new entries to the db
+                    session.add_all(new_entries)
+
+                    # Commit the transaction
+                    await session.commit()
+                except Exception as db_error:
+                    # Rollback in case of error
+                    await session.rollback()
+
+                    self.logger.error(
+                        "Error while interacting with the database: %s", str(db_error)
+                    )
+                    raise
 
             self.logger.info("Collected stock data for %s", symbol)
             return df
@@ -452,61 +465,69 @@ class DataService(BaseService):
                 range.
         """
         try:
-            # Create a new SQLAlchemy session to interact with the database
-            session = SessionLocal()
+            AsyncSessionLocal = get_async_session()
+            async with AsyncSessionLocal() as session:
 
-            # Query the prices between the start and end date for the symbol
-            records = (
-                session.query(StockPrice)
-                .filter(
-                    StockPrice.stock_symbol == symbol.upper(),
-                    StockPrice.date >= start_date,
-                    StockPrice.date <= end_date,
-                )
-                .all()
-            )
+                try:
+                    # Query the prices between the start and end date for the symbol
+                    query = select(StockPrice).where(
+                        StockPrice.stock_symbol == symbol.upper(),
+                        StockPrice.date >= start_date,
+                        StockPrice.date <= end_date,
+                    )
+                    result = await session.execute(query)
+                    records = result.scalars().all()
 
-            if records:
+                    if records:
 
-                # Convert to DataFrame
-                df = pd.DataFrame(
-                    [
-                        {
-                            "Date": r.date,
-                            "Open": float(r.open) if r.open else None,
-                            "High": float(r.high) if r.high else None,
-                            "Low": float(r.low) if r.low else None,
-                            "Close": float(r.close) if r.close else None,
-                            "Volume": r.volume,
-                            "Dividends": float(r.dividends) if r.dividends else None,
-                            "Stock Splits": (
-                                float(r.stock_splits) if r.stock_splits else None
-                            ),
-                        }
-                        for r in records
-                    ]
-                )
+                        # Convert to DataFrame
+                        df = pd.DataFrame(
+                            [
+                                {
+                                    "Date": r.date,
+                                    "Open": float(r.open) if r.open else None,
+                                    "High": float(r.high) if r.high else None,
+                                    "Low": float(r.low) if r.low else None,
+                                    "Close": float(r.close) if r.close else None,
+                                    "Volume": r.volume,
+                                    "Dividends": (
+                                        float(r.dividends) if r.dividends else None
+                                    ),
+                                    "Stock Splits": (
+                                        float(r.stock_splits)
+                                        if r.stock_splits
+                                        else None
+                                    ),
+                                }
+                                for r in records
+                            ]
+                        )
 
-                # Convert dates to timezone-aware UTC
-                df["Date"] = pd.to_datetime(df["Date"], format="mixed", utc=True)
+                        # Convert dates to timezone-aware UTC
+                        df["Date"] = pd.to_datetime(
+                            df["Date"], format="mixed", utc=True
+                        )
 
-                # Check if the cache needs to be reloaded
-                reload = self._is_cache_valid(df, start_date, end_date)
+                        # Check if the cache needs to be reloaded
+                        reload = self._is_cache_valid(df, start_date, end_date)
 
-                if not reload:
-                    self.logger.info("Load data from cache for %s", symbol)
-                    # Return data from cache
-                    return df.sort_values("Date")
+                        if not reload:
+                            self.logger.info("Load data from cache for %s", symbol)
+                            # Return data from cache
+                            return df.sort_values("Date")
+                except Exception as db_error:
+                    self.logger.error(
+                        "Error during DB query for symbol %s: %s", symbol, str(db_error)
+                    )
+                    raise
 
             # No data exists or need reload, collect new data
-            return self._collect_stock_data(symbol, start_date, end_date)
+            df = await self._collect_stock_data(symbol, start_date, end_date)
+            return df
 
         except Exception as e:
             self.logger.error("Error getting stock data for %s: %s", symbol, str(e))
             raise
-        finally:
-            # Close the db session
-            session.close()
 
     def _is_cache_valid(self, df, start_date, end_date):
         """
@@ -546,36 +567,56 @@ class DataService(BaseService):
         """
 
         try:
-            # Create a new session
-            session = SessionLocal()
+            deleted_count = 0
 
-            # If symbol is provided, delete the specific data for that symbol.
-            if symbol:
-                deleted_count = (
-                    session.query(StockPrice)
-                    .filter(StockPrice.stock_symbol == symbol)
-                    .delete()
-                )
+            # Create a new async SQLAlchemy session to interact with the database
+            AsyncSessionLocal = get_async_session()
+            async with AsyncSessionLocal() as session:
 
-                self.logger.info(
-                    "Deleted %d records for symbol: %s", deleted_count, symbol
-                )
-            else:
-                deleted_count = session.query(StockPrice).delete()
-                self.logger.info("Deleted all %d stock price records", deleted_count)
+                try:
+                    if symbol:
 
-            # Commit the transaction if records were deleted
-            session.commit()
+                        # Perform delete operation for the given symbol (asynchronously)
+                        stmt = delete(StockPrice).where(
+                            StockPrice.stock_symbol == symbol
+                        )
+                        result = await session.execute(stmt)
 
-            return {
-                "status": "success",
-                "symbol": symbol if symbol else "all",
-                "deleted_count": deleted_count,
-            }
+                        # Get the count of deleted rows
+                        deleted_count = result.rowcount
+                        self.logger.info(
+                            "Deleted %d records for symbol: %s", deleted_count, symbol
+                        )
+
+                    else:
+                        # Perform delete operation for all given symbol (asynchronously)
+                        stmt = delete(StockPrice)
+                        result = await session.execute(stmt)
+
+                        # Get the count of deleted rows
+                        deleted_count = result.rowcount
+                        self.logger.info(
+                            "Deleted all %d stock price records", deleted_count
+                        )
+
+                    # Commit the transaction if records were deleted
+                    await session.commit()
+
+                except Exception as db_error:
+                    # Rollback in case of error
+                    await session.rollback()
+                    self.logger.error("Error during DB cleanup: %s", str(db_error))
+                    raise
+
+                return {
+                    "status": "success",
+                    "symbol": symbol if symbol else "all",
+                    "deleted_count": deleted_count,
+                }
 
         except Exception as e:
             # Rollback in case of error
-            session.rollback()
+            await session.rollback()
             self.logger.error("Error during cleanup: %s", str(e))
 
             return {
