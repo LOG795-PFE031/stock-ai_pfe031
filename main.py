@@ -93,9 +93,9 @@ async def lifespan(app: FastAPI):
 
             # Cleanup in reverse order of initialization
             await monitoring_service.cleanup()
-            await deployment_service.cleanup()
             await orchestation_service.cleanup()
             await evaluation_service.cleanup()
+            await deployment_service.cleanup()
             await data_processing_service.cleanup()
             await training_service.cleanup()
             await news_service.cleanup()
