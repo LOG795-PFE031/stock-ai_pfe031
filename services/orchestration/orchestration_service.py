@@ -463,8 +463,8 @@ class OrchestrationService(BaseService):
         """Set the prediction scheduler"""
 
         # Create and start the scheduler
-        scheduler = AsyncIOScheduler()
-        scheduler.start()
+        self.scheduler = AsyncIOScheduler()
+        self.scheduler.start()
 
         # Configure a trigger for the scheduler (15 mins after the market close on weekdays)
         eastern = timezone("US/Eastern")
@@ -473,7 +473,7 @@ class OrchestrationService(BaseService):
         )
 
         # Add job to the scheduler
-        scheduler.add_job(self._predict_all, trigger=trigger)
+        self.scheduler.add_job(self._predict_all, trigger=trigger)
 
     async def _predict_all(self):
         """Run batch prediction for all configured model types and symbols."""
