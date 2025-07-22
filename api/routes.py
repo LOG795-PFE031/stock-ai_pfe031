@@ -153,12 +153,12 @@ async def get_stocks_list():
 
 
 @router.get(
-    "/data/stock/{symbol}/current",
+    "/data/stock/current",
     response_model=StockDataResponse,
     tags=["Data Services"],
 )
 async def get_current_stock_data(
-    symbol: str,
+    symbol: str = Query(..., description="Stock symbol to retrieve data for")
 ):
     """Get the current stock data for a symbol."""
     try:
@@ -193,12 +193,12 @@ async def get_current_stock_data(
 
 
 @router.get(
-    "/data/stock/{symbol}/historical",
+    "/data/stock/historical",
     response_model=StockDataResponse,
     tags=["Data Services"],
 )
 async def get_historical_stock_data(
-    symbol: str,
+    symbol: str = Query(..., description="Stock symbol to retrieve data for"),
     start_date: Optional[datetime] = Query(
         None, description="Start date for historical data"
     ),
@@ -255,12 +255,12 @@ async def get_historical_stock_data(
 
 
 @router.get(
-    "/data/stock/{symbol}/recent",
+    "/data/stock/recent",
     response_model=StockDataResponse,
     tags=["Data Services"],
 )
 async def get_reccent_stock_data(
-    symbol: str,
+    symbol: str = Query(..., description="Stock symbol to retrieve data for"),
     days_back: Optional[int] = Query(
         None, description="Number of days to look back", ge=1, le=10_000
     ),
@@ -307,12 +307,12 @@ async def get_reccent_stock_data(
 
 
 @router.get(
-    "/data/stock/{symbol}/from-end-date",
+    "/data/stock/from-end-date",
     response_model=StockDataResponse,
     tags=["Data Services"],
 )
 async def get_historical_stock_prices_from_end_date(
-    symbol: str,
+    symbol: str = Query(..., description="Stock symbol to retrieve data for"),
     end_date: datetime = Query(None, description="End date to retrieve the data from"),
     days_back: int = Query(
         None,
@@ -372,11 +372,11 @@ async def get_historical_stock_prices_from_end_date(
         ) from e
 
 
-@router.get(
-    "/data/news/{symbol}", response_model=NewsDataResponse, tags=["Data Services"]
-)
+@router.get("/data/news/", response_model=NewsDataResponse, tags=["Data Services"])
 async def get_news_data(
-    symbol: str, start_date: Optional[str] = None, end_date: Optional[str] = None
+    symbol: str = Query(..., description="Stock symbol to retrieve news data for"),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
 ):
     """Get news data for a symbol."""
     try:
@@ -463,10 +463,13 @@ async def get_model_metadata(model_name: str):
 
 
 # Prediction endpoints
-@router.get(
-    "/predict/{symbol}", response_model=PredictionResponse, tags=["Prediction Services"]
-)
-async def get_next_day_prediction(symbol: str, model_type: str = "lstm"):
+@router.get("/predict", response_model=PredictionResponse, tags=["Prediction Services"])
+async def get_next_day_prediction(
+    model_type: str = Query(..., description="Type of prediction model to use"),
+    symbol: str = Query(
+        ..., description="Ticker symbol of the stock (e.g., AAPL, MSFT)"
+    ),
+):
     """Get stock price prediction for the next day."""
     try:
         # Import services from main to avoid circular imports
@@ -507,15 +510,17 @@ async def get_next_day_prediction(symbol: str, model_type: str = "lstm"):
 
 
 @router.get(
-    "/predict/{symbol}/historical",
+    "/predict/historical",
     response_model=PredictionsResponse,
     tags=["Prediction Services"],
 )
 async def get_historical_predictions(
-    symbol: str,
+    model_type: str = Query(..., description="Type of prediction model to use"),
+    symbol: str = Query(
+        ..., description="Ticker symbol of the stock (e.g., AAPL, MSFT)"
+    ),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    model_type: str = "lstm",
 ):
     """Get historical predictions for a symbol."""
     try:
@@ -584,12 +589,10 @@ async def get_trainers():
         ) from e
 
 
-@router.post(
-    "/train/{symbol}", response_model=TrainingResponse, tags=["Training Services"]
-)
+@router.post("/train", response_model=TrainingResponse, tags=["Training Services"])
 async def train_model(
-    symbol: str,
-    model_type: str = "lstm",
+    symbol: str = Query(..., description="Stock symbol to retrieve data for"),
+    model_type: str = Query(..., description="Type of model to train"),
 ):
     """Train a new model for a symbol."""
     try:
@@ -634,6 +637,9 @@ async def train_model(
 )
 async def get_training_status(task_id: str):
     """Check the status of a training task."""
+
+    # TODO NOT IMPLEMENTED CORRECTLY
+
     try:
         # Import services from main to avoid circular imports
         from main import training_service
@@ -652,6 +658,9 @@ async def get_training_status(task_id: str):
 )
 async def get_training_tasks():
     """List all training tasks."""
+
+    # TODO NOT IMPLEMENTED CORRECTLY
+
     try:
         # Import services from main to avoid circular imports
         from main import training_service
