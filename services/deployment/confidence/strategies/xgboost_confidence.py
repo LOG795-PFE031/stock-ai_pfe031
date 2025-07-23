@@ -11,10 +11,12 @@ class XGBoostConfidenceCalculator(ConfidenceCalculatorStrategy):
         try:
             confidences = []
 
-            for i in range(len(prediction_input)):
+            features = prediction_input.X
+
+            for i in range(len(features)):
 
                 # Retrieve the prediction input and predicted price
-                x_input = prediction_input.iloc[[i]]
+                x_input = features.iloc[[i]]
                 predicted_price = y_pred[i]
 
                 # Retrieve high, low and close prices and volume from the prediciton input
