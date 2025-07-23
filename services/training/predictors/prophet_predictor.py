@@ -8,7 +8,7 @@ class ProphetPredictor(PythonModel):
         model_path = context.artifacts.get("model")
         if not model_path:
             raise ValueError(
-                f"Model path for {self.model_name} is missing from MLflow artifacts."
+                "Model path for the Prophet model is missing from MLflow artifacts."
             )
         self.model = joblib.load(model_path)
 
