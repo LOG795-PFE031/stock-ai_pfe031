@@ -2,6 +2,7 @@
 Main application module for Stock AI.
 """
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
@@ -16,6 +17,7 @@ from monitoring.prometheus_metrics import (
     http_request_duration_seconds,
     http_errors_total,
 )
+from monitoring.utils import monitor_cpu_usage, monitor_memory_usage
 from api.routes import router
 from core.logging import logger
 from db.init_db import create_database
@@ -168,14 +170,21 @@ async def prometheus_middleware(request: Request, call_next):
 
     start_time = time.time()
 
+    # Start the tasks monitoring saturation (memory and cpu)
+    memory_monitoring_task = asyncio.create_task(monitor_memory_usage(method, endpoint))
+    cpu_monitoring_task = asyncio.create_task(monitor_cpu_usage(method, endpoint))
+
     try:
         response: Response = await call_next(request)
-        status = response.status_code
     except Exception as e:
         http_errors_total.labels(method=method, endpoint=endpoint).inc()
         raise e
 
     duration = time.time() - start_time
+
+    # Stop saturation monitoring
+    memory_monitoring_task.cancel()
+    cpu_monitoring_task.cancel()
 
     # Record metrics
     http_requests_total.labels(method=method, endpoint=endpoint).inc()

@@ -22,11 +22,24 @@
   "links": [],
   "panels": [
     {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 11,
+      "panels": [],
+      "title": "4 Golden Signals",
+      "type": "row"
+    },
+    {
       "datasource": {
         "type": "prometheus",
         "uid": "beoaaj3d35udcd"
       },
-      "description": "This panel shows the total number of HTTP requests received by each endpoint over the past 5 minutes.",
+      "description": "This panel shows the total number of HTTP requests received by each endpoint over a given interval.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -79,13 +92,38 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Average"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 0
+        "y": 1
       },
       "id": 7,
       "options": {
@@ -105,10 +143,23 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(\r\n  increase(\r\n    http_requests_total{endpoint!~\"/health|/metrics|/docs|/openapi.json\"}[5m]\r\n  )\r\n) by (endpoint)",
+          "expr": "sum(\r\n  increase(\r\n    http_requests_total{endpoint!~\"/health|/metrics|/docs|/openapi.json\"}[$__rate_interval]\r\n  )\r\n) by (endpoint)",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "beoaaj3d35udcd"
+          },
+          "editorMode": "code",
+          "expr": "avg(\r\n  increase(http_requests_total{endpoint!~\"/health|/metrics|/docs|/openapi.json\"}[$__rate_interval])\r\n  )",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "Average",
+          "range": true,
+          "refId": "B"
         }
       ],
       "title": "Global Traffic",
@@ -119,6 +170,7 @@
         "type": "prometheus",
         "uid": "beoaaj3d35udcd"
       },
+      "description": "This metric calculates the rate of external requests over time, aggregated by the site label. It provides insight into how many external requests are being made per second, broken down by site, over a specified time interval.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -174,10 +226,225 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 12,
-        "w": 10,
+        "h": 8,
+        "w": 12,
         "x": 12,
-        "y": 0
+        "y": 1
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.0.2",
+      "targets": [
+        {
+          "disableTextWrap": false,
+          "editorMode": "code",
+          "expr": "sum by(site) (rate(external_requests_total[$__rate_interval]))",
+          "fullMetaSearch": false,
+          "includeNullMetadata": true,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A",
+          "useBackend": false
+        }
+      ],
+      "title": "External Trafic",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "beoaaj3d35udcd"
+      },
+      "description": "Represents the number of requests within a system for a given endpoint over a given time interval.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.0.2",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(rate(http_errors_total[$__rate_interval])) by (endpoint)",
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Errors",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "beoaaj3d35udcd"
+      },
+      "description": "Measures the time it takes for a request to travel from the source to the destination and back, typically expressed in milliseconds (ms) for a specific endpoint.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Median"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
       },
       "id": 1,
       "options": {
@@ -201,8 +468,112 @@
             "uid": "beoaaj3d35udcd"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.5, sum(rate(http_request_duration_seconds_bucket[1m])) by (le, handler))",
+          "expr": "histogram_quantile(\r\n  0.5,\r\n  sum(rate(http_request_duration_seconds_bucket{endpoint!~\"/health|/metrics|/docs|/openapi.json\"}[$__rate_interval])) by (le, endpoint)\r\n)",
+          "hide": false,
+          "instant": false,
           "legendFormat": "__auto",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "beoaaj3d35udcd"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(\r\n  0.5,\r\n  sum(\r\n    rate(http_request_duration_seconds_bucket{endpoint!~\"/health|/metrics|/docs|/openapi.json\"}[$__rate_interval])\r\n  ) by (le)\r\n)",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "Median",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Latence (ms)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "beoaaj3d35udcd"
+      },
+      "description": "Indicates the percentage of total CPU capacity currently in use across all cores. This metric reflects how heavily the CPU is being utilized by a specific endpoint.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "/api/predict"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": []
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "id": 5,
+      "options": {
+        "displayMode": "gradient",
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
+      },
+      "pluginVersion": "12.0.2",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "avg(cpu_saturation_percentage)",
+          "legendFormat": "Average",
           "range": true,
           "refId": "A"
         },
@@ -211,23 +582,28 @@
             "type": "prometheus",
             "uid": "beoaaj3d35udcd"
           },
+          "disableTextWrap": false,
           "editorMode": "code",
-          "expr": "histogram_quantile(0.5, sum(rate(prediction_time_seconds_bucket[1m])) by (le, model_type, symbol))",
+          "expr": "avg(cpu_saturation_percentage{endpoint!~\"/metrics|/health|/docs|/openapi.json\"}) by (endpoint)",
+          "fullMetaSearch": false,
           "hide": false,
+          "includeNullMetadata": true,
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
-          "refId": "B"
+          "refId": "B",
+          "useBackend": false
         }
       ],
-      "title": "latence (ms)",
-      "type": "timeseries"
+      "title": "CPU Usage (Saturation)",
+      "type": "bargauge"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "beoaaj3d35udcd"
       },
+      "description": "Represents the amount of system memory currently in use, measured in gigabytes (GB). This metric indicates how much memory is actively consumed by a specific endpoint.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -280,13 +656,38 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "Average"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": [
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": true
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
-        "y": 8
+        "x": 12,
+        "y": 17
       },
       "id": 6,
       "options": {
@@ -306,112 +707,143 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "training_memory_mb_usage_percent",
-          "legendFormat": "__auto",
+          "expr": "avg(memory_saturation_usage{endpoint!~\"/metrics|/health|/docs|/openapi.json\"})",
+          "legendFormat": "Average",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "beoaaj3d35udcd"
+          },
+          "editorMode": "code",
+          "expr": "avg(memory_saturation_usage{endpoint!~\"/metrics|/health|/docs|/openapi.json\"}) by (endpoint)",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "__auto",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "title": "Memory Usage (Saturation) (MB)",
+      "title": "Memory Usage (Saturation) (GB)",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "id": 10,
+      "panels": [],
+      "title": "ML/AI",
+      "type": "row"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "beoaaj3d35udcd"
       },
+      "description": "Represents the probability or certainty that the model's prediction is correct, typically expressed as a percentage or score between 0 and 1. A higher confidence value indicates that the model is more certain about its prediction, while a lower value suggests greater uncertainty.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
+            "mode": "thresholds"
           },
           "mappings": [],
+          "max": 1,
+          "min": 0,
           "thresholds": {
-            "mode": "absolute",
+            "mode": "percentage",
             "steps": [
               {
                 "color": "green"
               },
               {
+                "color": "dark-red",
+                "value": 0
+              },
+              {
                 "color": "red",
+                "value": 20
+              },
+              {
+                "color": "orange",
+                "value": 40
+              },
+              {
+                "color": "green",
+                "value": 60
+              },
+              {
+                "color": "dark-green",
                 "value": 80
               }
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "__systemRef": "hideSeriesFrom",
+            "matcher": {
+              "id": "byNames",
+              "options": {
+                "mode": "exclude",
+                "names": [
+                  "{__name__=\"prediction_confidence\", instance=\"stock-ai:8000\", job=\"stock-ai\", model_type=\"lstm\", symbol=\"AMZN\"}"
+                ],
+                "prefix": "All except:",
+                "readOnly": true
+              }
+            },
+            "properties": []
+          }
+        ]
       },
       "gridPos": {
-        "h": 6,
-        "w": 4,
-        "x": 12,
-        "y": 12
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 26
       },
-      "id": 3,
+      "id": 4,
       "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
         },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
       },
       "pluginVersion": "12.0.2",
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate(predictions_total{result=\"error\"}[1m])) by (model_type, symbol)",
-          "legendFormat": "__auto",
+          "expr": "avg(prediction_confidence) by (model_type, symbol)",
+          "legendFormat": "{{symbol}} | {{model_type}} ",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Errors",
-      "type": "timeseries"
+      "title": "Price Prediction Confidence",
+      "type": "gauge"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "beoaaj3d35udcd"
       },
+      "description": "Time spent doing sentiment analysis in secs",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -469,102 +901,10 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
-        "y": 16
-      },
-      "id": 5,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.0.2",
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "training_cpu_usage_percent",
-          "legendFormat": "__auto",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "CPU Usage (Saturation)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "beoaaj3d35udcd"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 12,
         "x": 12,
-        "y": 18
+        "y": 26
       },
-      "id": 2,
+      "id": 12,
       "options": {
         "legend": {
           "calcs": [],
@@ -582,105 +922,13 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate(predictions_total[1m])) by (model_type, symbol)",
-          "legendFormat": "__auto",
+          "expr": "rate(sentiment_analysis_time_seconds_sum[$__rate_interval]) \r\n/\r\nrate(sentiment_analysis_time_seconds_count[$__rate_interval])",
+          "legendFormat": "Avg Sentiment Time",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Traffic: Number of Predictions per Minute",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "beoaaj3d35udcd"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 12,
-        "w": 12,
-        "x": 0,
-        "y": 24
-      },
-      "id": 4,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "12.0.2",
-      "targets": [
-        {
-          "editorMode": "code",
-          "expr": "prediction_confidence",
-          "legendFormat": "__auto",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Confidence",
+      "title": "Sentiment Analysis Time",
       "type": "timeseries"
     }
   ],
@@ -698,5 +946,5 @@
   "timezone": "browser",
   "title": "Monolithe – Performance",
   "uid": "dadc3637-9e21-4edf-bf5c-ffb0cea61dae",
-  "version": 19
+  "version": 1
 }
