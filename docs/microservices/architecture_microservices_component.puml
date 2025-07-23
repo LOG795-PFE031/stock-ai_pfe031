@@ -1,0 +1,38 @@
+@startuml
+' Diagramme de composants - Architecture Microservices
+
+package "API Gateway" {
+  [API Service]
+}
+
+package "Core Services" {
+  [Data Service]
+  [Model Service]
+  [Training Service]
+  [Deployment Service]
+  [Monitoring Service]
+  [Orchestration Service]
+}
+
+package "External Services" {
+  [Database]
+  [MLflow]
+  [Grafana]
+  [Prometheus]
+}
+
+[API Service] --> [Data Service]
+[API Service] --> [Model Service]
+[API Service] --> [Training Service]
+[API Service] --> [Deployment Service]
+[API Service] --> [Monitoring Service]
+[API Service] --> [Orchestration Service]
+
+[Data Service] --> [Database]
+[Model Service] --> [MLflow]
+[Training Service] --> [MLflow]
+[Deployment Service] --> [MLflow]
+[Monitoring Service] --> [Prometheus]
+[Monitoring Service] --> [Grafana]
+
+@enduml 
