@@ -17,6 +17,18 @@ from .steps import (
 
 
 class DataProcessingService(BaseService):
+    """
+    Service responsible for end-to-end preprocessing and postprocessing of stock data
+    for different machine learning model types (e.g., LSTM, Prophet, XGBoost) across
+    training, prediction, and evaluation phases.
+
+    Responsibilities include:
+    - Cleaning and transforming raw stock data into model-ready format.
+    - Selecting and formatting features according to the model type and phase.
+    - Normalizing and unnormalizing data using model-specific scalers.
+    - Managing phase-specific logic (e.g., data splitting or promotion of scalers).
+
+    """
 
     def __init__(self):
         super().__init__()

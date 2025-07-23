@@ -48,4 +48,6 @@ class OutputFormatter(BaseDataProcessor):
         if self.model_type == "prophet":
             return ProphetOutputFormatter()
         else:
-            raise NotImplemented(f"No output formatter for model {self.model_type}")
+            raise NotImplementedError(
+                f"No output formatter for model {self.model_type}"
+            )

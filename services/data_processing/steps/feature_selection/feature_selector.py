@@ -40,8 +40,6 @@ class FeatureSelector(BaseDataProcessor):
         elif self.model_type == "prophet":
             return ProphetFeatureSelector()
         elif self.model_type == "xgboost":
-            raise NotImplementedError(
-                f"No feature selection stratagy implemented for the model {self.model_type}"
-            )
+            return AllFeatureSelector()
         else:
             raise ValueError(f"Unknown model_type: {self.model_type}")
