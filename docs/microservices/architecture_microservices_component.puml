@@ -1,38 +1,69 @@
-@startuml
-' Diagramme de composants - Architecture Microservices
+@startuml Component_Diagram
+
+title Stock-AI: Microservices Component Diagram
+
+skinparam component {
+  BackgroundColor LightSkyBlue
+  BorderColor DarkBlue
+  ArrowColor Black
+}
 
 package "API Gateway" {
-  [API Service]
+  [API Gateway] as api
 }
 
 package "Core Services" {
-  [Data Service]
-  [Model Service]
-  [Training Service]
-  [Deployment Service]
-  [Monitoring Service]
-  [Orchestration Service]
+  [Data Service] as dataService
+  [Data Processing Service] as dataProcessingService
+  [Training Service] as trainingService
+  [Deployment Service] as deploymentService
+  [Evaluation Service] as evaluationService
+  [Orchestration Service] as orchestrationService
+  [Monitoring Service] as monitoringService
+  [News Service] as newsService
+  [Visualization Service] as visualizationService
+}
+
+package "Databases" {
+  database "Stock Data DB" as stockDB
+  database "Prediction Storage" as predictionDB
+  database "Model Registry" as modelRegistry
 }
 
 package "External Services" {
-  [Database]
-  [MLflow]
-  [Grafana]
-  [Prometheus]
+  [MLflow] as mlflow
+  [Prefect] as prefect
+  [Prometheus] as prometheus
+  [News API] as newsAPI
 }
 
-[API Service] --> [Data Service]
-[API Service] --> [Model Service]
-[API Service] --> [Training Service]
-[API Service] --> [Deployment Service]
-[API Service] --> [Monitoring Service]
-[API Service] --> [Orchestration Service]
+' Core service relationships
+dataService --> stockDB
+dataProcessingService ..> dataService : uses
+orchestrationService --> dataService : loads data
+orchestrationService --> dataProcessingService : processes data
+orchestrationService --> trainingService : trains models
+orchestrationService --> deploymentService : deploys models
+orchestrationService --> evaluationService : evaluates models
+orchestrationService --> predictionDB : stores predictions
+monitoringService --> deploymentService : monitors models
+monitoringService --> orchestrationService : triggers retraining
+monitoringService --> dataService : detects data drift
+monitoringService --> dataProcessingService : analyzes processed data
+newsService --> newsAPI : fetches news data
+visualizationService --> dataService : fetches stock data
 
-[Data Service] --> [Database]
-[Model Service] --> [MLflow]
-[Training Service] --> [MLflow]
-[Deployment Service] --> [MLflow]
-[Monitoring Service] --> [Prometheus]
-[Monitoring Service] --> [Grafana]
+' External service relationships
+trainingService --> mlflow : logs models/metrics
+deploymentService --> mlflow : manages model lifecycle
+orchestrationService --> prefect : schedules workflows
+monitoringService --> prometheus : emits metrics
 
-@enduml 
+' API Gateway relationships
+api --> orchestrationService : orchestrates pipelines
+api --> dataService : fetches market data
+api --> newsService : gets sentiment analysis
+api --> visualizationService : gets visualizations
+api --> deploymentService : gets model info
+
+@enduml
