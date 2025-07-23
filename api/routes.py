@@ -68,7 +68,7 @@ async def health_check():
     """Check the health of all services."""
     try:
         # Import services from main to avoid circular imports
-        from main import (
+        from api.main import (
             deployment_service,
             news_service,
             training_service,
@@ -135,7 +135,7 @@ async def get_stocks_list():
 
     try:
         # Import services from main to avoid circular imports
-        from main import data_service
+        from api.main import data_service
 
         symbols_data = await data_service.get_nasdaq_stocks()
 
@@ -162,7 +162,7 @@ async def get_current_stock_data(
     """Get the current stock data for a symbol."""
     try:
         # Import services from main to avoid circular imports
-        from main import data_service
+        from api.main import data_service
 
         # Validate symbol
         if not validate_stock_symbol(symbol):
@@ -208,7 +208,7 @@ async def get_historical_stock_data(
     """Get historical stock data for a symbol."""
     try:
         # Import services from main to avoid circular imports
-        from main import data_service
+        from api.main import data_service
 
         # Validate symbol
         if not validate_stock_symbol(symbol):
@@ -267,7 +267,7 @@ async def get_reccent_stock_data(
     """Get recent stock data for a symbol (based on a number of days back)."""
     try:
         # Import services from main to avoid circular imports
-        from main import data_service
+        from api.main import data_service
 
         # Validate symbol
         if not validate_stock_symbol(symbol):
@@ -326,7 +326,7 @@ async def get_historical_stock_prices_from_end_date(
     """
     try:
         # Import services from main to avoid circular imports
-        from main import data_service
+        from api.main import data_service
 
         # Validate symbol
         if not validate_stock_symbol(symbol):
@@ -380,7 +380,7 @@ async def get_news_data(
     """Get news data for a symbol."""
     try:
         # Import services from main to avoid circular imports
-        from main import news_service
+        from api.main import news_service
 
         # Validate symbol
         if not validate_stock_symbol(symbol):
@@ -423,7 +423,7 @@ async def get_models():
     """List all available ML models."""
     try:
         # Import services from main to avoid circular imports
-        from main import deployment_service
+        from api.main import deployment_service
 
         models = await deployment_service.list_models()
         response = ModelListMlflowResponse(
@@ -449,7 +449,7 @@ async def get_model_metadata(model_name: str):
     """Get metadata for a specific model."""
     try:
         # Import services from main to avoid circular imports
-        from main import deployment_service
+        from api.main import deployment_service
 
         metadata = await deployment_service.get_model_metadata(model_name)
         print(f"Model metadata for {model_name}: {metadata}")
@@ -472,7 +472,7 @@ async def get_next_day_prediction(
     """Get stock price prediction for the next day."""
     try:
         # Import services from main to avoid circular imports
-        from main import orchestation_service
+        from api.main import orchestation_service
 
         # Validate symbol
         if not validate_stock_symbol(symbol):
@@ -515,7 +515,7 @@ async def get_historical_predictions(
     """Get historical predictions for a symbol."""
     try:
         # Import services from main to avoid circular imports
-        from main import orchestation_service
+        from api.main import orchestation_service
 
         # Validate symbol
         if not validate_stock_symbol(symbol):
@@ -551,7 +551,7 @@ async def get_trainers():
     """
     try:
         # Import services from main to avoid circular imports
-        from main import training_service
+        from api.main import training_service
 
         # Get the trainers
         trainers_response = await training_service.get_trainers()
@@ -587,7 +587,7 @@ async def train_model(
     """Train a new model for a symbol."""
     try:
         # Import services from main to avoid circular imports
-        from main import orchestation_service
+        from api.main import orchestation_service
 
         # Validate symbol
         if not validate_stock_symbol(symbol):
@@ -632,7 +632,7 @@ async def get_training_status(task_id: str):
 
     try:
         # Import services from main to avoid circular imports
-        from main import training_service
+        from api.main import training_service
 
         status = await training_service.get_training_status(task_id)
         return TrainingStatusResponse(**status)
@@ -653,7 +653,7 @@ async def get_training_tasks():
 
     try:
         # Import services from main to avoid circular imports
-        from main import training_service
+        from api.main import training_service
 
         tasks = await training_service.get_training_tasks()
         return TrainingTasksResponse(tasks=tasks)
@@ -669,7 +669,7 @@ async def cleanup_stock_data(symbol: Optional[str] = None):
     """Clean up and maintain stock data files."""
     try:
         # Import services from main to avoid circular imports
-        from main import data_service
+        from api.main import data_service
 
         # Clean up data
         result = await data_service.cleanup_data(symbol)

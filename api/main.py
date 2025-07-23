@@ -4,6 +4,7 @@ Main application module for Stock AI.
 
 import asyncio
 import os
+import httpx
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,9 +30,13 @@ from services import (
     DeploymentService,
     EvaluationService,
     RabbitMQService,
-    MonitoringService,
+    # MonitoringService,
 )
 from services.orchestration import OrchestrationService
+
+# HTTP client for monitoring-service
+MONITORING_URL = os.getenv("MONITORING_SERVICE_URL", "http://monitoring-service:8008")
+monitoring_client = httpx.AsyncClient(base_url=MONITORING_URL)
 
 # Create necessary directories
 os.makedirs("data/news", exist_ok=True)
@@ -51,14 +56,14 @@ orchestation_service = OrchestrationService(
     evaluation_service=evaluation_service,
 )
 rabbitmq_service = RabbitMQService()
-monitoring_service = MonitoringService(
-    deployment_service,
-    orchestation_service,
-    data_service,
-    data_processing_service,
-    check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
-    data_interval_seconds=7 * 24 * 60 * 60,
-)
+# monitoring_service = MonitoringService(
+#     deployment_service,
+#     orchestation_service,
+#     data_service,
+#     data_processing_service,
+#     check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
+#     data_interval_seconds=7 * 24 * 60 * 60,
+# )
 
 
 @asynccontextmanager
@@ -79,7 +84,7 @@ async def lifespan(app: FastAPI):
         await deployment_service.initialize()
         await evaluation_service.initialize()
         await orchestation_service.initialize()
-        await monitoring_service.initialize()
+        # await monitoring_service.initialize()
 
         logger["main"].info("All services initialized successfully")
         yield
@@ -94,7 +99,7 @@ async def lifespan(app: FastAPI):
             logger["main"].info("Shutting down services...")
 
             # Cleanup in reverse order of initialization
-            await monitoring_service.cleanup()
+            # await monitoring_service.cleanup()
             await orchestation_service.cleanup()
             await evaluation_service.cleanup()
             await deployment_service.cleanup()
@@ -204,6 +209,12 @@ async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
 
+# Monitoring-service proxy endpoint
+@app.get("/monitoring/health", tags=["System"])
+async def monitoring_health():
+    r = await monitoring_client.get("/health")
+    r.raise_for_status()
+    return r.json()
 
 # Prometheus metrics
 @app.get("/metrics")
