@@ -2,42 +2,46 @@ import asyncio
 import psutil
 
 from monitoring.prometheus_metrics import (
-    training_cpu_usage_percent,
-    training_memory_mb_usage_percent,
+    cpu_saturation_percentage,
+    memory_saturation_mb_usage,
 )
 
 # Interval of monitoring
-MONITOR_INTERVAL_SECONDS = 5
+MONITOR_INTERVAL_SECONDS = 1
 
 
 # CPU usage monitor
-async def monitor_training_cpu_usage(model_type, symbol):
+async def monitor_cpu_usage(method, endpoint):
     """
-    Monitor the cpu usage while training a model (Prometheus)
+    Monitors the CPU usage and updates the Prometheus metrics for the specified method and endpoint.
+
+    Args:
+        - method (str): The HTTP method (e.g., 'GET', 'POST') to associate with the CPU usage
+            metric.
+        - endpoint (str): The endpoint URL to associate with the CPU usage metric.
     """
-    process = psutil.Process()
-    gauge = training_cpu_usage_percent.labels(symbol=symbol, model_type=model_type)
-
-    # Prime the measurement (first call returns 0.0)
-    process.cpu_percent(interval=None)
-
     while True:
-        cpu = process.cpu_percent(interval=None)
-        gauge.set(cpu)
+        cpu_percentage = psutil.cpu_percent(interval=1)
+        cpu_saturation_percentage.labels(method=method, endpoint=endpoint).set(
+            cpu_percentage
+        )
         await asyncio.sleep(MONITOR_INTERVAL_SECONDS)
 
 
-async def monitor_training_memory_usage(symbol: str, model_type: str):
+async def monitor_memory_usage(method, endpoint):
     """
-    Monitor the memory usage while training a model (Prometheus)
-    """
-    process = psutil.Process()
-    gauge = training_memory_mb_usage_percent.labels(
-        symbol=symbol, model_type=model_type
-    )
+    Monitors memory usage and updates the Prometheus metrics for the specified method and
+    endpoint.
 
+    Args:
+        - method (str): The HTTP method (e.g., 'GET', 'POST') to associate with the memory usage
+            metric.
+        - endpoint (str): The endpoint URL or route to associate with the memory usage metric.
+    """
     while True:
-        mem_info = process.memory_info()
-        memory_mb = mem_info.rss / 1024 / 1024  # Convert bytes to MB
-        gauge.set(memory_mb)
+        mem_info = psutil.virtual_memory()
+        mem_mb_usage = round(mem_info.used / (1024**3), 2)
+        memory_saturation_mb_usage.labels(method=method, endpoint=endpoint).set(
+            mem_mb_usage
+        )
         await asyncio.sleep(MONITOR_INTERVAL_SECONDS)

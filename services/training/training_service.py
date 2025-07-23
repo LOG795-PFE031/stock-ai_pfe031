@@ -4,19 +4,18 @@ Training service for model training and evaluation.
 
 from typing import Dict, Any, List
 from datetime import datetime
+import time
 import asyncio
 import os
 import random
 import numpy as np
 import tensorflow as tf
 
+from .model_registry import ModelRegistry
 from ..base_service import BaseService
 from core.utils import validate_stock_symbol
 from core.types import ProcessedData
 from core.logging import logger
-from monitoring.prometheus_metrics import training_total
-from monitoring.utils import monitor_training_cpu_usage, monitor_training_memory_usage
-from .model_registry import ModelRegistry
 import services.training.models  # Dynamically imports models modules
 
 
@@ -137,16 +136,6 @@ class TrainingService(BaseService):
             }
 
         try:
-            # Begin to monitor cpu usage
-            monitor_task = asyncio.create_task(
-                monitor_training_cpu_usage(model_type, symbol)
-            )
-
-            # Begin to monitor memory usage
-            monitor_task = asyncio.create_task(
-                monitor_training_memory_usage(model_type, symbol)
-            )
-
             # Create the model
             model = ModelRegistry.create(name=model_type, symbol=symbol)
 
@@ -162,18 +151,11 @@ class TrainingService(BaseService):
 
             # Wait for training completion
             result = await task
-            self.logger.info(f"Training completed for {model_type} model for {symbol}.")
 
-            # Stop the monitor after training completes
-            monitor_task.cancel()
+            self.logger.info(f"Training completed for {model_type} model for {symbol}.")
 
             # Remove completed task
             del self.training_tasks[task_key]
-
-            # Log the sucessful training count (Prometheus)
-            training_total.labels(
-                model_type=model_type, symbol=symbol, result="sucess"
-            ).inc()
 
             self.logger.info(
                 f"Training successful for {model_type} model for {symbol}."
@@ -189,11 +171,6 @@ class TrainingService(BaseService):
             self.logger.error(
                 f"Error training {model_type} model for {symbol}: {str(e)}"
             )
-
-            # Log the unsucessful training count (Prometheus)
-            training_total.labels(
-                model_type=model_type, symbol=symbol, result="error"
-            ).inc()
 
             return {
                 "status": "error",

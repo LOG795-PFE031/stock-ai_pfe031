@@ -27,7 +27,6 @@ from api.schemas import (
 from core.config import config
 from core.logging import logger
 from core.utils import validate_stock_symbol, get_date_range
-from monitoring.prometheus_metrics import prediction_time_seconds
 
 # Create router
 router = APIRouter()
@@ -481,21 +480,12 @@ async def get_next_day_prediction(
                 status_code=400, detail=f"Invalid stock symbol: {symbol}"
             )
 
-        start_time = time.time()
-
         # Get prediction using the new method
         prediction = await orchestation_service.run_prediction_pipeline(
             model_type=model_type, symbol=symbol
         )
 
-        elapsed = time.time() - start_time
-
         if prediction.get("status") == "success":
-            # Observe latency in seconds
-            prediction_time_seconds.labels(
-                model_type=model_type, symbol=symbol
-            ).observe(elapsed)
-
             return prediction
 
         error_msg = prediction.get("error", "Unknown error")

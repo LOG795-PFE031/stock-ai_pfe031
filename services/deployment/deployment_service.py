@@ -8,8 +8,6 @@ import pandas as pd
 
 from core.logging import logger
 from monitoring.prometheus_metrics import (
-    predictions_total,
-    prediction_time_seconds,
     prediction_confidence,
 )
 from services.base_service import BaseService
@@ -138,81 +136,61 @@ class DeploymentService(BaseService):
         """
 
         try:
-            model_type, symbol, _ = model_identifier.split("_", 2)
-        except ValueError:
-            model_type, symbol = model_identifier, ""
+            self.logger.info("Starting prediction using model %s.", model_identifier)
 
-        # Time the prediction
-        with prediction_time_seconds.labels(
-            model_type=model_type, symbol=symbol
-        ).time():
-            try:
-                self.logger.info(
-                    "Starting prediction using model %s.", model_identifier
+            # Generate input hash for caching
+            input_hash = self._hash_input(X)
+            if not input_hash:
+                self.logger.warning(
+                    "Could not generate a valid input hash. Caching will be skipped."
                 )
+                cache_key = None
+            else:
+                cache_key = (model_identifier, input_hash)
+                self.logger.debug("Cache key generated: %s", cache_key)
 
-                # Generate input hash for caching
-                input_hash = self._hash_input(X)
-                if not input_hash:
-                    self.logger.warning(
-                        "Could not generate a valid input hash. Caching will be skipped."
+            # Load model version
+            model_result = self.mlflow_model_manager.load_model(model_identifier)
+            model = model_result["model"]
+            current_version = model_result["version"]
+
+            # Log the successful loading of the model
+            self.logger.debug(
+                "Model %s successfully loaded with version %s.",
+                model_identifier,
+                current_version,
+            )
+
+            # Use cache if available and version matches
+            if cache_key and cache_key in self._prediction_cache:
+                cached_pred, cached_ver = self._prediction_cache[cache_key]
+                if cached_ver == current_version:
+                    self.logger.debug(
+                        "Using cached prediction for model %s with input hash %s",
+                        model_identifier,
+                        input_hash,
                     )
-                    cache_key = None
-                else:
-                    cache_key = (model_identifier, input_hash)
-                    self.logger.debug("Cache key generated: %s", cache_key)
+                    return {"predictions": cached_pred, "model_version": cached_ver}
 
-                # Load model version
-                model_result = self.mlflow_model_manager.load_model(model_identifier)
-                model = model_result["model"]
-                current_version = model_result["version"]
+            # Perform prediction
+            predictions = model.predict(X)
 
-                # Log the successful loading of the model
-                self.logger.debug(
-                    "Model %s successfully loaded with version %s.",
-                    model_identifier,
-                    current_version,
-                )
+            # Log the completion of the prediction
+            self.logger.info("Prediction completed for model %s.", model_identifier)
 
-                # Use cache if available and version matches
-                if cache_key and cache_key in self._prediction_cache:
-                    cached_pred, cached_ver = self._prediction_cache[cache_key]
-                    if cached_ver == current_version:
-                        self.logger.debug(
-                            "Using cached prediction for model %s with input hash %s",
-                            model_identifier,
-                            input_hash,
-                        )
-                        return {"predictions": cached_pred, "model_version": cached_ver}
+            # Cache the result
+            if cache_key:
+                self._prediction_cache[cache_key] = (predictions, current_version)
+                self.logger.debug("Prediction cached for key %s.", cache_key)
 
-                # Perform prediction
-                predictions = model.predict(X)
+            return {"predictions": predictions, "model_version": current_version}
 
-                # Add succesful prediction
-                predictions_total.labels(
-                    model_type=model_type, symbol=symbol, result="sucess"
-                ).inc()
+        except Exception as e:
 
-                # Log the completion of the prediction
-                self.logger.info("Prediction completed for model %s.", model_identifier)
-
-                # Cache the result
-                if cache_key:
-                    self._prediction_cache[cache_key] = (predictions, current_version)
-                    self.logger.debug("Prediction cached for key %s.", cache_key)
-
-                return {"predictions": predictions, "model_version": current_version}
-
-            except Exception as e:
-                # Add unsuccesful prediction
-                predictions_total.labels(
-                    model_type=model_type, symbol=symbol, result="error"
-                ).inc()
-
-                self.logger.error(
-                    "Failed to predict with model %s: %s", model_identifier, str(e)
-                )
-                raise
+            self.logger.error(
+                "Failed to predict with model %s: %s", model_identifier, str(e)
+            )
+            raise
 
     async def calculate_prediction_confidence(
         self, model_type: str, symbol: str, prediction_input, y_pred
