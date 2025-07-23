@@ -1,0 +1,190 @@
+# Complete Stock-ai structure
+stock-ai
+├─ api
+│  ├─ routes.py
+│  ├─ schemas.py
+│  └─ __init__.py
+├─ chatbot
+│  ├─ chatbot.py
+│  ├─ mock_prediction_service.py
+│  ├─ mock_sentiment_service.py
+│  ├─ requirements.txt
+│  └─ user_data.db
+├─ core # Shared core functionality 
+│  ├─ config.py
+│  ├─ logging.py
+│  ├─ progress.py
+│  ├─ types.py
+│  ├─ utils.py
+│  └─ __init__.py
+├─ data
+│  ├─ predictions
+│  ├─ processed
+│  ├─ raw
+│  └─ scalers
+│     └─ lstm
+│        ├─ AAPL
+│        │  ├─ 2024-02-02_2025-01-23
+│        │  │  ├─ features
+│        │  │  └─ targets
+│        │  ├─ 2024-02-05_2025-01-23
+│        │  │  ├─ features
+│        │  │  └─ targets
+│        └─ LULU
+│           └─ 2024-02-02_2025-01-23
+│              ├─ features
+│              └─ targets
+├─ db
+│  ├─ init.sql
+│  ├─ init_db.py
+│  ├─ models
+│  │  ├─ base.py
+│  │  ├─ prediction.py
+│  │  ├─ stock_price.py
+│  │  └─ __init__.py
+│  ├─ session.py
+│  └─ __init__.py
+├─ docker-compose.yml
+├─ Dockerfile
+├─ Dockerfile.mlflow
+├─ main.py
+├─ models
+│  ├─ general
+│  │  ├─ general_model.keras
+│  │  └─ training_history.png
+│  ├─ news
+│  ├─ prophet # (Contains the Stock_prophet_metadata.json)
+│  └─ specific # (Contains the stocks _model .keras, . _scaler_metadata.json and _training_history.png)
+├─ monitoring
+│  ├─ grafana
+│  │  ├─ csv
+│  │  ├─ dashboards
+│  │  │  └─ Monolithe – Performance-1753229077687.json
+│  │  ├─ pdf
+│  │  ├─ png
+│  │  └─ provisioning
+│  │     ├─ dashboards
+│  │     │  └─ dashboards.yml
+│  │     └─ datasources
+│  │        └─ datasources.yml
+│  ├─ prometheus.yml
+│  ├─ prometheus_metrics.py
+│  ├─ utils.py
+│  └─ __init__.py
+├─ prometheus
+├─ README.md
+├─ requirements.txt
+├─ services
+│  ├─ base_service.py
+│  ├─ data_processing
+│  │  ├─ abstract.py
+│  │  ├─ data_processing_service.py
+│  │  ├─ scaler_manager.py
+│  │  ├─ steps
+│  │  │  ├─ cleaner.py
+│  │  │  ├─ feature_builder.py
+│  │  │  ├─ feature_selection
+│  │  │  │  ├─ feature_selector.py
+│  │  │  │  ├─ strategies
+│  │  │  │  │  ├─ all_features_selector.py
+│  │  │  │  │  ├─ base_strategy.py
+│  │  │  │  │  ├─ ohlcv_feature_selector.py
+│  │  │  │  │  ├─ prophet_feature_selector.py
+│  │  │  │  │  ├─ seasonal_features_selector.py
+│  │  │  │  │  ├─ technical_analysis_feature_selector.py
+│  │  │  │  │  └─ __init__.py
+│  │  │  │  └─ __init__.py
+│  │  │  ├─ formatters
+│  │  │  │  ├─ input_formatter.py
+│  │  │  │  ├─ input_strategies
+│  │  │  │  │  ├─ base_strategy.py
+│  │  │  │  │  ├─ prophet_formatter.py
+│  │  │  │  │  ├─ sequence_formatter.py
+│  │  │  │  │  └─ __init__.py
+│  │  │  │  ├─ output_formatter.py
+│  │  │  │  ├─ output_strategies
+│  │  │  │  │  ├─ base_strategy.py
+│  │  │  │  │  ├─ numpy_formatter.py
+│  │  │  │  │  ├─ prophet_formatter.py
+│  │  │  │  │  └─ __init__.py
+│  │  │  │  └─ __init__.py
+│  │  │  ├─ normalizer
+│  │  │  │  ├─ normalizer.py
+│  │  │  │  ├─ scaler_factory.py
+│  │  │  │  └─ __init__.py
+│  │  │  ├─ splitter.py
+│  │  │  └─ __init__.py
+│  │  └─ __init__.py
+│  ├─ data_service.py
+│  ├─ deployment
+│  │  ├─ confidence
+│  │  │  ├─ confidence_calculator.py
+│  │  │  ├─ strategies
+│  │  │  │  ├─ base_strategy.py
+│  │  │  │  ├─ lstm_confidence.py
+│  │  │  │  ├─ prophet_confidence.py
+│  │  │  │  └─ __init__.py
+│  │  │  └─ __init__.py
+│  │  ├─ deployment_service.py
+│  │  ├─ mlflow_model_manager.py
+│  │  └─ __init__.py
+│  ├─ evaluation_service.py
+│  ├─ monitoring
+│  │  ├─ monitoring_service.py
+│  │  └─ __init__.py
+│  ├─ news_service.py
+│  ├─ orchestration
+│  │  ├─ flows
+│  │  │  ├─ deployment_flow.py
+│  │  │  ├─ evaluation_flow.py
+│  │  │  ├─ prediction_flow.py
+│  │  │  ├─ training_flow.py
+│  │  │  └─ __init__.py
+│  │  ├─ orchestration_service.py
+│  │  ├─ prediction_storage.py
+│  │  ├─ tasks
+│  │  │  ├─ data
+│  │  │  │  ├─ load.py
+│  │  │  │  ├─ postprocess.py
+│  │  │  │  ├─ preprocess.py
+│  │  │  │  └─ __init__.py
+│  │  │  ├─ deployment
+│  │  │  │  ├─ is_ready_for_deployment.py
+│  │  │  │  ├─ production_model_exists.py
+│  │  │  │  ├─ promote_model.py
+│  │  │  │  ├─ promote_scaler.py
+│  │  │  │  └─ __init__.py
+│  │  │  ├─ evaluation
+│  │  │  │  ├─ evaluate.py
+│  │  │  │  ├─ log_evaluation_metrics.py
+│  │  │  │  └─ __init__.py
+│  │  │  ├─ prediction
+│  │  │  │  ├─ calculate_prediction_confidence.py
+│  │  │  │  ├─ predict.py
+│  │  │  │  └─ __init__.py
+│  │  │  ├─ training
+│  │  │  │  ├─ train.py
+│  │  │  │  └─ __init__.py
+│  │  │  └─ __init__.py
+│  │  └─ __init__.py
+│  ├─ training
+│  │  ├─ models
+│  │  │  ├─ base_model.py
+│  │  │  ├─ lstm_model.py
+│  │  │  ├─ prophet_model.py
+│  │  │  ├─ saving_strategies.py
+│  │  │  └─ __init__.py
+│  │  ├─ model_registry.py
+│  │  ├─ predictors
+│  │  │  ├─ lstm_predictor.py
+│  │  │  ├─ prophet_predictor.py
+│  │  │  └─ __init__.py
+│  │  ├─ trainers
+│  │  │  ├─ base_trainer.py
+│  │  │  ├─ lstm_trainer.py
+│  │  │  ├─ prophet_trainer.py
+│  │  │  └─ __init__.py
+│  │  ├─ training_service.py
+│  │  └─ __init__.py
+│  └─ __init__.py
+└─ test_services.py

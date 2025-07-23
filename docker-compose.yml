@@ -58,12 +58,12 @@ services:
   stock-ai:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: api/Dockerfile
     container_name: stock-ai
     ports:
       - "8000:8000"
     volumes:
-      - .:/app
+      # - .:/app
       - ./data:/app/data
       - ./mlruns:/app/mlruns
     environment:
