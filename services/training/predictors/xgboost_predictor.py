@@ -1,17 +1,16 @@
 from mlflow.pyfunc import PythonModel
 
 
-class LSTMPredictor(PythonModel):
+class XGBoostPredictor(PythonModel):
     def load_context(self, context):
-        from keras import models  # Replace tensorflow import
+        import joblib
 
         model_path = context.artifacts.get("model")
         if not model_path:
             raise ValueError(
-                "Model path for LSTM model is missing from MLflow artifacts."
+                "Model path for the XGBoost model is missing from MLflow artifacts."
             )
-
-        self.model = models.load_model(model_path, compile=False)
+        self.model = joblib.load(model_path)
 
     def predict(self, context, model_input, params=None):
         return self.model.predict(model_input)

@@ -1,10 +1,10 @@
 from services.data_processing.abstract import BaseDataProcessor
 from core.types import ProcessedData
-
 from .input_strategies import (
     InputFormatterStrategy,
     SequenceInputFormatter,
     ProphetInputFormatter,
+    XGBoostInputFormatter,
 )
 
 
@@ -40,5 +40,7 @@ class InputFormatter(BaseDataProcessor):
             return SequenceInputFormatter()
         elif self.model_type == "prophet":
             return ProphetInputFormatter()
+        elif self.model_type == "xgboost":
+            return XGBoostInputFormatter()
         else:
-            raise NotImplemented(f"No input formatter for model {self.model_type}")
+            raise NotImplementedError(f"No input formatter for model {self.model_type}")
