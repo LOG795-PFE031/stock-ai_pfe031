@@ -2,6 +2,7 @@ from .strategies import (
     ConfidenceCalculatorStrategy,
     LSTMConfidenceCalculator,
     ProphetConfidenceCalculator,
+    XGBoostConfidenceCalculator,
 )
 
 
@@ -28,6 +29,9 @@ class ConfidenceCalculator:
             return LSTMConfidenceCalculator()
         elif self.model_type == "prophet":
             return ProphetConfidenceCalculator()
+        elif self.model_type == "xgboost":
+            return XGBoostConfidenceCalculator()
         else:
-            # There is no confidence calculator for other models
-            return None
+            raise NotImplementedError(
+                f"No confidence calculator implemented for model type '{self.model_type}'"
+            )
