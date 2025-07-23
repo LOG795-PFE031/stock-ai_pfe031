@@ -97,21 +97,14 @@ class PredictionStorage:
                     Prediction.model_type == model_type,
                 )
                 result = await session.execute(query)
-                results = result.scalars().all()
+                dates = result.scalars().all()
 
-                if not results:
+                if not dates:
                     return []
 
-                # Use DataFrame for further processing
-                df = pd.DataFrame(results)
+                # Convert dates to strings directly (no DataFrame needed)
+                return [date.strftime("%Y-%m-%d") for date in dates]
 
-                # Convert 'date' column to datetime if it's not already
-                df["date"] = pd.to_datetime(df["date"])
-
-                # Extract the unique list of dates for which predictions have been made
-                existing_dates = df["date"].dt.strftime("%Y-%m-%d").unique().tolist()
-
-                return existing_dates
             except Exception as e:
                 self.logger.error(
                     "Error fetching existing prediction dates for symbol %s: %s",
