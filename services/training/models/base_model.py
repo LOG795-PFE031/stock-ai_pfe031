@@ -2,17 +2,17 @@
 Base model class for model training.
 """
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from pathlib import Path
 
 import mlflow
 from mlflow.pyfunc import PythonModel
 
-from .saving_strategies import BaseSaver
 from core.config import config
-from core.types import ProcessedData
 from core.logging import logger
+from core.types import ProcessedData
 from services.training.trainers import BaseTrainer
+from .saving_strategies import BaseSaver
 
 
 class BaseModel(ABC, PythonModel):
@@ -83,7 +83,7 @@ class BaseModel(ABC, PythonModel):
 
         except Exception as e:
             raise RuntimeError(
-                f"Failed to train and save model '{self.model_name}': {e}"
+                f"Failed to train and save model '{self.model_type}': {e}"
             ) from e
 
     def _get_training_model_dir(self) -> Path:
