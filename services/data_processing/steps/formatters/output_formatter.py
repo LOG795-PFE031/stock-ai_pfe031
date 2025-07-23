@@ -1,12 +1,14 @@
 import numpy as np
+import pandas as pd
 
+from core.types import ProcessedData
 from services.data_processing.abstract import BaseDataProcessor
 from .output_strategies import (
     ProphetOutputFormatter,
+    PandasSeriesFormatter,
     NumpyOutputFormatter,
     OutputFormatterStrategy,
 )
-from core.types import ProcessedData
 
 
 class OutputFormatter(BaseDataProcessor):
@@ -36,6 +38,8 @@ class OutputFormatter(BaseDataProcessor):
             if isinstance(y, list) or isinstance(y, np.ndarray):
                 y = np.array(y)  # Convert to numpy array (for list instance)
                 data_formatter = NumpyOutputFormatter()
+            elif isinstance(y, pd.Series):
+                data_formatter = PandasSeriesFormatter()
             else:
                 data_formatter = self._get_data_formatter()
 
