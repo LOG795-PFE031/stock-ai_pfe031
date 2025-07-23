@@ -1,0 +1,68 @@
+@startuml Compensation_Actions
+
+title Stock-AI: Saga Compensation Actions
+
+participant "Orchestration Service\n(Saga Coordinator)" as orchestrator
+participant "Compensation Handler" as compensation
+participant "Data Service" as dataService
+participant "Data Processing Service" as processing
+participant "Training Service" as training
+participant "Deployment Service" as deployment
+database "MLflow" as mlflow
+database "Saga State Store" as sagaStore
+
+' Start with a failure scenario
+-> orchestrator : SagaFailureEvent
+
+activate orchestrator
+orchestrator -> sagaStore : get_saga_state(saga_id)
+activate sagaStore
+sagaStore --> orchestrator : current_saga_state
+deactivate sagaStore
+
+orchestrator -> compensation : handle_failure(saga_id, current_saga_state)
+activate compensation
+
+' Based on the current saga state, determine which compensating actions to take
+alt state == "model_deployed"
+    compensation -> deployment : rollback_deployment(model_version)
+    activate deployment
+    deployment -> mlflow : archive_model_version()
+    deployment --> compensation : deployment_rolled_back
+    deactivate deployment
+end
+
+alt state == "model_evaluated" || state == "model_trained"
+    compensation -> training : cancel_run(run_id)
+    activate training
+    training -> mlflow : delete_run()
+    training --> compensation : run_cancelled
+    deactivate training
+end
+
+alt state == "data_processed"
+    compensation -> processing : cleanup_processed_data(processing_id)
+    activate processing
+    processing --> compensation : processed_data_cleaned
+    deactivate processing
+end
+
+alt state == "data_loaded"
+    compensation -> dataService : mark_data_invalid(data_id)
+    activate dataService
+    dataService --> compensation : data_marked_invalid
+    deactivate dataService
+end
+
+compensation -> sagaStore : update_saga_state(saga_id, "compensated")
+activate sagaStore
+sagaStore --> compensation : updated
+deactivate sagaStore
+
+compensation --> orchestrator : compensation_completed
+deactivate compensation
+
+orchestrator --> : saga_failure_handled
+deactivate orchestrator
+
+@enduml

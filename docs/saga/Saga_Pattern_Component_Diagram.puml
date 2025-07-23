@@ -1,0 +1,84 @@
+@startuml Saga_Pattern_Component_Diagram
+
+title Stock-AI: Saga Pattern Implementation
+
+skinparam component {
+  BackgroundColor LightSkyBlue
+  BorderColor DarkBlue
+  ArrowColor Black
+}
+
+package "API Gateway" {
+  [API Gateway] as api
+}
+
+package "Saga Orchestrator" {
+  [Orchestration Service] as orchestrator
+  [Saga State Store] as sagaStore
+  [Compensation Handler] as compensationHandler
+}
+
+package "Core Services" {
+  [Data Service] as dataService
+  [Data Processing Service] as dataProcessingService
+  [Training Service] as trainingService
+  [Evaluation Service] as evaluationService
+  [Deployment Service] as deploymentService
+  [Monitoring Service] as monitoringService
+  [News Service] as newsService
+}
+
+package "Message Broker" {
+  queue "Command Queue" as commandQueue
+  queue "Event Queue" as eventQueue
+}
+
+package "Databases" {
+  database "Stock Data DB" as stockDB
+  database "Processed Data DB" as processedDB
+  database "Prediction Storage" as predictionDB
+  database "Model Registry" as modelRegistry
+}
+
+package "External Services" {
+  [MLflow] as mlflow
+  [Prefect] as prefect
+}
+
+' API Gateway interactions
+api --> orchestrator : initiates saga
+
+' Orchestrator interactions with queues
+orchestrator --> commandQueue : sends commands
+orchestrator <-- eventQueue : receives events
+orchestrator --> sagaStore : stores saga state
+orchestrator --> compensationHandler : triggers on failure
+
+' Service interactions with queues
+commandQueue --> dataService : data load command
+commandQueue --> dataProcessingService : processing command
+commandQueue --> trainingService : training command
+commandQueue --> evaluationService : evaluation command
+commandQueue --> deploymentService : deployment command
+
+' Event publications
+dataService --> eventQueue : DataLoadedEvent
+dataProcessingService --> eventQueue : DataProcessedEvent
+trainingService --> eventQueue : ModelTrainedEvent
+evaluationService --> eventQueue : ModelEvaluatedEvent
+deploymentService --> eventQueue : ModelDeployedEvent
+
+' Service databases
+dataService --> stockDB
+dataProcessingService --> processedDB
+trainingService --> mlflow
+evaluationService --> predictionDB
+deploymentService --> modelRegistry
+
+' Compensation paths (dashed)
+compensationHandler ..> dataService : rollback data load
+compensationHandler ..> dataProcessingService : rollback processing
+compensationHandler ..> trainingService : cancel training
+compensationHandler ..> deploymentService : rollback deployment
+
+@enduml
