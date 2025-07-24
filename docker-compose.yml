@@ -18,6 +18,13 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
+  services:
+  news-service:
+    build: ./services/news
+    container_name: news-service
+    ports:
+      - "8002:8000"
+    restart: unless-stopped
 
   prefect-server:
     image: prefecthq/prefect:3-latest
