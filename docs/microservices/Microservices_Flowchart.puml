@@ -1,0 +1,43 @@
+@startuml Microservices_Flowchart
+
+title Stock-AI: Microservices Flowchart (with Monitoring & Visualization)
+
+skinparam rectangle {
+  BackgroundColor LightSkyBlue
+  BorderColor DarkBlue
+  FontColor Black
+}
+
+actor User as user
+
+rectangle "API Gateway / Frontend\n(api-gateway:8000:8000)" as gateway
+rectangle "Data Service\n(data-service:8001:8000)" as data
+rectangle "News Service\n(news-service:8002:8000)" as news
+rectangle "Data Processing Service\n(data-processing-service:8003:8000)" as dataProcessing
+rectangle "Training Service\n(training-service:8004:8000)" as training
+rectangle "Deployment Service\n(deployment-service:8005:8000)" as deployment
+rectangle "Evaluation Service\n(evaluation-service:8006:8000)" as evaluation
+rectangle "System/Monitoring Service\n(monitoring-service:8007:8000)" as monitoring
+rectangle "Orchestration Service\n(orchestration-service:8008:8000)" as orchestration
+rectangle "Chatbot Service" as chatbot
+rectangle "Prometheus" as prometheus
+rectangle "Grafana" as grafana
+
+user --> gateway : Uses Web/API
+
+gateway --> data : GET /data/stocks\nGET /data/stock/current\nGET /data/stock/historical\nGET /data/stock/recent\nGET /data/stock/from-end-date\nPOST /data/cleanup
+gateway --> news : GET /news/
+gateway --> dataProcessing : (add endpoints as needed)
+gateway --> training : GET /train/trainers\nPOST /train\nGET /train/status/{task_id}\nGET /train/tasks
+gateway --> deployment : GET /models\nGET /models/{model_name}\nGET /predict\nGET /predict/historical
+gateway --> evaluation : (add endpoints as needed)
+gateway --> orchestration : GET /orchestration/train\nGET /orchestration/predict\nGET /orchestration/evaluate\nGET /orchestration/predict/historical\nPOST /orchestration/cleanup
+gateway --> chatbot : POST /chat\n
+gateway --> prometheus : GET /health\nGET /metrics
+
+' Monitoring flow
+monitoring --> prometheus : exposes metrics
+grafana --> prometheus : queries metrics (PromQL)
+user --> grafana : views dashboards
+
+@enduml
