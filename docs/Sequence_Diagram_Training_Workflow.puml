@@ -1,0 +1,88 @@
+@startuml Sequence_Diagram_Training
+
+title Stock-AI: Training Workflow Sequence
+
+actor Client
+participant "API Gateway" as api
+participant "Orchestration Service" as orchestration
+participant "Data Service" as data
+participant "Data Processing Service" as processing
+participant "Training Service" as training
+participant "Evaluation Service" as evaluation
+participant "Deployment Service" as deployment
+database "MLflow" as mlflow
+
+Client -> api : Request model training
+activate api
+
+api -> orchestration : run_training_pipeline(model_type, symbol)
+activate orchestration
+
+orchestration -> data : load_recent_stock_data(symbol)
+activate data
+data --> orchestration : raw_data
+deactivate data
+
+orchestration -> processing : preprocess_data(model_type, symbol, raw_data, "training")
+activate processing
+processing --> orchestration : training_data, test_data
+deactivate processing
+
+orchestration -> training : train(symbol, model_type, training_data)
+activate training
+training -> mlflow : log_model()
+training --> orchestration : training_results (run_id)
+deactivate training
+
+orchestration -> deployment : production_model_exists(prod_model_name)
+activate deployment
+deployment --> orchestration : exists (boolean)
+deactivate deployment
+
+alt production model exists
+    orchestration -> processing : preprocess_data(model_type, symbol, raw_data, "evaluation")
+    activate processing
+    processing --> orchestration : prod_eval_data
+    deactivate processing
+    
+    orchestration -> evaluation : evaluate_model(production_model_name, model_type, symbol, "prediction", prod_eval_data)
+    activate evaluation
+    evaluation -> deployment : predict()
+    evaluation -> deployment : log_metrics()
+    evaluation --> orchestration : live_metrics
+    deactivate evaluation
+end
+
+orchestration -> evaluation : evaluate_model(run_id, model_type, symbol, "training", test_data)
+activate evaluation
+evaluation -> deployment : predict()
+evaluation -> deployment : log_metrics()
+evaluation --> orchestration : candidate_metrics
+deactivate evaluation
+
+orchestration -> orchestration : run_deploy_flow()
+orchestration -> evaluation : is_ready_for_deployment(candidate_metrics, live_metrics)
+activate evaluation
+evaluation --> orchestration : should_deploy
+deactivate evaluation
+
+alt should deploy model
+    orchestration -> deployment : promote_model(run_id, prod_model_name)
+    activate deployment
+    deployment -> mlflow : register_model_version()
+    deployment --> orchestration : deployment_results
+    deactivate deployment
+    
+    orchestration -> processing : promote_scaler(model_type, symbol)
+    activate processing
+    processing --> orchestration
+    deactivate processing
+end
+
+orchestration --> api : results
+deactivate orchestration
+
+api --> Client : training response
+deactivate api
+
+@enduml

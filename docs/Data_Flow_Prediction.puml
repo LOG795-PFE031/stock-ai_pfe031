@@ -1,0 +1,69 @@
+@startuml Data_Flow_Prediction
+
+title Stock-AI: Prediction Data Flow
+
+skinparam activity {
+  BackgroundColor LightSkyBlue
+  BorderColor DarkBlue
+}
+
+start
+
+partition "API Gateway" {
+  :Receive prediction request;
+}
+
+partition "Orchestration Service" {
+  :Initiate prediction pipeline;
+  :Check for existing prediction in DB;
+  
+  if (Prediction in DB?) then (yes)
+    :Retrieve prediction from DB;
+  else (no)
+    partition "Data Service" {
+      :Load recent stock data;
+      :Return raw data;
+    }
+    
+    partition "Data Processing Service" {
+      :Preprocess raw data;
+      :Format for model input;
+      :Apply scaling;
+      :Return processed data;
+    }
+    
+    partition "Deployment Service" {
+      :Check for production model;
+      
+      if (Model exists?) then (yes)
+        :Load model from MLflow;
+        :Run inference;
+        :Return prediction;
+        
+        partition "Calculate Confidence" {
+          :Compute prediction confidence;
+          :Return confidence score;
+        }
+        
+        partition "Data Processing Service" {
+          :Postprocess prediction;
+          :Unscale values;
+          :Return final prediction;
+        }
+        
+        :Save prediction results to DB;
+      else (no)
+        :Return error;
+      endif
+    }
+  endif
+}
+
+partition "Response Formatting" {
+  :Format prediction response;
+  :Add metadata and confidence;
+}
+
+stop
+
+@enduml

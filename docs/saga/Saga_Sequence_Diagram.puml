@@ -1,0 +1,128 @@
+@startuml Saga_Sequence_Diagram
+
+title Stock-AI: Training Workflow with Saga Pattern
+
+actor Client
+participant "API Gateway" as api
+participant "Orchestration Service\n(Saga Coordinator)" as orchestrator
+participant "Saga State Store" as sagaStore
+participant "Data Service" as dataService
+participant "Data Processing Service" as processing
+participant "Training Service" as training
+participant "Evaluation Service" as evaluation
+participant "Deployment Service" as deployment
+database "MLflow" as mlflow
+
+' Initiate saga
+Client -> api : Request model training
+api -> orchestrator : start_training_saga(model_type, symbol)
+activate orchestrator
+
+' Store initial saga state
+orchestrator -> sagaStore : create_saga_instance(saga_id, initial_state)
+activate sagaStore
+sagaStore --> orchestrator : saga_instance
+deactivate sagaStore
+
+' Step 1: Data Loading
+orchestrator -> dataService : load_stock_data(symbol)
+activate dataService
+alt success
+    dataService --> orchestrator : DataLoadedEvent(raw_data)
+else failure
+    dataService --> orchestrator : DataLoadFailedEvent(error)
+    orchestrator -> sagaStore : update_saga_state(saga_id, "failed")
+    orchestrator -> api : training_failed(reason)
+    api --> Client : Error response
+    destroy orchestrator
+end
+deactivate dataService
+
+' Update saga state after data loading
+orchestrator -> sagaStore : update_saga_state(saga_id, "data_loaded")
+
+' Step 2: Data Processing
+orchestrator -> processing : preprocess_data(model_type, raw_data)
+activate processing
+alt success
+    processing --> orchestrator : DataProcessedEvent(training_data, test_data)
+else failure
+    processing --> orchestrator : ProcessingFailedEvent(error)
+    orchestrator -> sagaStore : update_saga_state(saga_id, "failed")
+    orchestrator -> api : training_failed(reason)
+    api --> Client : Error response
+    destroy orchestrator
+end
+deactivate processing
+
+' Update saga state after processing
+orchestrator -> sagaStore : update_saga_state(saga_id, "data_processed")
+
+' Step 3: Model Training
+orchestrator -> training : train_model(model_type, training_data)
+activate training
+training -> mlflow : log_run()
+alt success
+    training --> orchestrator : ModelTrainedEvent(run_id)
+else failure
+    training --> orchestrator : TrainingFailedEvent(error)
+    orchestrator -> sagaStore : update_saga_state(saga_id, "failed")
+    orchestrator -> api : training_failed(reason)
+    api --> Client : Error response
+    destroy orchestrator
+end
+deactivate training
+
+' Update saga state after training
+orchestrator -> sagaStore : update_saga_state(saga_id, "model_trained")
+
+' Step 4: Model Evaluation
+orchestrator -> evaluation : evaluate_model(run_id, test_data)
+activate evaluation
+alt success
+    evaluation --> orchestrator : ModelEvaluatedEvent(metrics)
+else failure
+    evaluation --> orchestrator : EvaluationFailedEvent(error)
+    ' No need to compensate training, as we can just abandon the run
+    orchestrator -> sagaStore : update_saga_state(saga_id, "failed")
+    orchestrator -> api : training_failed(reason)
+    api --> Client : Error response
+    destroy orchestrator
+end
+deactivate evaluation
+
+' Update saga state after evaluation
+orchestrator -> sagaStore : update_saga_state(saga_id, "model_evaluated")
+
+' Step 5: Model Deployment Decision
+orchestrator -> orchestrator : should_deploy_model(metrics)
+alt should deploy
+    ' Step 6: Model Deployment
+    orchestrator -> deployment : deploy_model(run_id)
+    activate deployment
+    deployment -> mlflow : register_model()
+    alt success
+        deployment --> orchestrator : ModelDeployedEvent(model_version)
+    else failure
+        deployment --> orchestrator : DeploymentFailedEvent(error)
+        ' Mark deployment failed but saga succeeded with training
+        orchestrator -> sagaStore : update_saga_state(saga_id, "deployment_failed")
+        orchestrator -> api : deployment_failed(run_id, reason)
+        api --> Client : Partial success (model trained but not deployed)
+        destroy orchestrator
+    end
+    deactivate deployment
+    
+    ' Final successful saga state
+    orchestrator -> sagaStore : update_saga_state(saga_id, "completed")
+    orchestrator -> api : training_completed(run_id, model_version)
+    api --> Client : Success response
+else don't deploy
+    orchestrator -> sagaStore : update_saga_state(saga_id, "completed_no_deployment")
+    orchestrator -> api : training_completed_no_deployment(run_id, metrics)
+    api --> Client : Success response (trained but not deployed)
+end
+
+deactivate orchestrator
+
+@enduml

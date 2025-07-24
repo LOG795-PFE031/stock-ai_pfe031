@@ -1,0 +1,74 @@
+@startuml Component_Diagram
+
+title Stock-AI: Microservices Component Diagram
+
+skinparam component {
+  BackgroundColor LightSkyBlue
+  BorderColor DarkBlue
+  ArrowColor Black
+}
+
+package "API Gateway" {
+  [API Gateway] as api
+}
+
+package "Core Services" {
+  [Data Service] as dataService
+  [Data Processing Service] as dataProcessingService
+  [Training Service] as trainingService
+  [Deployment Service] as deploymentService
+  [Evaluation Service] as evaluationService
+  [Orchestration Service] as orchestrationService
+  [Monitoring Service] as monitoringService
+  [News Service] as newsService
+  [Visualization Service] as visualizationService
+}
+
+package "Databases" {
+  database "Stock Data DB" as stockDB
+  database "Prediction Storage" as predictionDB
+  database "Prefect DB" as prefectDB
+}
+
+package "External Services" {
+  [MLflow] as mlflow
+  [Prefect] as prefect
+  [Prometheus] as prometheus
+  [Grafana] as grafana
+  [Yahoo Finance] as yahooFinance
+}
+
+' Core service relationships
+dataService --> stockDB : stores/retrieves data
+orchestrationService --> dataService : loads data
+orchestrationService --> dataProcessingService : processes data
+orchestrationService --> trainingService : trains models
+orchestrationService --> deploymentService : deploys models
+orchestrationService --> evaluationService : evaluates models
+orchestrationService --> predictionDB : stores predictions
+monitoringService --> deploymentService : monitors models
+monitoringService --> orchestrationService : triggers retraining
+monitoringService --> dataService : detects data drift
+monitoringService --> dataProcessingService : analyzes processed data
+newsService --> yahooFinance : fetches news data
+dataService --> yahooFinance : fetches market data
+visualizationService --> dataService : fetches stock data
+
+' External service relationships
+trainingService --> mlflow : logs models/metrics
+deploymentService --> mlflow : manages model lifecycle
+orchestrationService --> prefect : schedules workflows
+monitoringService --> prometheus : emits metrics
+prefect --> prefectDB : stores workflow states
+
+' Grafana interroge Prometheus pour les métriques
+grafana --> prometheus : queries metrics (PromQL)
+
+' API Gateway relationships
+api --> orchestrationService : orchestrates pipelines
+api --> dataService : fetches market data
+api --> newsService : gets sentiment analysis
+api --> visualizationService : gets visualizations
+api --> deploymentService : gets model info
+
+@enduml
