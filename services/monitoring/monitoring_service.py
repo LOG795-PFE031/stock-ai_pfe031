@@ -6,10 +6,11 @@ from typing import Dict, Tuple
 import numpy as np
 from scipy.stats import ks_2samp
 
+from core import BaseService
 from core.logging import logger
 from core.config import config
-from monitoring.prometheus_metrics import evaluation_mae
-from services import BaseService, DeploymentService, DataProcessingService, DataService
+from core.prometheus_metrics import evaluation_mae
+from services import DeploymentService, DataProcessingService, DataService
 from services.orchestration import OrchestrationService
 
 

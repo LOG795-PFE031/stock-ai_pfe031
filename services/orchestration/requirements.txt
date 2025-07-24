@@ -1,0 +1,10 @@
+APScheduler==3.11.0
+numpy==1.24.4
+pandas==2.3.1
+pandas_market_calendars==5.1.1
+prefect==3.4.10
+pytz==2025.2
+SQLAlchemy==2.0.25
+
+# Database
+psycopg2-binary==2.9.10

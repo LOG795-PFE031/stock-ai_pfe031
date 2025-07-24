@@ -1,9 +1,9 @@
 from .base_model import BaseModel
 from .saving_strategies import JoblibSaver
-from services.training.trainers import ProphetTrainer
-from services.training.predictors import ProphetPredictor
-from services.training.models.base_model import BaseModel
-from services.training.model_registry import ModelRegistry
+from ..trainers import ProphetTrainer
+from ..predictors import ProphetPredictor
+from ..models.base_model import BaseModel
+from ..model_registry import ModelRegistry
 
 # Constant for the trainer name
 MODEL_NAME = "prophet"

@@ -14,11 +14,11 @@ import yfinance as yf
 import logging
 import torch
 
-from .base_service import BaseService
+from core import BaseService
 from core.utils import get_date_range
 from core.logging import logger
 from core.progress import create_spinner, print_status, print_error, create_layout
-from monitoring.prometheus_metrics import (
+from core.prometheus_metrics import (
     external_requests_total,
     sentiment_analysis_time_seconds,
 )

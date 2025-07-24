@@ -5,7 +5,7 @@ import mlflow
 from mlflow import MlflowClient
 from mlflow.exceptions import MlflowException
 
-from api.schemas import ModelMlflowInfo, ModelVersionInfo
+from .schemas import ModelMlflowInfo, ModelVersionInfo
 
 
 class MLflowModelManager:

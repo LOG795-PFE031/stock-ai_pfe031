@@ -3,7 +3,7 @@ import pandas as pd
 
 from core.logging import logger
 from core.types import ProcessedData
-from services import BaseService
+from core import BaseService
 from .scaler_manager import ScalerManager
 from .steps import (
     DataCleaner,

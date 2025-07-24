@@ -1,10 +1,3 @@
-from typing import TYPE_CHECKING
-
-
-if TYPE_CHECKING:
-    from training.models.base_model import BaseModel
-
-
 class ModelRegistry:
     _registry = {}
 
@@ -17,7 +10,7 @@ class ModelRegistry:
         return inner_wrapper
 
     @classmethod
-    def create(cls, name, **kwargs) -> "BaseModel":
+    def create(cls, name, **kwargs):
         if name not in cls._registry:
             available = cls.list_models()
             raise ValueError(

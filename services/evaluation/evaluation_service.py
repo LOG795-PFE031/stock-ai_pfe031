@@ -2,9 +2,9 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import numpy as np
 
 from core.logging import logger
-from .base_service import BaseService
+from core import BaseService
 from core.types import Metrics
-from monitoring.prometheus_metrics import (
+from core.prometheus_metrics import (
     evaluation_mae,
     evaluation_mse,
     evaluation_rmse,

@@ -1,7 +1,7 @@
 import asyncio
 import psutil
 
-from monitoring.prometheus_metrics import (
+from core.prometheus_metrics import (
     cpu_saturation_percentage,
     memory_saturation_mb_usage,
 )
