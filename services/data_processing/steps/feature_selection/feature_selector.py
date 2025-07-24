@@ -1,4 +1,4 @@
-from services.data_processing.abstract import BaseDataProcessor
+from ..abstract import BaseDataProcessor
 from .strategies import (
     AllFeatureSelector,
     OHLCVFeatureSelector,

@@ -11,7 +11,7 @@ from mlflow.pyfunc import PythonModel
 from core.config import config
 from core.logging import logger
 from core.types import ProcessedData
-from services.training.trainers import BaseTrainer
+from ..trainers import BaseTrainer
 from .saving_strategies import BaseSaver
 
 

@@ -1,9 +1,9 @@
 from .base_model import BaseModel
 from .saving_strategies import KerasSaver
-from services.training.trainers import LSTMTrainer
-from services.training.predictors import LSTMPredictor
-from services.training.models.base_model import BaseModel
-from services.training.model_registry import ModelRegistry
+from ..trainers import LSTMTrainer
+from ..predictors import LSTMPredictor
+from ..models.base_model import BaseModel
+from ..model_registry import ModelRegistry
 
 # Constant for the trainer name
 MODEL_NAME = "lstm"

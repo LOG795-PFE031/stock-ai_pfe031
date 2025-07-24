@@ -9,8 +9,8 @@ import plotly.express as px
 import pandas as pd
 from datetime import datetime
 
-from .base_service import BaseService
-from .data_service import DataService
+from core import BaseService
+from services import DataService
 from core.logging import logger
 
 

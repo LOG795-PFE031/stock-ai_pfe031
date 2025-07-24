@@ -1,7 +1,7 @@
-from services.training.models.base_model import BaseModel
-from services.training.model_registry import ModelRegistry
-from services.training.trainers import XGBoostTrainer
-from services.training.predictors import XGBoostPredictor
+from ..models.base_model import BaseModel
+from ..model_registry import ModelRegistry
+from ..trainers import XGBoostTrainer
+from ..predictors import XGBoostPredictor
 from .base_model import BaseModel
 from .saving_strategies import JoblibSaver
 

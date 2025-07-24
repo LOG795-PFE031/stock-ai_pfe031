@@ -1,4 +1,4 @@
-from ..abstract import BaseDataProcessor
+from .abstract import BaseDataProcessor
 
 import numpy as np
 import pandas as pd
