@@ -90,9 +90,9 @@ data/scalers/scaler_registry.json
 stock-ai.code-workspace
 
 # Ignore Grafana DB and plugins
-grafana/grafana.db
-grafana/grafana.db-journal
-grafana/plugins/
+monitoring/grafana/grafana.db
+monitoring/grafana/grafana.db-journal
+monitoring/grafana/plugins
 
 # Ignore Prometheus persistence data directory 
 prometheus/data
