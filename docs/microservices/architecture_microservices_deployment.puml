@@ -169,9 +169,9 @@ visualization --> data
 
 ' Monitoring connections
 monitoring --> prometheusService : emits metrics
-prometheusService --> grafanaService : Grafana queries metrics (PromQL)
+grafanaService --> prometheusService : queries metrics (PromQL)
 
-' Optionally, you can show that monitoring can visualize via Grafana
+' Show that monitoring can visualize via Grafana
 grafanaService --> web : dashboards
 
 @enduml
