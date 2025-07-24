@@ -126,6 +126,15 @@ node "Prefect Server" as prefectNode <<container>> {
   [Prefect] as prefect
 }
 
+' Monitoring & Visualization Tools
+node "Prometheus Server" as prometheus <<container>> {
+  [Prometheus] as prometheusService
+}
+
+node "Grafana Server" as grafana <<container>> {
+  [Grafana] as grafanaService
+}
+
 ' Connections
 web --> api : <color:GREEN>Request</color>
 
@@ -157,5 +166,12 @@ monitoring --> dataProcessing
 api --> visualization
 monitoring --> visualization
 visualization --> data
+
+' Monitoring connections
+monitoring --> prometheusService : emits metrics
+prometheusService --> grafanaService : Grafana queries metrics (PromQL)
+
+' Optionally, you can show that monitoring can visualize via Grafana
+grafanaService --> web : dashboards
 
 @enduml
