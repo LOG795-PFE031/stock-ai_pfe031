@@ -82,6 +82,9 @@ package "Core Services" {
     node "News Service" as news <<container>> {
       [News Logic]
     }
+    node "Visualization Service" as visualization <<container>> {
+    [Visualization Logic]
+    }
   }
 }
 
@@ -150,5 +153,9 @@ monitoring --> deployment
 monitoring --> orchestration
 monitoring --> data
 monitoring --> dataProcessing
+
+api --> visualization
+monitoring --> visualization
+visualization --> data
 
 @enduml

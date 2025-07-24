@@ -15,10 +15,10 @@ partition "API Gateway" {
 
 partition "Orchestration Service" {
   :Initiate prediction pipeline;
-  :Check for cached prediction;
+  :Check for existing prediction in DB;
   
-  if (Prediction in cache?) then (yes)
-    :Retrieve cached prediction;
+  if (Prediction in DB?) then (yes)
+    :Retrieve prediction from DB;
   else (no)
     partition "Data Service" {
       :Load recent stock data;
@@ -51,7 +51,7 @@ partition "Orchestration Service" {
           :Return final prediction;
         }
         
-        :Cache prediction results;
+        :Save prediction results to DB;
       else (no)
         :Return error;
       endif

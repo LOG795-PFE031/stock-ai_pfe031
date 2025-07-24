@@ -27,19 +27,19 @@ package "Core Services" {
 package "Databases" {
   database "Stock Data DB" as stockDB
   database "Prediction Storage" as predictionDB
-  database "Model Registry" as modelRegistry
+  database "Prefect DB" as prefectDB
 }
 
 package "External Services" {
   [MLflow] as mlflow
   [Prefect] as prefect
   [Prometheus] as prometheus
-  [News API] as newsAPI
+  [Grafana] as grafana
+  [Yahoo Finance] as yahooFinance
 }
 
 ' Core service relationships
-dataService --> stockDB
-dataProcessingService ..> dataService : uses
+dataService --> stockDB : stores/retrieves data
 orchestrationService --> dataService : loads data
 orchestrationService --> dataProcessingService : processes data
 orchestrationService --> trainingService : trains models
@@ -50,7 +50,8 @@ monitoringService --> deploymentService : monitors models
 monitoringService --> orchestrationService : triggers retraining
 monitoringService --> dataService : detects data drift
 monitoringService --> dataProcessingService : analyzes processed data
-newsService --> newsAPI : fetches news data
+newsService --> yahooFinance : fetches news data
+dataService --> yahooFinance : fetches market data
 visualizationService --> dataService : fetches stock data
 
 ' External service relationships
@@ -58,6 +59,10 @@ trainingService --> mlflow : logs models/metrics
 deploymentService --> mlflow : manages model lifecycle
 orchestrationService --> prefect : schedules workflows
 monitoringService --> prometheus : emits metrics
+monitoringService --> grafana : displays metrics
+
+prefect --> prefectDB : stores workflow states
+
 
 ' API Gateway relationships
 api --> orchestrationService : orchestrates pipelines
