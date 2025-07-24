@@ -37,7 +37,6 @@ package "Databases" {
   database "Stock Data DB" as stockDB
   database "Processed Data DB" as processedDB
   database "Prediction Storage" as predictionDB
-  database "Model Registry" as modelRegistry
 }
 
 package "External Services" {
@@ -73,7 +72,6 @@ dataService --> stockDB
 dataProcessingService --> processedDB
 trainingService --> mlflow
 evaluationService --> predictionDB
-deploymentService --> modelRegistry
 
 ' Compensation paths (dashed)
 compensationHandler ..> dataService : rollback data load
