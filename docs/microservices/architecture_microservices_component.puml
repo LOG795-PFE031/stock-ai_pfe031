@@ -59,10 +59,10 @@ trainingService --> mlflow : logs models/metrics
 deploymentService --> mlflow : manages model lifecycle
 orchestrationService --> prefect : schedules workflows
 monitoringService --> prometheus : emits metrics
-monitoringService --> grafana : displays metrics
-
 prefect --> prefectDB : stores workflow states
 
+' Grafana interroge Prometheus pour les métriques
+grafana --> prometheus : queries metrics (PromQL)
 
 ' API Gateway relationships
 api --> orchestrationService : orchestrates pipelines
