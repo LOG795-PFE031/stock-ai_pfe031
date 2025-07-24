@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from core.types import ProcessedData
-from services.data_processing.abstract import BaseDataProcessor
+from ..abstract import BaseDataProcessor
 from .output_strategies import (
     ProphetOutputFormatter,
     PandasSeriesFormatter,

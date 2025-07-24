@@ -12,12 +12,12 @@ from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from starlette.requests import Request
 from starlette.responses import Response
 import time
-from monitoring.prometheus_metrics import (
+
+from core.prometheus_metrics import (
     http_requests_total,
     http_request_duration_seconds,
     http_errors_total,
 )
-from monitoring.utils import monitor_cpu_usage, monitor_memory_usage
 from api.routes import router
 from core.logging import logger
 from db.init_db import create_database
@@ -32,6 +32,10 @@ from services import (
     MonitoringService,
 )
 from services.orchestration import OrchestrationService
+from .monitor_utils import (
+    monitor_cpu_usage,
+    monitor_memory_usage,
+)
 
 # Create necessary directories
 os.makedirs("data/news", exist_ok=True)

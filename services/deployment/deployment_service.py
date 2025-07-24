@@ -7,12 +7,10 @@ import numpy as np
 import pandas as pd
 
 from core.logging import logger
-from monitoring.prometheus_metrics import (
-    prediction_confidence,
-)
-from services.base_service import BaseService
-from .mlflow_model_manager import MLflowModelManager
 from .confidence import ConfidenceCalculator
+from core import BaseService
+from .mlflow_model_manager import MLflowModelManager
+from core.prometheus_metrics import prediction_confidence
 
 
 class DeploymentService(BaseService):

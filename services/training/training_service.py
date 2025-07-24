@@ -12,11 +12,11 @@ import numpy as np
 import tensorflow as tf
 
 from .model_registry import ModelRegistry
-from ..base_service import BaseService
+from core import BaseService
 from core.utils import validate_stock_symbol
 from core.types import ProcessedData
 from core.logging import logger
-import services.training.models  # Dynamically imports models modules
+from . import models  # Dynamically imports models modules
 
 
 class TrainingService(BaseService):

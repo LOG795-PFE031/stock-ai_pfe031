@@ -16,8 +16,8 @@ import yfinance as yf
 from core.utils import get_start_date_from_trading_days, get_latest_trading_day
 from db.session import get_async_session
 from db.models.stock_price import StockPrice
-from monitoring.prometheus_metrics import external_requests_total
-from .base_service import BaseService
+from core.prometheus_metrics import external_requests_total
+from core import BaseService
 
 
 class DataService(BaseService):

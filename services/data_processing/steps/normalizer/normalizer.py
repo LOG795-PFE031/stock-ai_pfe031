@@ -1,5 +1,5 @@
-from services.data_processing.scaler_manager import ScalerManager
-from services.data_processing.abstract import BaseDataProcessor
+from ...scaler_manager import ScalerManager
+from ..abstract import BaseDataProcessor
 from core.types import ProcessedData
 
 import numpy as np
