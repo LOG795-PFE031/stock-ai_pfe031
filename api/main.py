@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from httpx import AsyncClient
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from starlette.requests import Request
 from starlette.responses import Response
@@ -23,7 +24,6 @@ from core.logging import logger
 from db.init_db import create_database
 from services import (
     DataService,
-    NewsService,
     DataProcessingService,
     TrainingService,
     DeploymentService,
@@ -44,7 +44,6 @@ os.makedirs("data/news", exist_ok=True)
 data_service = DataService()
 data_processing_service = DataProcessingService()
 training_service = TrainingService()
-news_service = NewsService()
 deployment_service = DeploymentService()
 evaluation_service = EvaluationService()
 orchestation_service = OrchestrationService(
@@ -77,7 +76,6 @@ async def lifespan(app: FastAPI):
 
         # Initialize services in order of dependencies
         await data_service.initialize()
-        await news_service.initialize()
         await data_processing_service.initialize()
         await training_service.initialize()
         await deployment_service.initialize()
@@ -104,7 +102,6 @@ async def lifespan(app: FastAPI):
             await deployment_service.cleanup()
             await data_processing_service.cleanup()
             await training_service.cleanup()
-            await news_service.cleanup()
             await data_service.cleanup()
             rabbitmq_service.close()  # Close RabbitMQ connection
 
