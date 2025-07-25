@@ -84,7 +84,12 @@ class PostgresDatabaseConfig(BaseModel):
     @property
     def URL(self) -> str:
         return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/stocks"
+    
+class NewsServiceConfig(BaseModel):
+    """News service configuration."""
 
+    HOST: str = "news-service"
+    PORT: int = 8002
 
 class Config:
     """Main configuration class."""
@@ -96,6 +101,7 @@ class Config:
         self.api = APIConfig()
         self.rabbitmq = RabbitMQConfig()
         self.postgres = PostgresDatabaseConfig()
+        self.news_service = NewsServiceConfig()
 
         # Create necessary directories
         self._create_directories()
