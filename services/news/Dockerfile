@@ -12,14 +12,19 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file
-COPY requirements.txt .
+
+# Copy core and news requirements
+COPY services/news/requirements.txt news-requirements.txt
+COPY core/requirements.txt core-requirements.txt
+
+# Combine both requirements into one
+RUN cat news-requirements.txt core-requirements.txt > requirements.txt
 
 # Install build tools and wheel
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    # Install torch first to ensure availability for xformers
     pip install --no-cache-dir torch>=2.0.1 && \
-    # Install remaining dependencies
     pip install --no-cache-dir -r requirements.txt
+
 
 
 RUN python -m textblob.download_corpora
@@ -40,8 +45,11 @@ RUN apt-get update && \
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code
-COPY . /app
+# Copy news service code
+COPY services/news /app/services/news
+
+# Copy core shared code
+COPY /core /app/core
 
 # Set environment variables
 ENV PYTHONPATH=/app \
@@ -59,4 +67,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 EXPOSE 8000
 
 # Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "services.news.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
