@@ -11,21 +11,21 @@ from huggingface_hub import snapshot_download
 import time
 from tenacity import retry, stop_after_attempt, wait_exponential
 import yfinance as yf
-import logging
 import torch
 
-from utils import get_date_range
-from news_logging import get_logger
-from progress import create_spinner, print_status, print_error
-from prometheus_metrics import (
+from core import BaseService
+from core.utils import get_date_range
+from core.logging import logger
+from core.progress import create_spinner, print_status, print_error
+from core.prometheus_metrics import (
     external_requests_total,
     sentiment_analysis_time_seconds,
 )
 
-logger = get_logger()
+logger = logger["news"]
 
 
-class NewsService:
+class NewsService(BaseService):
     """Service for news analysis and sentiment."""
 
     _instance = None
@@ -55,7 +55,7 @@ class NewsService:
         self.model_version = "0.1.0"
         self.news_data = {}
         self.sentiment_cache = {}
-        self.logger = get_logger()
+        self.logger = logger
 
         logger.info("Initializing NewsService...")
 
