@@ -2,19 +2,18 @@ from prefect import flow
 from prefect.logging import get_run_logger
 from typing import Any
 
-from ..tasks.data import load_recent_stock_data, preprocess_data
-from ..tasks.training import train
-from ..tasks.deployment import production_model_exists
-from .deployment_flow import run_deploy_flow
-from .evaluation_flow import evaluate_model
 from core.utils import get_model_name
 from services import (
     DataService,
     DataProcessingService,
     DeploymentService,
     EvaluationService,
-    TrainingService,
 )
+from ..tasks.data import load_recent_stock_data, preprocess_data
+from ..tasks.training import train
+from ..tasks.deployment import production_model_exists
+from .deployment_flow import run_deploy_flow
+from .evaluation_flow import evaluate_model
 
 
 PHASE = "training"
@@ -29,7 +28,6 @@ def run_training_flow(
     symbol: str,
     data_service: DataService,
     processing_service: DataProcessingService,
-    training_service: TrainingService,
     deployment_service: DeploymentService,
     evaluation_service: EvaluationService,
 ) -> dict[str, Any]:
@@ -49,7 +47,6 @@ def run_training_flow(
         symbol (str): Stock ticker symbol.
         data_service: Service used to load raw market data.
         processing_service: Service used to preprocess data for training and evaluation.
-        training_service: Service responsible for model training.
         deployment_service: Service used to perform predictions and manage models.
         evaluation_service: Service used to evaluate and compare models based on performance metrics.
 
@@ -86,7 +83,6 @@ def run_training_flow(
         symbol=symbol,
         model_type=model_type,
         training_data=training_data,
-        service=training_service,
     )
 
     # --- Evaluation of the production model ---

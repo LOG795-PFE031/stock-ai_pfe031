@@ -2,18 +2,16 @@ from keras import Sequential, layers, callbacks, Input  # Replace tensorflow imp
 from typing import Any, Tuple, Dict
 import numpy as np
 
-from core.types import ProcessedData
+from core.types import LSTMInput
 from .base_trainer import BaseTrainer
 
 
 class LSTMTrainer(BaseTrainer):
     """Trainer for LSTM models."""
 
-    async def train(
-        self, data: ProcessedData[np.ndarray], **kwargs
-    ) -> Tuple[Any, Dict[str, Any]]:
+    async def train(self, data: LSTMInput, **kwargs) -> Tuple[Any, Dict[str, Any]]:
         try:
-            X_train, y_train = data.X, data.y
+            X_train, y_train = np.array(data.X), np.array(data.y)
 
             model = self._build_model(X_train.shape[1:])
 

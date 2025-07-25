@@ -44,7 +44,8 @@ COPY grafana/          ./grafana/
 # Set environment variables
 ENV API_HOST=0.0.0.0 \
   API_PORT=8000 \
-  PREFECT_API_URL=http://prefect-server:4200/api
+  PREFECT_API_URL=http://prefect-server:4200/api \
+  MLFLOW_TRACKING_URI=http://mlflow-server:5000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
