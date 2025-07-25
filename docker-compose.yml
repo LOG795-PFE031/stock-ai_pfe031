@@ -66,6 +66,23 @@ services:
       timeout: 10s
       retries: 5
 
+  training-service:
+    build:
+      context: .
+      dockerfile: services/training/Dockerfile
+    container_name: training-service
+    ports:
+      - "8004:8000"
+    volumes:
+      - ./data/models:/app/data/models
+      - ./core:/app/core
+    networks:
+      - microservices_auth
+    restart: on-failure
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+
   stock-ai:
     build:
       context: .
@@ -109,8 +126,6 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
     networks:
       - microservices_auth
-    depends_on:
-      - stock-ai
 
   grafana:
     image: grafana/grafana

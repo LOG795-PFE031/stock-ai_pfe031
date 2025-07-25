@@ -65,55 +65,6 @@ class NewsAnalysisResponse(BaseModel):
     model_version: str
 
 
-class TrainingTrainersResponse(BaseModel):
-    """Trainers getter response schema."""
-
-    status: str
-    types: List[str]
-    count: int
-    timestamp: str
-
-
-class TrainingResponse(BaseModel):
-    """Model training response."""
-
-    status: str
-    symbol: str
-    model_type: str
-    training_results: Dict[str, Any]
-    metrics: Dict[str, float]
-    deployment_results: Optional[Dict[str, Any]] = None
-    timestamp: str
-
-
-class TrainingStatusResponse(BaseModel):
-    """Training status response."""
-
-    status: str
-    symbol: str
-    model_type: str
-    timestamp: str
-    result: Optional[TrainingResponse] = None
-    error: Optional[str] = None
-
-
-class TrainingTask(BaseModel):
-    """Individual training task information."""
-
-    symbol: str
-    model_type: str
-    status: str
-    timestamp: str
-
-
-class TrainingTasksResponse(BaseModel):
-    """List of active training tasks."""
-
-    tasks: List[TrainingTask]
-    total_tasks: int
-    timestamp: str
-
-
 class DataUpdateResponse(BaseModel):
     """Data update response."""
 
@@ -235,4 +186,25 @@ class DirectDisplayResponse(BaseModel):
     predictions: List[PredictionResponse]
     next_day: PredictionResponse
     news_analysis: NewsAnalysisResponse
+    timestamp: str
+
+
+class TrainingResponse(BaseModel):
+    """Model training response."""
+
+    status: str
+    symbol: str
+    model_type: str
+    training_results: Dict[str, Any]
+    metrics: Dict[str, float]
+    deployment_results: Optional[Dict[str, Any]] = None
+    timestamp: str
+
+
+class TrainingTrainersResponse(BaseModel):
+    """Trainers getter response schema."""
+
+    status: str
+    types: List[str]
+    count: int
     timestamp: str

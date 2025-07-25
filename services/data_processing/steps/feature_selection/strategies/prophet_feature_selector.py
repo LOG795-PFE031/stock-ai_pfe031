@@ -10,7 +10,7 @@ class ProphetFeatureSelector(FeatureSelectionStrategy):
 
         # Rename the features Date and Close (to match Prophet Input)
         data.rename(columns={"Date": "ds"}, inplace=True)
-        data["ds"] = data["ds"].dt.date
+        data["ds"] = data["ds"].dt.strftime("%Y-%m-%d")
         data.rename(columns={"Close": "y"}, inplace=True)
 
         features = [

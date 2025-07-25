@@ -11,8 +11,12 @@ RUN apt-get update && \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file
-COPY requirements.txt .
+# Copy core and training requirements
+COPY services/training/requirements.txt training-requirements.txt
+COPY core/requirements.txt core-requirements.txt
+
+# Combine both requirements into one
+RUN cat training-requirements.txt core-requirements.txt > requirements.txt
 
 # Install build tools and wheel
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
@@ -37,20 +41,19 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
-COPY . /app
+COPY services/training /app/services/training
 
 # Set environment variables
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     CUDA_VISIBLE_DEVICES=-1 \
     #Ensures no GPU usage, aligns with CPU-only setup
-    TF_CPP_MIN_LOG_LEVEL=2  \
-    #Sets PyTorch as the Keras backend
-    KERAS_BACKEND="torch" 
+    TF_CPP_MIN_LOG_LEVEL=1 \ 
+    GIT_PYTHON_REFRESH="quiet"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
-CMD ["python", "main.py"]
+CMD ["uvicorn", "services.training.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
