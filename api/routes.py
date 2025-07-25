@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 import time
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
 
@@ -16,13 +17,11 @@ from api.schemas import (
     PredictionsResponse,
     HealthResponse,
     MetaInfo,
-    TrainingResponse,
-    TrainingTrainersResponse,
-    TrainingStatusResponse,
-    TrainingTasksResponse,
     StockDataResponse,
     StocksListDataResponse,
     NewsDataResponse,
+    TrainingTrainersResponse,
+    TrainingResponse,
 )
 from core.config import config
 from core.logging import logger
@@ -71,7 +70,6 @@ async def health_check():
         from api.main import (
             deployment_service,
             news_service,
-            training_service,
             data_service,
             data_processing_service,
             orchestation_service,
@@ -81,7 +79,6 @@ async def health_check():
         # Check each service's health
         deployment_health = await deployment_service.health_check()
         news_health = await news_service.health_check()
-        training_health = await training_service.health_check()
         data_health = await data_service.health_check()
         preprocessing_health = await data_processing_service.health_check()
         evaluation_health = await evaluation_service.health_check()
@@ -96,7 +93,6 @@ async def health_check():
                     for h in [
                         deployment_health,
                         news_health,
-                        training_health,
                         data_health,
                         preprocessing_health,
                         evaluation_health,
@@ -108,7 +104,6 @@ async def health_check():
             components={
                 "deployment_health": deployment_health["status"] == "healthy",
                 "news_service": news_health["status"] == "healthy",
-                "training_service": training_health["status"] == "healthy",
                 "data_service": data_health["status"] == "healthy",
                 "preprocessing_health": preprocessing_health["status"] == "healthy",
                 "evaluation_health": evaluation_health["status"] == "healthy",
@@ -550,20 +545,27 @@ async def get_trainers():
     Retrieve the list of available training trainers.
     """
     try:
-        # Import services from main to avoid circular imports
-        from api.main import training_service
 
-        # Get the trainers
-        trainers_response = await training_service.get_trainers()
+        # URL to the endpoint to fetch the list of available trainers
+        url = f"http://{config.training_service.HOST}:{config.training_service.PORT}/training/trainers"
 
-        if trainers_response.get("status") == "success":
-            return TrainingTrainersResponse(
-                status=trainers_response["status"],
-                types=trainers_response["types"],
-                count=trainers_response["count"],
-                timestamp=datetime.now().isoformat(),
-            )
-        else:
+        async with httpx.AsyncClient() as client:
+
+            # Get the trainers
+            response = await client.get(url)
+
+            # Check if the response is successful
+            response.raise_for_status()
+
+            trainers_response = response.json()
+            if trainers_response.get("status") == "success":
+                return TrainingTrainersResponse(
+                    status=trainers_response["status"],
+                    types=trainers_response["types"],
+                    count=trainers_response["count"],
+                    timestamp=datetime.now().isoformat(),
+                )
+
             error_msg = trainers_response.get("error", "Unknown error")
             api_logger.error(
                 f"Failed to retrieve the list of available trainers: {error_msg}"
@@ -618,50 +620,6 @@ async def train_model(
     except Exception as e:
         api_logger.error(f"Training failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}") from e
-
-
-@router.get(
-    "/train/status/{task_id}",
-    response_model=TrainingStatusResponse,
-    tags=["Training Services"],
-)
-async def get_training_status(task_id: str):
-    """Check the status of a training task."""
-
-    # TODO NOT IMPLEMENTED CORRECTLY
-
-    try:
-        # Import services from main to avoid circular imports
-        from api.main import training_service
-
-        status = await training_service.get_training_status(task_id)
-        return TrainingStatusResponse(**status)
-    except Exception as e:
-        api_logger.error(f"Failed to get training status: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get training status: {str(e)}"
-        ) from e
-
-
-@router.get(
-    "/train/tasks", response_model=TrainingTasksResponse, tags=["Training Services"]
-)
-async def get_training_tasks():
-    """List all training tasks."""
-
-    # TODO NOT IMPLEMENTED CORRECTLY
-
-    try:
-        # Import services from main to avoid circular imports
-        from api.main import training_service
-
-        tasks = await training_service.get_training_tasks()
-        return TrainingTasksResponse(tasks=tasks)
-    except Exception as e:
-        api_logger.error(f"Failed to get training tasks: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get training tasks: {str(e)}"
-        ) from e
 
 
 @router.post("/data/cleanup", response_model=Dict[str, Any], tags=["Data Services"])

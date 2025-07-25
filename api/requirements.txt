@@ -1,6 +1,5 @@
 fastapi==0.116.1
 prometheus_client==0.22.1
-psutil==7.0.0
 pydantic==2.11.7
 starlette==0.47.2
 uvicorn==0.35.0

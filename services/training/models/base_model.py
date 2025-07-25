@@ -4,13 +4,14 @@ Base model class for model training.
 
 from abc import ABC
 from pathlib import Path
+from typing import Union
 
 import mlflow
 from mlflow.pyfunc import PythonModel
 
 from core.config import config
 from core.logging import logger
-from core.types import ProcessedData
+from core.types import LSTMInput, ProphetInput, XGBoostInput
 from ..trainers import BaseTrainer
 from .saving_strategies import BaseSaver
 
@@ -37,7 +38,9 @@ class BaseModel(ABC, PythonModel):
         self.logger = logger["training"]
         self.model_root_dir = self.config.model.MODELS_ROOT_DIR
 
-    async def train_and_save(self, data: ProcessedData) -> str:
+    async def train_and_save(
+        self, data: Union[LSTMInput, ProphetInput, XGBoostInput]
+    ) -> str:
         """
         Trains the model, saves it locally, and logs it to MLflow.
 
@@ -49,6 +52,9 @@ class BaseModel(ABC, PythonModel):
         """
 
         try:
+            mlflow.set_tracking_uri(
+                f"http://{config.mlflow_server.HOST}:{config.mlflow_server.PORT}"
+            )
             mlflow.set_experiment("training_experiments")
             with mlflow.start_run() as run:
 
@@ -71,7 +77,6 @@ class BaseModel(ABC, PythonModel):
                 mlflow.pyfunc.log_model(
                     python_model=self.predictor,
                     artifact_path="model",
-                    input_example=data.X,  # TODO To long to log. We will need to get one sample
                     artifacts={"model": str(saved_training_model_path)},
                 )
 

@@ -2,7 +2,7 @@
 Training service for model training and evaluation.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union
 from datetime import datetime
 import time
 import asyncio
@@ -14,7 +14,7 @@ import tensorflow as tf
 from .model_registry import ModelRegistry
 from core import BaseService
 from core.utils import validate_stock_symbol
-from core.types import ProcessedData
+from core.types import LSTMInput, ProphetInput, XGBoostInput
 from core.logging import logger
 from . import models  # Dynamically imports models modules
 
@@ -79,7 +79,7 @@ class TrainingService(BaseService):
         self,
         symbol: str,
         model_type: str,
-        data: ProcessedData,
+        data: Union[LSTMInput, ProphetInput, XGBoostInput],
         **kwargs,
     ) -> Dict[str, Any]:
         """

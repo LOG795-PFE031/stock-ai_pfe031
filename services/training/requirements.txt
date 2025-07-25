@@ -3,8 +3,13 @@
 joblib==1.5.1
 keras==3.10.0
 mlflow==2.22.0
-numpy==1.24.4
+numpy==1.26.4
 pandas==2.3.1
 prophet==1.1.7
 tensorflow==2.19.0
 xgboost==3.0.2
+
+# API Server
+fastapi==0.116.1
+starlette==0.47.2
+uvicorn==0.35.0

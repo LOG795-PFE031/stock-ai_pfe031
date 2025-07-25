@@ -73,6 +73,20 @@ class RabbitMQConfig(BaseModel):
     QUEUE_PREFIX: str = "stock_ai"
 
 
+class MLFlowConfig(BaseModel):
+    """MLflow server configuration."""
+
+    HOST: str = "mlflow-server"  # Use the Docker container's hostname
+    PORT: int = 5000
+
+
+class TrainingServiceConfig(BaseModel):
+    """Training service configuration."""
+
+    HOST: str = "training-service"  # Use the Docker container's hostname
+    PORT: int = 8000
+
+
 class PostgresDatabaseConfig(BaseModel):
     """PostgreSQL configuration"""
 
@@ -95,6 +109,8 @@ class Config:
         self.model = ModelConfig()
         self.api = APIConfig()
         self.rabbitmq = RabbitMQConfig()
+        self.training_service = TrainingServiceConfig()
+        self.mlflow_server = MLFlowConfig()
         self.postgres = PostgresDatabaseConfig()
 
         # Create necessary directories

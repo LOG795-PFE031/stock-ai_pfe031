@@ -5,12 +5,14 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pandas_market_calendars as mcal
 from pytz import timezone
+import httpx
 
 from core.logging import logger
 from core.utils import format_prediction_response, get_next_trading_day
+from core.config import TrainingServiceConfig
 from core import BaseService
 from services.deployment import DeploymentService
-from services.training import TrainingService
+
 from services.data_processing import DataProcessingService
 from services.evaluation import EvaluationService
 from services.data_ingestion import DataService
@@ -35,14 +37,12 @@ class OrchestrationService(BaseService):
         self,
         data_service: DataService,
         data_processing_service: DataProcessingService,
-        training_service: TrainingService,
         deployment_service: DeploymentService,
         evaluation_service: EvaluationService,
     ):
         super().__init__()
         self.data_service = data_service
         self.data_processing_service = data_processing_service
-        self.training_service = training_service
         self.deployment_service = deployment_service
         self.evaluation_service = evaluation_service
         self.logger = logger["orchestration"]
@@ -87,7 +87,6 @@ class OrchestrationService(BaseService):
                 symbol,
                 self.data_service,
                 self.data_processing_service,
-                self.training_service,
                 self.deployment_service,
                 self.evaluation_service,
             )
@@ -479,11 +478,21 @@ class OrchestrationService(BaseService):
         # Add job to the scheduler
         self.scheduler.add_job(self._predict_all, trigger=trigger)
 
+    async def _get_trainers(self):
+        """Call the training service to get all the available trainers"""
+        url = f"http://{TrainingServiceConfig.HOST}:{TrainingServiceConfig.PORT}/training/trainers"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+
+            # Check if the response is successful
+            response.raise_for_status()
+            return response.json()
+
     async def _predict_all(self):
         """Run batch prediction for all configured model types and symbols."""
 
         # Retrieve the model types
-        trainers = await self.training_service.get_trainers()
+        trainers = await self._get_trainers()
         model_types = trainers["types"]
 
         # Retrieve the symbols to predict
