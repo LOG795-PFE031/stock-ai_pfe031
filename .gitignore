@@ -82,7 +82,8 @@ minio_data/
 prefect_data/
 
 # Ignore PosgreSQL data
-postgres_data/
+stock_postgres_data/
+prefect_postgres_data/
 mlflow_postgres_data/
 
 # Ignore Scaler data infos (registry)
