@@ -36,17 +36,73 @@ services:
         condition: service_healthy
     restart: always
 
+  mlflow-postgres:
+    image: postgres:latest
+    container_name: mlflow-postgres
+    environment:
+      POSTGRES_USER: mlflow_user
+      POSTGRES_PASSWORD: mlflow_password
+      POSTGRES_DB: mlflow_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./data/mlflow_postgres_data:/var/lib/postgresql/data
+    networks:
+      - microservices_auth
+    restart: on-failure
+
+  mlflow-minio:
+    image: minio/minio
+    container_name: mlflow-minio
+    environment:
+      MINIO_ROOT_USER: minio_user
+      MINIO_ROOT_PASSWORD: minio_password
+    ports:
+      - "9000:9000" # MinIO API
+      - "9001:9001" # MinIO Console
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./data/minio_data:/data
+    networks:
+      - microservices_auth
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: on-failure
+
+  minio-create-bucket:
+    image: minio/mc
+    depends_on:
+      mlflow-minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+      mc alias set minio http://mlflow-minio:9000 minio_user minio_password &&
+      if ! mc ls minio/mlflow; then
+        mc mb minio/mlflow;
+      else
+        echo 'bucket already exists';
+      fi
+      "
+    networks:
+      - microservices_auth
+    restart: "no"
+
   mlflow-server:
     build:
       context: .
       dockerfile: Dockerfile.mlflow
     container_name: mlflow-server
+    environment:
+      MLFLOW_TRACKING_URI: postgresql://mlflow_user:mlflow_password@mlflow-postgres:5432/mlflow_db
+      MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
+      AWS_ACCESS_KEY_ID: minio_user
+      AWS_SECRET_ACCESS_KEY: minio_password
     ports:
       - "5000:5000"
-    volumes:
-      - ./mlruns:/mlflow/mlruns
-    command: ["mlflow", "server", "--host", "0.0.0.0", "--port", "5000"]
-    working_dir: /mlflow
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri postgresql://mlflow_user:mlflow_password@mlflow-postgres:5432/mlflow_db --artifacts-destination s3://mlflow/artifacts
     networks:
       - microservices_auth
     healthcheck:
@@ -54,6 +110,24 @@ services:
       interval: 5s
       timeout: 10s
       retries: 5
+    depends_on:
+      - mlflow-postgres
+      - mlflow-minio
+      - minio-create-bucket
+    restart: on-failure
+
+  data-processing-service:
+    build:
+      context: .
+      dockerfile: services/data_processing/Dockerfile
+    container_name: data-processing-service
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./data/scalers:/app/data/scalers
+    networks:
+      - microservices_auth
+    restart: on-failure
 
   training-service:
     build:
@@ -64,7 +138,8 @@ services:
       - "8004:8000"
     volumes:
       - ./data/models:/app/data/models
-      - ./core:/app/core
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
     networks:
       - microservices_auth
     restart: on-failure
@@ -82,7 +157,6 @@ services:
     volumes:
       # - .:/app
       - ./data:/app/data
-      - ./mlruns:/app/mlruns
     environment:
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
@@ -91,6 +165,7 @@ services:
       - API_HOST=0.0.0.0
       - API_PORT=8000
       - PREFECT_API_URL=http://prefect-server:4200/api
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
     networks:
       - microservices_auth
     restart: on-failure:3
