@@ -1,5 +1,5 @@
 """
-API routes for the Stock AI system.
+API routes for the Training Service (Stock AI).
 """
 
 from datetime import datetime
@@ -58,7 +58,7 @@ async def api_welcome():
 # Health check endpoint
 @router.get("/health", response_model=HealthResponse, tags=["System"])
 async def health_check():
-    """Check the health of all services."""
+    """Check the health of the training service."""
     try:
         # Import services from main to avoid circular imports
         from .main import training_service
@@ -125,7 +125,7 @@ async def get_trainers():
 
 @router.post("/train", response_model=TrainingResponse, tags=["Training Services"])
 async def train_model(
-    symbol: str = Query(..., description="Stock symbol to retrieve data for"),
+    symbol: str = Query(..., description="Stock symbol to train the model on"),
     model_type: str = Query(..., description="Type of model to train"),
     preprocessed_data: ProcessedDataAPI = Body(
         ..., description="Data to train the model"

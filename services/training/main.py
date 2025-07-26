@@ -1,5 +1,5 @@
 """
-Main application module for Stock AI.
+Main application module for the training service (Stock AI).
 """
 
 import asyncio
@@ -38,25 +38,27 @@ async def lifespan(app: FastAPI):
 
         await training_service.initialize()
 
-        logger["main"].info("Training service initialized successfully")
+        logger["training"].info("Training service initialized successfully")
         yield
 
     except Exception as exception:
-        logger["main"].error(f"Error during training service startup: {str(exception)}")
+        logger["training"].error(
+            f"Error during training service startup: {str(exception)}"
+        )
         raise
 
     finally:
         # Shutdown
         try:
-            logger["main"].info("Shutting down the training service...")
+            logger["training"].info("Shutting down the training service...")
 
             # Cleanup the services
             await training_service.cleanup()
 
-            logger["main"].info("The training service was cleaned up successfully")
+            logger["training"].info("The training service was cleaned up successfully")
 
         except Exception as exception:
-            logger["main"].error(
+            logger["training"].error(
                 f"Error during the training service shutdown: {str(exception)}"
             )
 
