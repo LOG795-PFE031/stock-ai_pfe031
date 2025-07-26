@@ -1,23 +1,24 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-from starlette.responses import Response
+from starlette.requests import Request
 from contextlib import asynccontextmanager
-
+import asyncio
+import time
 from .routes import router
 from .news_service import NewsService
 from core.progress import create_spinner, print_status, print_error
 from core.logging import logger
-# from core.monitor_utils import (
-#     monitor_cpu_usage,
-#     monitor_memory_usage,
-# )
-# from core.prometheus_metrics import (
-#     http_requests_total,
-#     http_request_duration_seconds,
-#     http_errors_total,
-# )
+from core.monitor_utils import (
+    monitor_cpu_usage,
+    monitor_memory_usage,
+)
+from core.prometheus_metrics import (
+    http_requests_total,
+    http_request_duration_seconds,
+    http_errors_total,
+)
 logger = logger["news"]
 
 # Service instance
@@ -71,12 +72,39 @@ async def root():
 def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
-# @app.middleware("http")
-# async def prometheus_middleware(request, call_next):
-#     response = await call_next(request)
-#     if request.url.path == "/metrics":
-#         response.headers["Content-Type"] = CONTENT_TYPE_LATEST
-#     return response
+@app.middleware("http")
+async def prometheus_middleware(request: Request, call_next):
+    method = request.method
+    endpoint = request.url.path
+
+    start_time = time.time()
+
+    # Start the tasks monitoring saturation (memory and cpu)
+    memory_monitoring_task = asyncio.create_task(monitor_memory_usage(method, endpoint))
+    cpu_monitoring_task = asyncio.create_task(monitor_cpu_usage(method, endpoint))
+
+    try:
+        response: Response = await call_next(request)
+    except Exception as e:
+        http_errors_total.labels(method=method, endpoint=endpoint).inc()
+        raise e
+
+    duration = time.time() - start_time
+
+    # Stop saturation monitoring
+    memory_monitoring_task.cancel()
+    cpu_monitoring_task.cancel()
+
+    # Record metrics
+    http_requests_total.labels(method=method, endpoint=endpoint).inc()
+    http_request_duration_seconds.labels(method=method, endpoint=endpoint).observe(
+        duration
+    )
+
+    if response.status_code >= 500:
+        http_errors_total.labels(method=method, endpoint=endpoint).inc()
+
+    return response
 
 
 # Health check endpoint
@@ -85,4 +113,4 @@ async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
 
-app.include_router(router) 
+app.include_router(router, prefix="/news")  # Add /news prefix to all routes

@@ -5,6 +5,3 @@ prometheus_client==0.22.1
 psutil==7.0.0
 pydantic==2.11.7
 pytz==2025.2
-halo>=0.0.31
-rich>=13.0.0
-tqdm>=4.65.0

@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from httpx import AsyncClient
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from starlette.requests import Request
 from starlette.responses import Response
