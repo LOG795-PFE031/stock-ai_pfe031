@@ -8,6 +8,7 @@ from datetime import datetime
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
+import httpx
 
 from api.schemas import (
     ModelListMlflowResponse,
@@ -22,6 +23,8 @@ from api.schemas import (
     TrainingTrainersResponse,
     TrainingResponse,
 )
+
+
 from core.config import config
 from core.logging import logger
 from core.utils import validate_stock_symbol, get_date_range
@@ -52,7 +55,6 @@ async def api_welcome():
             "/health",
             "/data/update",
             "/data/stock",
-            "/data/news",
             "/models",
             "/predict",
             "/analyze",
@@ -68,7 +70,6 @@ async def health_check():
         # Import services from main to avoid circular imports
         from api.main import (
             deployment_service,
-            news_service,
             data_service,
             orchestation_service,
             evaluation_service,
@@ -76,7 +77,6 @@ async def health_check():
 
         # Check each service's health
         deployment_health = await deployment_service.health_check()
-        news_health = await news_service.health_check()
         data_health = await data_service.health_check()
         evaluation_health = await evaluation_service.health_check()
         orchestation_health = await orchestation_service.health_check()
@@ -89,7 +89,6 @@ async def health_check():
                     h["status"] == "healthy"
                     for h in [
                         deployment_health,
-                        news_health,
                         data_health,
                         evaluation_health,
                         orchestation_health,
@@ -99,7 +98,6 @@ async def health_check():
             ),
             components={
                 "deployment_health": deployment_health["status"] == "healthy",
-                "news_service": news_health["status"] == "healthy",
                 "data_service": data_health["status"] == "healthy",
                 "evaluation_health": evaluation_health["status"] == "healthy",
                 "orchestation_health": orchestation_health["status"] == "healthy",
@@ -361,7 +359,7 @@ async def get_historical_stock_prices_from_end_date(
         ) from e
 
 
-@router.get("/data/news/", response_model=NewsDataResponse, tags=["Data Services"])
+@router.get("/news/", response_model=NewsDataResponse, tags=["Data Services"])
 async def get_news_data(
     symbol: str = Query(..., description="Stock symbol to retrieve news data for"),
     start_date: Optional[str] = None,
@@ -370,33 +368,26 @@ async def get_news_data(
     """Get news data for a symbol."""
     try:
         # Import services from main to avoid circular imports
-        from api.main import news_service
+        url = f"http://{config.news_service.HOST}:{config.news_service.PORT}/news/"
 
-        # Validate symbol
-        if not validate_stock_symbol(symbol):
-            raise HTTPException(
-                status_code=400, detail=f"Invalid stock symbol: {symbol}"
-            )
-
-        # Get date range
-        start, end = get_date_range(start_date, end_date)
-
-        # Get data
-        data = await news_service.get_news_data(symbol, start, end)
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params={"symbol": symbol, "start_date": start_date, "end_date": end_date})
+            response.raise_for_status()
+            data = response.json()
 
         return NewsDataResponse(
-            symbol=symbol,
-            articles=data["articles"],
-            total_articles=data["total_articles"],
-            sentiment_metrics=data["sentiment_metrics"],
-            meta=MetaInfo(
-                start_date=start.isoformat(),
-                end_date=end.isoformat(),
-                version=data["meta"]["version"],
-                message=data["meta"]["message"],
-                documentation=data["meta"]["documentation"],
-                endpoints=data["meta"]["endpoints"],
-            ),
+        symbol=data["symbol"],
+        articles=data["articles"],
+        total_articles=data["total_articles"],
+        sentiment_metrics=data["sentiment_metrics"],
+        meta=MetaInfo(
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+            version=data["meta"]["version"],
+            message=data["meta"]["message"],
+            documentation=data["meta"]["documentation"],
+            endpoints=data["meta"]["endpoints"],
+        ),
         )
     except Exception as e:
         api_logger.error(f"Failed to get news data: {str(e)}")

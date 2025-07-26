@@ -5,3 +5,6 @@ textblob==0.19.0
 torch==2.7.1
 transformers==4.53.1
 yfinance==0.2.65
+uvicorn[standard]
+fastapi
+prometheus_client
