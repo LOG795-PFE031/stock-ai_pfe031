@@ -7,7 +7,7 @@ from ..tasks.deployment import (
     promote_model,
     promote_scaler,
 )
-from services import DataProcessingService, EvaluationService, DeploymentService
+from services import EvaluationService, DeploymentService
 
 
 @flow(
@@ -23,7 +23,6 @@ def run_deploy_flow(
     live_metrics: dict | None,
     evaluation_service: EvaluationService,
     deployment_service: DeploymentService,
-    processing_service: DataProcessingService,
 ) -> dict[str, Any]:
     """
     Sub-flow responsible for deploying a trained model to production if it's better
@@ -39,7 +38,6 @@ def run_deploy_flow(
         live_metrics (dict): Evaluation metrics of the current production model.
         evaluation_service (EvaluationService): Service for comparing model performance.
         deployment_service (DeploymentService): Service for model promotion.
-        processing_service (DataProcessingService): Service for promoting the scaler.
 
     Returns:
         dict[str,Any]: Results of the deployment
@@ -89,9 +87,7 @@ def run_deploy_flow(
     if deployment_results is not None:
         # If there was a deployment
         logger.info("Promoting scaler for the newly deployed model...")
-        promote_scaler.submit(
-            model_type=model_type, symbol=symbol, service=processing_service
-        ).result()
+        promote_scaler.submit(model_type=model_type, symbol=symbol).result()
         logger.info("Scaler promoted.")
 
     return deployment_results

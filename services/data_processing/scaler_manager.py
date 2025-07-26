@@ -4,36 +4,47 @@ import json
 from sklearn.preprocessing import MinMaxScaler
 
 from core.config import config
+from .constants import (
+    FEATURES_SCALER_TYPE,
+    PREDICTION_PHASE,
+    TARGETS_SCALER_TYPE,
+    TRAINING_PHASE,
+    SCALABLE_MODELS,
+    VALID_PHASES,
+    VALID_SCALER_TYPES,
+)
 
 
 class ScalerFactory:
-    _SCALABLE_MODELS = {"lstm"}
+    """
+    Factory class for creating and managing scalers used in preprocessing.
+
+    This class provides utility methods to:
+        - Create a scaler instance based on the model type.
+        - Determine whether a given model type requires feature scaling.
+    """
 
     @staticmethod
     def create_scaler(model_type: str) -> MinMaxScaler:
-        if model_type in ScalerFactory._SCALABLE_MODELS:
+        if model_type in SCALABLE_MODELS:
             return MinMaxScaler()
         return None
 
     @staticmethod
     def model_requires_scaling(model_type: str) -> bool:
-        return model_type in ScalerFactory._SCALABLE_MODELS
+        return model_type in SCALABLE_MODELS
 
 
 class ScalerManager:
+    """
+    Manages the lifecycle of scalers for ML preprocessing.
+
+    Handles creation, saving, loading, and promotion of scalers across different
+    pipeline phases (training and/or prediction), using a JSON registry for tracking.
+    """
 
     # Path to the scaler registry (JSON file)
     REGISTRY_PATH = config.preprocessing.SCALER_REGISTRY_JSON
-
-    # Scaler types
-    FEATURES_SCALER_TYPE = "features"
-    TARGETS_SCALER_TYPE = "targets"
-    VALID_SCALER_TYPES = {FEATURES_SCALER_TYPE, TARGETS_SCALER_TYPE}
-
-    # Phases
-    TRAINING_PHASE = "training"
-    PREDICTION_PHASE = "prediction"
-    VALID_PHASES = [PREDICTION_PHASE, TRAINING_PHASE]
 
     def __init__(self, model_type: str, symbol: str):
         self.model_type = model_type
@@ -105,7 +116,8 @@ class ScalerManager:
             scaler_type: The type of scaler. Must be one of 'features' or 'targets'.
                 This determines whether the scaler is for input features or the targets variable.
             phase (str, optional): The data processing phase. Defaults to PREDICTION_PHASE.
-                Must be one of the valid phases defined in `self.VALID_PHASES`. Ignored if `scaler_dates` is provided.
+                Must be one of the valid phases defined in `self.VALID_PHASES`. Ignored if
+                `scaler_dates` is provided.
             scaler_dates (tuple[str, str], optional): Tuple of (start_date, end_date).
                 If provided, loads a historical scaler for the specific date range.
 
@@ -114,9 +126,9 @@ class ScalerManager:
         """
         if not scaler_dates:
 
-            if phase not in self.VALID_PHASES:
+            if phase not in VALID_PHASES:
                 raise ValueError(
-                    f"Invalid phase '{phase}'. Must be one of {self.VALID_PHASES}."
+                    f"Invalid phase '{phase}'. Must be one of {VALID_PHASES}."
                 )
 
             scaler_path = self.registry[self.model_type][self.symbol][scaler_type][
@@ -151,16 +163,16 @@ class ScalerManager:
 
                 # Targets scaler path to promote
                 targets_scaler_path_to_promote = Path(
-                    self.registry[self.model_type][self.symbol][
-                        self.TARGETS_SCALER_TYPE
-                    ][self.TRAINING_PHASE]
+                    self.registry[self.model_type][self.symbol][TARGETS_SCALER_TYPE][
+                        TRAINING_PHASE
+                    ]
                 )
 
                 # Features scaler path to promote
                 features_scaler_path_to_promote = Path(
-                    self.registry[self.model_type][self.symbol][
-                        self.FEATURES_SCALER_TYPE
-                    ][self.TRAINING_PHASE]
+                    self.registry[self.model_type][self.symbol][FEATURES_SCALER_TYPE][
+                        TRAINING_PHASE
+                    ]
                 )
 
                 if (
@@ -171,10 +183,10 @@ class ScalerManager:
 
                 # Set the 'prediction' pointers for target and features
                 self._set_prediction_scaler_path(
-                    self.FEATURES_SCALER_TYPE, features_scaler_path_to_promote
+                    FEATURES_SCALER_TYPE, features_scaler_path_to_promote
                 )
                 self._set_prediction_scaler_path(
-                    self.TARGETS_SCALER_TYPE, targets_scaler_path_to_promote
+                    TARGETS_SCALER_TYPE, targets_scaler_path_to_promote
                 )
 
                 # Save the registry updates
@@ -194,7 +206,8 @@ class ScalerManager:
         Args:
             scaler_type: The type of scaler. Must be one of 'features' or 'targets'.
                 This determines whether the scaler is for input features or the targets variable.
-            scaler_dates (tuple[str, str]): Tuple of (start_date, end_date). Dates used to fit the scaler
+            scaler_dates (tuple[str, str]): Tuple of (start_date, end_date). Dates used to fit the
+                scaler.
 
         Returns:
             Path: Path to the scaler file.
@@ -241,9 +254,9 @@ class ScalerManager:
             scaler_type: The type of scaler. Must be one of 'features' or 'targets'.
                 This determines whether the scaler is for input features or the targets variable.
         """
-        if scaler_type not in self.VALID_SCALER_TYPES:
+        if scaler_type not in VALID_SCALER_TYPES:
             raise ValueError(
-                f"Invalid scaler_type '{scaler_type}'. Must be one of {self.VALID_SCALER_TYPES}"
+                f"Invalid scaler_type '{scaler_type}'. Must be one of {VALID_SCALER_TYPES}"
             )
 
     def _set_prediction_scaler_path(self, scaler_type: str, path: Path):
@@ -264,7 +277,8 @@ class ScalerManager:
         Generate a date identifier used in the registry and filename of a saved scaler
 
         Args:
-            scaler_dates (tuple[str, str]): Tuple of (start_date, end_date). Dates used to fit the scaler
+            scaler_dates (tuple[str, str]): Tuple of (start_date, end_date). Dates used to fit the
+                scaler.
         """
 
         start_date = scaler_dates[0]

@@ -9,7 +9,6 @@ from core.utils import get_model_name
 from core.types import ProcessedData
 from services import (
     DataService,
-    DataProcessingService,
     DeploymentService,
     EvaluationService,
 )
@@ -23,7 +22,6 @@ def run_evaluation_flow(
     model_type: str,
     symbol: str,
     data_service: DataService,
-    processing_service: DataProcessingService,
     deployment_service: DeploymentService,
     evaluation_service: EvaluationService,
 ) -> Optional[dict[str, float]]:
@@ -42,7 +40,6 @@ def run_evaluation_flow(
         model_type (str): The type of model (e.g. 'lstm', 'prophet').
         symbol (str): Stock ticker symbol.
         data_service (DataService): Service responsible for fetching raw stock data.
-        processing_service (DataProcessingService): Service for handling data processing.
         deployment_service (DeploymentService): Service to interact with deployed models.
         evaluation_service (EvaluationService): Service for computing model evaluation metrics.
 
@@ -69,7 +66,6 @@ def run_evaluation_flow(
             model_type=model_type,
             symbol=symbol,
             data=raw_data,
-            service=processing_service,
             phase="evaluation",
         ).result()
 
@@ -80,7 +76,6 @@ def run_evaluation_flow(
             symbol=symbol,
             phase="prediction",
             eval_data=eval_data,
-            processing_service=processing_service,
             deployment_service=deployment_service,
             evaluation_service=evaluation_service,
         )
@@ -154,7 +149,6 @@ def evaluate_model(
     symbol: str,
     phase: str,
     eval_data: ProcessedData,
-    processing_service: DataProcessingService,
     deployment_service: DeploymentService,
     evaluation_service: EvaluationService,
 ) -> dict[str, float]:
@@ -174,7 +168,6 @@ def evaluate_model(
         symbol (str): Stock ticker symbol.
         phase (str): The phase (e.g., "training", "evaluation", or "prediction").
         eval_data (ProcessedData): Preprocessed input data (for evaluation).
-        processing_service (DataProcessingService): Service for handling data processing.
         deployment_service (DeploymentService): Service used for model inference and MLflow interaction.
         evaluation_service (EvaluationService): Service responsible for computing performance metrics.
 
@@ -189,13 +182,11 @@ def evaluate_model(
         symbol=symbol,
         phase=phase,
         prediction_input=eval_data,
-        processing_service=processing_service,
         deployment_service=deployment_service,
     )["prediction"]
 
     # Postprocess ground truth
     true_target = postprocess_data.submit(
-        service=processing_service,
         symbol=symbol,
         model_type=model_type,
         phase=phase,

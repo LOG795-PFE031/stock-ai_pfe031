@@ -3,7 +3,7 @@ from sklearn.model_selection import train_test_split
 
 from .abstract import BaseDataProcessor
 from core.config import config
-from core.types import ProcessedData
+from .formatters import ProcessedData
 
 
 class DataSplitter(BaseDataProcessor):

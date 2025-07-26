@@ -80,6 +80,13 @@ class MLFlowConfig(BaseModel):
     PORT: int = 5000
 
 
+class DataProcessingServiceConfig(BaseModel):
+    """Data processing service configuration."""
+
+    HOST: str = "data-processing-service"
+    PORT: int = 8000
+
+
 class TrainingServiceConfig(BaseModel):
     """Training service configuration."""
 
@@ -109,6 +116,7 @@ class Config:
         self.model = ModelConfig()
         self.api = APIConfig()
         self.rabbitmq = RabbitMQConfig()
+        self.data_processing_service = DataProcessingServiceConfig()
         self.training_service = TrainingServiceConfig()
         self.mlflow_server = MLFlowConfig()
         self.postgres = PostgresDatabaseConfig()

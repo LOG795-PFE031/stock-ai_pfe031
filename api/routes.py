@@ -4,7 +4,6 @@ API routes for the Stock AI system.
 
 from typing import Dict, Any, Optional
 from datetime import datetime
-import time
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query
@@ -71,7 +70,6 @@ async def health_check():
             deployment_service,
             news_service,
             data_service,
-            data_processing_service,
             orchestation_service,
             evaluation_service,
         )
@@ -80,7 +78,6 @@ async def health_check():
         deployment_health = await deployment_service.health_check()
         news_health = await news_service.health_check()
         data_health = await data_service.health_check()
-        preprocessing_health = await data_processing_service.health_check()
         evaluation_health = await evaluation_service.health_check()
         orchestation_health = await orchestation_service.health_check()
 
@@ -94,7 +91,6 @@ async def health_check():
                         deployment_health,
                         news_health,
                         data_health,
-                        preprocessing_health,
                         evaluation_health,
                         orchestation_health,
                     ]
@@ -105,7 +101,6 @@ async def health_check():
                 "deployment_health": deployment_health["status"] == "healthy",
                 "news_service": news_health["status"] == "healthy",
                 "data_service": data_health["status"] == "healthy",
-                "preprocessing_health": preprocessing_health["status"] == "healthy",
                 "evaluation_health": evaluation_health["status"] == "healthy",
                 "orchestation_health": orchestation_health["status"] == "healthy",
             },

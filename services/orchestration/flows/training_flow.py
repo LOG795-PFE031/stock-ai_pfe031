@@ -5,7 +5,6 @@ from typing import Any
 from core.utils import get_model_name
 from services import (
     DataService,
-    DataProcessingService,
     DeploymentService,
     EvaluationService,
 )
@@ -27,7 +26,6 @@ def run_training_flow(
     model_type: str,
     symbol: str,
     data_service: DataService,
-    processing_service: DataProcessingService,
     deployment_service: DeploymentService,
     evaluation_service: EvaluationService,
 ) -> dict[str, Any]:
@@ -46,7 +44,6 @@ def run_training_flow(
         model_type (str): Type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol.
         data_service: Service used to load raw market data.
-        processing_service: Service used to preprocess data for training and evaluation.
         deployment_service: Service used to perform predictions and manage models.
         evaluation_service: Service used to evaluate and compare models based on performance metrics.
 
@@ -70,7 +67,6 @@ def run_training_flow(
         model_type=model_type,
         symbol=symbol,
         data=raw_data,
-        service=processing_service,
         phase=PHASE,
     )
 
@@ -103,7 +99,6 @@ def run_training_flow(
             model_type=model_type,
             symbol=symbol,
             data=raw_data,
-            service=processing_service,
             phase="evaluation",
         )
 
@@ -114,7 +109,6 @@ def run_training_flow(
             symbol=symbol,
             phase=production_phase,
             eval_data=prod_eval_data,
-            processing_service=processing_service,
             deployment_service=deployment_service,
             evaluation_service=evaluation_service,
         )
@@ -136,7 +130,6 @@ def run_training_flow(
         symbol,
         PHASE,
         test_data,
-        processing_service,
         deployment_service,
         evaluation_service,
     )
@@ -153,7 +146,6 @@ def run_training_flow(
         live_metrics=live_metrics,
         evaluation_service=evaluation_service,
         deployment_service=deployment_service,
-        processing_service=processing_service,
     )
     logger.info(f"Deployment process completed. Result: {deployment_results}")
 

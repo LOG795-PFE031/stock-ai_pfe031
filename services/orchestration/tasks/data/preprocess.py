@@ -1,9 +1,12 @@
-from prefect import task
-import pandas as pd
 from typing import Union
 
-from services.data_processing import DataProcessingService
+import httpx
+import pandas as pd
+from prefect import task
+
+from core.config import config
 from core.types import ProcessedData
+from ...utils import to_processed_data
 
 
 @task(
@@ -13,7 +16,6 @@ from core.types import ProcessedData
     retry_delay_seconds=5,
 )
 async def preprocess_data(
-    service: DataProcessingService,
     symbol: str,
     data: pd.DataFrame,
     model_type: str,
@@ -23,7 +25,6 @@ async def preprocess_data(
     Prefect task to preprocess raw stock data for model consumption.
 
     Args:
-        service (DataProcessingService): Service responsible for data preprocessing logic.
         symbol (str): The stock ticker symbol to preprocess data for.
         data (pd.DataFrame): Raw stock data to preprocess.
         model_type (str): The type of model (e.g., "lstm", "prophet")
@@ -32,8 +33,39 @@ async def preprocess_data(
     Returns:
         ProcessedData: The preprocessed data
     """
-    preprocessed_data = await service.preprocess_data(
-        symbol=symbol, data=data, model_type=model_type, phase=phase
+
+    # Get the endpoint URL
+    url = (
+        f"http://{config.data_processing_service.HOST}:"
+        f"{config.data_processing_service.PORT}"
+        "/processing/preprocess"
     )
 
-    return preprocessed_data
+    # Convert the dates into strings (JSON serializable)
+    data["Date"] = pd.to_datetime(data["Date"])
+    data["Date"] = data["Date"].dt.strftime("%Y-%m-%d")
+
+    # Define the payload
+    payload = {
+        "data": data.to_dict(orient="records"),
+    }
+
+    # Define the query parameters
+    params = {"symbol": symbol, "model_type": model_type, "phase": phase}
+
+    async with httpx.AsyncClient(timeout=None) as client:
+        # Send POST request to FastAPI endpoint
+        response = await client.post(url, params=params, json=payload)
+
+        # Check if the response is successful
+        response.raise_for_status()
+
+        result = response.json()
+
+    if phase == "training":
+        return (
+            to_processed_data(result["data"]["train"]),
+            to_processed_data(result["data"]["test"]),
+        )
+    else:
+        return to_processed_data(result["data"])

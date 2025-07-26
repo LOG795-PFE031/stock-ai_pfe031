@@ -2,7 +2,7 @@ from typing import Tuple
 import numpy as np
 
 from .base_strategy import InputFormatterStrategy
-from core.types import ProcessedData
+from ..types import ProcessedData
 from core.config import config
 
 

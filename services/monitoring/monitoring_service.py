@@ -3,14 +3,16 @@ from collections import deque
 import contextlib
 from typing import Dict, Tuple
 
+import httpx
 import numpy as np
+import pandas as pd
 from scipy.stats import ks_2samp
 
 from core import BaseService
 from core.logging import logger
 from core.config import config
 from core.prometheus_metrics import evaluation_mae
-from services import DeploymentService, DataProcessingService, DataService
+from services import DeploymentService, DataService
 from services.orchestration import OrchestrationService
 
 
@@ -20,7 +22,6 @@ class MonitoringService(BaseService):
         deployment_service: DeploymentService,
         orchestration_service: OrchestrationService,
         data_service: DataService,
-        preprocessing_service: DataProcessingService,
         check_interval_seconds: int = 24 * 60 * 60,  # default: once per day
         data_interval_seconds: int = 7 * 24 * 60 * 60,  # once per week
         max_drift_samples: int = 500,
@@ -33,7 +34,6 @@ class MonitoringService(BaseService):
         self.deployment_service = deployment_service
         self.orchestration_service = orchestration_service
         self.data_service = data_service
-        self.preprocessing_service = preprocessing_service
         self.check_interval_seconds = check_interval_seconds
         self.data_interval = data_interval_seconds
         self.max_drift_samples = max_drift_samples
@@ -139,6 +139,43 @@ class MonitoringService(BaseService):
         finally:
             self.logger.info("🏁 Daily drift check complete")
 
+    async def _preprocess_data(
+        self, symbol: str, model_type: str, phase: str, df: pd.DataFrame
+    ):
+        # Convert the dates into strings (JSON serializable)
+        df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
+
+        # URL to the endpoint to preprocess the data
+        url = f"http://{config.data_processing_service.HOST}:{config.data_processing_service.PORT}/processing/preprocess"
+
+        # Define the payload
+        payload = {
+            "data": df.where(pd.notnull(df), None).to_dict(orient="records"),
+        }
+
+        # Define the query parameters
+        params = {"symbol": symbol, "model_type": model_type, "phase": phase}
+
+        async with httpx.AsyncClient(timeout=None) as client:
+            # Send POST request to FastAPI endpoint
+            response = await client.post(url, params=params, json=payload)
+
+            # Check if the response is successful
+            response.raise_for_status()
+
+            # Retrieve the data from the json response
+            data = response.json()["data"]
+            preprocessed_features = (
+                data["train"]["X"] if phase == "training" else data["X"]
+            )
+
+            if isinstance(preprocessed_features, Dict):
+                preprocessed_features = pd.DataFrame(preprocessed_features)
+            else:
+                preprocessed_features = np.array(preprocessed_features)
+
+            return preprocessed_features
+
     async def _run_data_drift_check(self) -> None:
         """
         For each live model, fetch recent and historical data,
@@ -192,15 +229,14 @@ class MonitoringService(BaseService):
 
             # Preprocess
             # Perform training-phase preprocessing to get baseline features
-            train_res = await self.preprocessing_service.preprocess_data(
-                symbol, train_df, model_type, phase="training"
+            train_proc = await self._preprocess_data(
+                symbol, model_type, "training", train_df
             )
-            train_proc = train_res[0] if isinstance(train_res, tuple) else train_res
-            # Perform evaluation-phase preprocessing to get current features?
-            recent_res = await self.preprocessing_service.preprocess_data(
-                symbol, recent_df, model_type, phase="evaluation"
+
+            # Perform evaluation-phase preprocessing to get current features
+            recent_proc = await self._preprocess_data(
+                symbol, model_type, "evaluation", recent_df
             )
-            recent_proc = recent_res[0] if isinstance(recent_res, tuple) else recent_res
 
             # Extract features
             t_arr = np.asarray(getattr(train_proc, "X", []))
