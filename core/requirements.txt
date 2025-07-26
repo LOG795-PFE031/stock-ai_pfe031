@@ -5,3 +5,4 @@ prometheus_client==0.22.1
 psutil==7.0.0
 pydantic==2.11.7
 pytz==2025.2
+rich>=13.3.4

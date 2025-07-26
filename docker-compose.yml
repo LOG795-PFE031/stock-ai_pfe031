@@ -18,6 +18,17 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
+      
+  news-service:
+    build:
+      context: .
+      dockerfile: services/news/Dockerfile
+    container_name: news-service
+    ports:
+      - "8002:8000"
+    networks:
+      - microservices_auth
+    restart: on-failure
 
   prefect-server:
     image: prefecthq/prefect:3-latest
