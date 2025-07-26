@@ -1,5 +1,7 @@
 from prefect import task
-from services import DeploymentService
+import httpx
+from core.config import config
+# from services import DeploymentService
 
 
 @task(
@@ -10,7 +12,9 @@ from services import DeploymentService
     timeout_seconds=30,
 )
 async def log_metrics_to_mlflow(
-    model_identifier: str, metrics: dict, service: DeploymentService
+    model_identifier: str,
+    metrics: dict,
+    # service: DeploymentService
 ) -> bool:
     """
     Log evaluation metrics to MLflow for a specific model.
@@ -23,4 +27,14 @@ async def log_metrics_to_mlflow(
     Returns:
         bool: True if the metrics were logged successfully to Mlflow.
     """
-    return await service.log_metrics(model_identifier=model_identifier, metrics=metrics)
+    url = (
+        f"http://{config.deployment_service.HOST}:"
+        f"{config.deployment_service.PORT}"
+        f"/deployment/models/{model_identifier}/log_metrics"
+    )
+    async with httpx.AsyncClient(timeout=None) as client:
+        r = await client.post(url, json=metrics)
+        r.raise_for_status()
+        return r.json()
+    
+    # return await service.log_metrics(model_identifier=model_identifier, metrics=metrics)

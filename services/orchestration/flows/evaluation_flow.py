@@ -10,7 +10,7 @@ from core.types import ProcessedData
 from services import (
     DataService,
     DataProcessingService,
-    DeploymentService,
+    # DeploymentService,
     EvaluationService,
 )
 
@@ -24,7 +24,7 @@ def run_evaluation_flow(
     symbol: str,
     data_service: DataService,
     processing_service: DataProcessingService,
-    deployment_service: DeploymentService,
+    # deployment_service: DeploymentService,
     evaluation_service: EvaluationService,
 ) -> Optional[dict[str, float]]:
     """
@@ -54,7 +54,8 @@ def run_evaluation_flow(
 
     # Checks if the production model exists
     prod_model_exist = production_model_exists.submit(
-        production_model_name, deployment_service
+        production_model_name,
+        # deployment_service
     ).result()
 
     if prod_model_exist:
@@ -81,7 +82,7 @@ def run_evaluation_flow(
             phase="prediction",
             eval_data=eval_data,
             processing_service=processing_service,
-            deployment_service=deployment_service,
+            # deployment_service=deployment_service,
             evaluation_service=evaluation_service,
         )
 
@@ -102,7 +103,7 @@ def run_evaluate_and_log_flow(
     true_target: ProcessedData,
     pred_target: ProcessedData,
     evaluation_service: EvaluationService,
-    deployment_service: DeploymentService,
+    # deployment_service: DeploymentService,
 ) -> dict[str, float]:
     """
     Evaluates the performance of a model predictions and logs the resulting metrics to MLflow.
@@ -137,7 +138,9 @@ def run_evaluate_and_log_flow(
 
     # Log the metrics
     future = log_metrics_to_mlflow.submit(
-        model_identifier=model_identifier, metrics=metrics, service=deployment_service
+        model_identifier=model_identifier,
+        metrics=metrics, 
+        # service=deployment_service
     )
     future.wait()
 
@@ -155,7 +158,7 @@ def evaluate_model(
     phase: str,
     eval_data: ProcessedData,
     processing_service: DataProcessingService,
-    deployment_service: DeploymentService,
+    # deployment_service: DeploymentService,
     evaluation_service: EvaluationService,
 ) -> dict[str, float]:
     """
@@ -190,7 +193,7 @@ def evaluate_model(
         phase=phase,
         prediction_input=eval_data,
         processing_service=processing_service,
-        deployment_service=deployment_service,
+        # deployment_service=deployment_service,
     )["prediction"]
 
     # Postprocess ground truth
@@ -210,6 +213,6 @@ def evaluate_model(
         true_target=true_target,
         pred_target=pred_target,
         evaluation_service=evaluation_service,
-        deployment_service=deployment_service,
+        # deployment_service=deployment_service,
     )
     return metrics

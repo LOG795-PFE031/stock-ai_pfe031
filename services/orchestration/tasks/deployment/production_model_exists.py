@@ -1,6 +1,9 @@
 from prefect import task
-from services import DeploymentService
 
+import httpx
+
+from core.config import config
+# from services import DeploymentService
 
 @task(
     name="production_model_exists",
@@ -9,7 +12,8 @@ from services import DeploymentService
     retry_delay_seconds=2,
 )
 async def production_model_exists(
-    prod_model_name: str, service: DeploymentService
+    prod_model_name: str, 
+    # service: DeploymentService
 ) -> bool:
     """
     Check if a production model with the given name exists.
@@ -21,4 +25,14 @@ async def production_model_exists(
     Returns:
         bool: True if a production model exists, False otherwise.
     """
-    return await service.production_model_exists(prod_model_name)
+    url = (
+        f"http://{config.deployment_service.HOST}:"
+        f"{config.deployment_service.PORT}"
+        f"/deployment/models/{prod_model_name}/exists"
+    )
+    async with httpx.AsyncClient(timeout=None) as client:
+        r = await client.get(url)
+        r.raise_for_status()
+        return r.json()
+    
+    # return await service.production_model_exists(prod_model_name)

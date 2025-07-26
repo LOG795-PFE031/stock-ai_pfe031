@@ -11,7 +11,7 @@ from core.logging import logger
 from core.utils import format_prediction_response, get_next_trading_day
 from core.config import TrainingServiceConfig
 from core import BaseService
-from services.deployment import DeploymentService
+# from services.deployment import DeploymentService
 
 from services.data_processing import DataProcessingService
 from services.evaluation import EvaluationService
@@ -37,13 +37,13 @@ class OrchestrationService(BaseService):
         self,
         data_service: DataService,
         data_processing_service: DataProcessingService,
-        deployment_service: DeploymentService,
+        # deployment_service: DeploymentService,
         evaluation_service: EvaluationService,
     ):
         super().__init__()
         self.data_service = data_service
         self.data_processing_service = data_processing_service
-        self.deployment_service = deployment_service
+        # self.deployment_service = deployment_service
         self.evaluation_service = evaluation_service
         self.logger = logger["orchestration"]
         self.prediction_storage = PredictionStorage(self.logger)
@@ -87,7 +87,7 @@ class OrchestrationService(BaseService):
                 symbol,
                 self.data_service,
                 self.data_processing_service,
-                self.deployment_service,
+                # self.deployment_service,
                 self.evaluation_service,
             )
 
@@ -170,7 +170,7 @@ class OrchestrationService(BaseService):
                 symbol,
                 self.data_service,
                 self.data_processing_service,
-                self.deployment_service,
+                # self.deployment_service,
             )
 
             if prediction_result:
@@ -263,7 +263,7 @@ class OrchestrationService(BaseService):
                 symbol,
                 self.data_service,
                 self.data_processing_service,
-                self.deployment_service,
+                # self.deployment_service,
                 self.evaluation_service,
             )
 
@@ -354,7 +354,7 @@ class OrchestrationService(BaseService):
                     trading_days,
                     self.data_service,
                     self.data_processing_service,
-                    self.deployment_service,
+                    # self.deployment_service,
                 )
 
                 if predictions:
@@ -504,5 +504,5 @@ class OrchestrationService(BaseService):
             symbols,
             self.data_service,
             self.data_processing_service,
-            self.deployment_service,
+            # self.deployment_service,
         )

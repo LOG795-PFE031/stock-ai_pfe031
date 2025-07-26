@@ -2,7 +2,7 @@
 API routes for the Stock AI system.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 import time
 
@@ -68,7 +68,6 @@ async def health_check():
     try:
         # Import services from main to avoid circular imports
         from api.main import (
-            deployment_service,
             news_service,
             data_service,
             data_processing_service,
@@ -77,7 +76,6 @@ async def health_check():
         )
 
         # Check each service's health
-        deployment_health = await deployment_service.health_check()
         news_health = await news_service.health_check()
         data_health = await data_service.health_check()
         preprocessing_health = await data_processing_service.health_check()
@@ -91,7 +89,6 @@ async def health_check():
                 if all(
                     h["status"] == "healthy"
                     for h in [
-                        deployment_health,
                         news_health,
                         data_health,
                         preprocessing_health,
@@ -102,7 +99,6 @@ async def health_check():
                 else "unhealthy"
             ),
             components={
-                "deployment_health": deployment_health["status"] == "healthy",
                 "news_service": news_health["status"] == "healthy",
                 "data_service": data_health["status"] == "healthy",
                 "preprocessing_health": preprocessing_health["status"] == "healthy",
@@ -412,21 +408,28 @@ async def get_news_data(
 
 # Model management endpoints
 @router.get(
-    "/models", response_model=ModelListMlflowResponse, tags=["Model Management"]
+    "/models", 
+    # response_model=ModelListMlflowResponse,
+    response_model=List[Dict[str, Any]],
+    tags=["Model Management"]
 )
 async def get_models():
     """List all available ML models."""
     try:
-        # Import services from main to avoid circular imports
-        from api.main import deployment_service
-
-        models = await deployment_service.list_models()
-        response = ModelListMlflowResponse(
-            models=models,
-            total_models=len(models),
-            timestamp=datetime.now().isoformat(),
-        )
-        return response
+        url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models"    
+        
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url)
+            r.raise_for_status()
+            return r.json()
+                
+        # models = await deployment_service.list_models()
+        # response = ModelListMlflowResponse(
+        #     models=models,
+        #     total_models=len(models),
+        #     timestamp=datetime.now().isoformat(),
+        # )
+        # return response
 
     except Exception as e:
         api_logger.error(f"Failed to get models: {str(e)}")
@@ -437,18 +440,28 @@ async def get_models():
 
 @router.get(
     "/models/{model_name}",
-    response_model=ModelMlflowInfo,
+    # response_model=ModelMlflowInfo,
     tags=["Model Management"],
 )
 async def get_model_metadata(model_name: str):
     """Get metadata for a specific model."""
     try:
-        # Import services from main to avoid circular imports
-        from api.main import deployment_service
-
-        metadata = await deployment_service.get_model_metadata(model_name)
-        print(f"Model metadata for {model_name}: {metadata}")
-        return metadata
+        url = (
+            f"http://{config.deployment_service.HOST}:"
+            f"{config.deployment_service.PORT}"
+            f"/deployment/models/{model_name}"
+        )
+        
+        # Returns the metadata
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url)
+            r.raise_for_status()
+            metadata = r.json()
+        
+            print(f"Model metadata for {model_name}: {metadata}")
+            
+            return metadata
+        
     except Exception as e:
         api_logger.error(f"Failed to get model metadata: {str(e)}")
         raise HTTPException(

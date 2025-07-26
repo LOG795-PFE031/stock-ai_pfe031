@@ -1,6 +1,9 @@
 from prefect import task
+import httpx
 
-from services import DeploymentService
+from core.config import config
+
+# from services import DeploymentService
 
 
 @task(
@@ -10,7 +13,10 @@ from services import DeploymentService
     retry_delay_seconds=5,
 )
 async def calculate_prediction_confidence(
-    model_type: str, symbol: str, y_pred, prediction_input, service: DeploymentService
+    model_type: str,
+    symbol: str, y_pred,
+    prediction_input, 
+    # service: DeploymentService
 ) -> list[float]:
     """
     Calculate prediction confidence scores using a deployment service.
@@ -24,6 +30,23 @@ async def calculate_prediction_confidence(
     Returns:
         list[float]: Confidence scores
     """
-    return await service.calculate_prediction_confidence(
-        model_type=model_type, symbol=symbol, prediction_input=prediction_input, y_pred=y_pred
+    url = (
+        f"http://{config.deployment_service.HOST}:"
+        f"{config.deployment_service.PORT}"
+        f"/deployment/metrics/calculate_prediction_confidence"
     )
+    payload = {
+        "model_type": model_type,
+        "symbol": symbol,
+        "prediction_input": prediction_input,
+        "y_pred": y_pred,
+    }
+    
+    async with httpx.AsyncClient(timeout=None) as client:
+        response = await client.post(url, json=payload)
+        response.raise_for_status()
+        return response.json()
+    
+    # return await service.calculate_prediction_confidence(
+    #     model_type=model_type, symbol=symbol, prediction_input=prediction_input, y_pred=y_pred
+    # )

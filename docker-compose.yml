@@ -72,6 +72,29 @@ services:
       mlflow-server:
         condition: service_healthy
 
+  deployment-service:
+    build:
+      context: .
+      dockerfile: services/deployment/Dockerfile
+    container_name: deployment-service
+    # labels:
+    #   - "traefik.mesh.inject=true"
+    ports:
+      - "8005:8000"
+    volumes:
+      - ./services/training:/app/services/training
+      - ./mlruns:/app/mlruns
+      - ./data/models:/app/data/models
+      - ./core:/app/core
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+    networks:
+      - microservices_auth
+    restart: on-failure
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+
   stock-ai:
     build:
       context: .

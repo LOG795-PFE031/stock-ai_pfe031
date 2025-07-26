@@ -91,7 +91,7 @@ class DeploymentService(BaseService):
         try:
             self.logger.info("Listing all avalaible models (in MLFlow).")
             available_models = await self.mlflow_model_manager.list_models()
-
+            self.logger.info(f"HERE THEY ARE: {available_models}")
             return available_models
         except Exception as e:
             self.logger.error("Failed to list the models: %s", str(e))

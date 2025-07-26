@@ -3,6 +3,7 @@ from collections import deque
 import contextlib
 from typing import Dict, Tuple
 
+import httpx
 import numpy as np
 from scipy.stats import ks_2samp
 
@@ -10,14 +11,14 @@ from core import BaseService
 from core.logging import logger
 from core.config import config
 from core.prometheus_metrics import evaluation_mae
-from services import DeploymentService, DataProcessingService, DataService
+from services import  DataProcessingService, DataService
 from services.orchestration import OrchestrationService
 
 
 class MonitoringService(BaseService):
     def __init__(
         self,
-        deployment_service: DeploymentService,
+        # deployment_service: DeploymentService,
         orchestration_service: OrchestrationService,
         data_service: DataService,
         preprocessing_service: DataProcessingService,
@@ -30,7 +31,7 @@ class MonitoringService(BaseService):
     ):
         super().__init__()
         self.logger = logger["monitoring"]
-        self.deployment_service = deployment_service
+        # self.deployment_service = deployment_service
         self.orchestration_service = orchestration_service
         self.data_service = data_service
         self.preprocessing_service = preprocessing_service
@@ -91,7 +92,8 @@ class MonitoringService(BaseService):
         """
         self.logger.info("Starting daily drift check")
         try:
-            live_models = await self.deployment_service.list_models()
+            # live_models = await self.deployment_service.list_models()
+            live_models = await self._get_live_models()
             for model in live_models:
                 # grab the name string from the dict
                 full_name = model.get("name")
@@ -146,7 +148,8 @@ class MonitoringService(BaseService):
         """
         self.logger.info("Starting weekly data drift check")
         try:
-            models = await self.deployment_service.list_models()
+            # models = await self.deployment_service.list_models()
+            models = await self._get_live_models()
             self.logger.debug(f"Found {len(models)} live models: {models}")
             for model in models:
                 full_name = model.get("name")
@@ -263,3 +266,10 @@ class MonitoringService(BaseService):
             self.logger.error(
                 f"Error in data drift for {model_type}_{symbol}: {e}", exc_info=True
             )
+
+    async def _get_live_models(self):
+        url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models" # Maybe pts to the gateway later
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url)
+            r.raise_for_status()
+            return r.json()

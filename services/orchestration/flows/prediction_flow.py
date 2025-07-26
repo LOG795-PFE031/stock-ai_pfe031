@@ -13,7 +13,7 @@ from ..tasks.data import (
 )
 from ..tasks.deployment import production_model_exists
 from core.utils import get_model_name
-from services import DataService, DataProcessingService, DeploymentService
+from services import DataService, DataProcessingService #, DeploymentService
 from core.types import ProcessedData
 from core.config import config
 
@@ -32,7 +32,7 @@ def run_inference_flow(
     phase: str,
     prediction_input: ProcessedData,
     processing_service: DataProcessingService,
-    deployment_service: DeploymentService,
+    # deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
     Run the full inference pipeline for a given model and stock symbol.
@@ -62,7 +62,7 @@ def run_inference_flow(
     predict_result = predict.submit(
         model_identifier=model_identifier,
         X=prediction_input.X,
-        service=deployment_service,
+        # service=deployment_service,
     ).result()
 
     y_pred, model_version = (
@@ -86,7 +86,7 @@ def run_inference_flow(
             symbol=symbol,
             y_pred=y_pred,
             prediction_input=prediction_input,
-            service=deployment_service,
+            # service=deployment_service,
         )
         if phase == "prediction"
         else None
@@ -114,7 +114,7 @@ def run_prediction_pipeline(
     symbol: str,
     data_service: DataService,
     processing_service: DataProcessingService,
-    deployment_service: DeploymentService,
+    # deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
     Executes the prediction pipeline for a given model type and stock symbol.
@@ -145,7 +145,8 @@ def run_prediction_pipeline(
 
     # Check if it exist
     prod_model_exist = production_model_exists.submit(
-        production_model_name, deployment_service
+        production_model_name,
+        # deployment_service
     ).result()
 
     if prod_model_exist:
@@ -169,7 +170,7 @@ def run_prediction_pipeline(
             phase=PHASE,
             prediction_input=prediction_input,
             processing_service=processing_service,
-            deployment_service=deployment_service,
+            # deployment_service=deployment_service,
         )
 
         return {
@@ -191,7 +192,7 @@ def run_prediction_flow(
     symbol: str,
     data_service: DataService,
     processing_service: DataProcessingService,
-    deployment_service: DeploymentService,
+    # deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
     Run the prediction pipeline. It is basically a flow wrapper of the task in function
@@ -216,7 +217,7 @@ def run_prediction_flow(
         symbol=symbol,
         data_service=data_service,
         processing_service=processing_service,
-        deployment_service=deployment_service,
+        # deployment_service=deployment_service,
     ).result()
 
     return prediction_result
@@ -231,7 +232,7 @@ def run_batch_prediction(
     symbols: list[str],
     data_service: DataService,
     processing_service: DataProcessingService,
-    deployment_service: DeploymentService,
+    # deployment_service: DeploymentService,
 ):
     """
     Executes batch predictions for all combinations of given model types and stock symbols.
@@ -257,7 +258,7 @@ def run_batch_prediction(
         symbol=symbol_list,
         data_service=data_service,
         processing_service=processing_service,
-        deployment_service=deployment_service,
+        # deployment_service=deployment_service,
     )
 
     # Wait for all predictions to complete
@@ -274,7 +275,7 @@ def historical_prediction(
     end_date: datetime,
     data_service: DataService,
     processing_service: DataProcessingService,
-    deployment_service: DeploymentService,
+    # deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
     Run a historical prediction for a given stock symbol and date.
@@ -322,7 +323,7 @@ def historical_prediction(
         phase=PHASE,
         prediction_input=prediction_input,
         processing_service=processing_service,
-        deployment_service=deployment_service,
+        # deployment_service=deployment_service,
     )
 
     return {
@@ -342,7 +343,7 @@ def run_historical_predictions_flow(
     trading_days: list[datetime],
     data_service: DataService,
     processing_service: DataProcessingService,
-    deployment_service: DeploymentService,
+    # deployment_service: DeploymentService,
 ):
     """
     Run historical predictions for a given symbol and date range using a production model.
@@ -368,7 +369,8 @@ def run_historical_predictions_flow(
 
     # Check if it exist
     prod_model_exist = production_model_exists.submit(
-        production_model_name, deployment_service
+        production_model_name,
+        # deployment_service
     ).result()
 
     if prod_model_exist:
@@ -380,7 +382,7 @@ def run_historical_predictions_flow(
             end_date=dates,
             data_service=data_service,
             processing_service=processing_service,
-            deployment_service=deployment_service,
+            # deployment_service=deployment_service,
         )
 
         # Wait for predictions and collect results

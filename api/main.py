@@ -25,10 +25,9 @@ from services import (
     DataService,
     NewsService,
     DataProcessingService,
-    DeploymentService,
     EvaluationService,
     RabbitMQService,
-    MonitoringService,
+    # MonitoringService,
 )
 from services.orchestration import OrchestrationService
 from core.monitor_utils import (
@@ -43,23 +42,22 @@ os.makedirs("data/news", exist_ok=True)
 data_service = DataService()
 data_processing_service = DataProcessingService()
 news_service = NewsService()
-deployment_service = DeploymentService()
 evaluation_service = EvaluationService()
 orchestation_service = OrchestrationService(
     data_service=data_service,
     data_processing_service=data_processing_service,
-    deployment_service=deployment_service,
+    # deployment_service=deployment_service,
     evaluation_service=evaluation_service,
 )
 rabbitmq_service = RabbitMQService()
-monitoring_service = MonitoringService(
-    deployment_service,
-    orchestation_service,
-    data_service,
-    data_processing_service,
-    check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
-    data_interval_seconds=7 * 24 * 60 * 60,
-)
+# monitoring_service = MonitoringService(
+#     # deployment_service,
+#     orchestation_service,
+#     data_service,
+#     data_processing_service,
+#     check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
+#     data_interval_seconds=7 * 24 * 60 * 60,
+# )
 
 
 @asynccontextmanager
@@ -67,7 +65,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     try:
-        logger["main"].info("Starting up services...")
+        logger["main"].info("Starting up services...BBBBB")
 
         # Create the tables
         create_database()
@@ -76,10 +74,9 @@ async def lifespan(app: FastAPI):
         await data_service.initialize()
         await news_service.initialize()
         await data_processing_service.initialize()
-        await deployment_service.initialize()
         await evaluation_service.initialize()
         await orchestation_service.initialize()
-        await monitoring_service.initialize()
+        # await monitoring_service.initialize()
 
         logger["main"].info("All services initialized successfully")
         yield
@@ -94,10 +91,9 @@ async def lifespan(app: FastAPI):
             logger["main"].info("Shutting down services...")
 
             # Cleanup in reverse order of initialization
-            await monitoring_service.cleanup()
+            # await monitoring_service.cleanup()
             await orchestation_service.cleanup()
             await evaluation_service.cleanup()
-            await deployment_service.cleanup()
             await data_processing_service.cleanup()
             await news_service.cleanup()
             await data_service.cleanup()

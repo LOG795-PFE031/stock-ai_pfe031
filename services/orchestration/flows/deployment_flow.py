@@ -7,7 +7,7 @@ from ..tasks.deployment import (
     promote_model,
     promote_scaler,
 )
-from services import DataProcessingService, EvaluationService, DeploymentService
+from services import DataProcessingService, EvaluationService #, DeploymentService
 
 
 @flow(
@@ -22,7 +22,7 @@ def run_deploy_flow(
     prod_model_name: str | None,
     live_metrics: dict | None,
     evaluation_service: EvaluationService,
-    deployment_service: DeploymentService,
+    # deployment_service: DeploymentService,
     processing_service: DataProcessingService,
 ) -> dict[str, Any]:
     """
@@ -69,7 +69,7 @@ def run_deploy_flow(
             deployment_results = promote_model.submit(
                 run_id=run_id,
                 prod_model_name=prod_model_name,
-                service=deployment_service,
+                # service=deployment_service,
             ).result()
             logger.info("Candidate model promoted to production.")
         else:
@@ -80,7 +80,9 @@ def run_deploy_flow(
         # Automatically promote training model (if there is no live model)
         logger.info("No live model found. Auto-promoting candidate model.")
         deployment_results = promote_model.submit(
-            run_id=run_id, prod_model_name=prod_model_name, service=deployment_service
+            run_id=run_id, 
+            prod_model_name=prod_model_name, 
+            # service=deployment_service
         ).result()
         logger.info(
             "Candidate model promoted by default (no production model to compare)."

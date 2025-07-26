@@ -214,7 +214,7 @@ async def get_training_tasks():
         ) from exception
 
 
-@router.post("/cleanup", response_model=Dict[str, Any], tags=["Data Services"])
+@router.post("/cleanup", response_model=Dict[str, Any], tags=["Training Services"])
 async def cleanup_training_service():
     """Clean up the training service."""
     try:

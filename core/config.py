@@ -87,6 +87,13 @@ class TrainingServiceConfig(BaseModel):
     PORT: int = 8000
 
 
+class DeploymentServiceConfig(BaseModel):
+    """Deployment service configuration."""
+
+    HOST: str = "deployment-service"  # Use the Docker container's hostname
+    PORT: int = 8000
+
+
 class PostgresDatabaseConfig(BaseModel):
     """PostgreSQL configuration"""
 
@@ -112,6 +119,7 @@ class Config:
         self.training_service = TrainingServiceConfig()
         self.mlflow_server = MLFlowConfig()
         self.postgres = PostgresDatabaseConfig()
+        self.deployment_service = DeploymentServiceConfig()
 
         # Create necessary directories
         self._create_directories()

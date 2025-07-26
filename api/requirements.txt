@@ -1,3 +1,5 @@
+# Api gateway requirements
+
 fastapi==0.116.1
 prometheus_client==0.22.1
 pydantic==2.11.7
