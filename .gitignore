@@ -51,9 +51,6 @@ stock-prediction/*.log
 ehthumbs.db
 Thumbs.db
 
-# Ignore all files in the stock_data directory
-stock_data/
-
 # Ignore all files in the venv directory
 venv/
 
@@ -70,9 +67,7 @@ sandbox/lstm-stock-price-prediction/models/
 **.csv
 **.gz
 
-data/news/
-data/stock/
-
+# Ignore models data folder
 data/models/
 
 # Ignore Minio data
@@ -86,10 +81,8 @@ stock_postgres_data/
 prefect_postgres_data/
 mlflow_postgres_data/
 
-# Ignore Scaler data infos (registry)
-data/scalers/scaler_registry.json
-
-stock-ai.code-workspace
+# Ignore Scaler data
+data/scalers
 
 # Ignore Grafana DB and plugins
 grafana/grafana.db
