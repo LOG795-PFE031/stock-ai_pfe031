@@ -9,11 +9,10 @@ import httpx
 
 from core.logging import logger
 from core.utils import format_prediction_response, get_next_trading_day
-from core.config import TrainingServiceConfig
+from core.config import config
 from core import BaseService
 from services.deployment import DeploymentService
 
-from services.data_processing import DataProcessingService
 from services.evaluation import EvaluationService
 from services.data_ingestion import DataService
 from .prediction_storage import PredictionStorage
@@ -36,13 +35,11 @@ class OrchestrationService(BaseService):
     def __init__(
         self,
         data_service: DataService,
-        data_processing_service: DataProcessingService,
         deployment_service: DeploymentService,
         evaluation_service: EvaluationService,
     ):
         super().__init__()
         self.data_service = data_service
-        self.data_processing_service = data_processing_service
         self.deployment_service = deployment_service
         self.evaluation_service = evaluation_service
         self.logger = logger["orchestration"]
@@ -86,7 +83,6 @@ class OrchestrationService(BaseService):
                 model_type,
                 symbol,
                 self.data_service,
-                self.data_processing_service,
                 self.deployment_service,
                 self.evaluation_service,
             )
@@ -169,7 +165,6 @@ class OrchestrationService(BaseService):
                 model_type,
                 symbol,
                 self.data_service,
-                self.data_processing_service,
                 self.deployment_service,
             )
 
@@ -181,7 +176,7 @@ class OrchestrationService(BaseService):
                 model_version = prediction_result["model_version"]
 
                 self.logger.info(
-                    "Prediction pipeline completed for %s model for %s with version %d.",
+                    "Prediction pipeline completed for %s model for %s with version %s.",
                     model_type,
                     symbol,
                     model_version,
@@ -262,7 +257,6 @@ class OrchestrationService(BaseService):
                 model_type,
                 symbol,
                 self.data_service,
-                self.data_processing_service,
                 self.deployment_service,
                 self.evaluation_service,
             )
@@ -353,7 +347,6 @@ class OrchestrationService(BaseService):
                     symbol,
                     trading_days,
                     self.data_service,
-                    self.data_processing_service,
                     self.deployment_service,
                 )
 
@@ -480,7 +473,7 @@ class OrchestrationService(BaseService):
 
     async def _get_trainers(self):
         """Call the training service to get all the available trainers"""
-        url = f"http://{TrainingServiceConfig.HOST}:{TrainingServiceConfig.PORT}/training/trainers"
+        url = f"http://{config.training_service.HOST}:{config.training_service.PORT}/training/trainers"
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
 
@@ -503,6 +496,5 @@ class OrchestrationService(BaseService):
             model_types,
             symbols,
             self.data_service,
-            self.data_processing_service,
             self.deployment_service,
         )

@@ -23,7 +23,6 @@ from core.logging import logger
 from db.init_db import create_database
 from services import (
     DataService,
-    DataProcessingService,
     DeploymentService,
     EvaluationService,
     RabbitMQService,
@@ -40,12 +39,10 @@ os.makedirs("data/news", exist_ok=True)
 
 # Create service instances in dependency order
 data_service = DataService()
-data_processing_service = DataProcessingService()
 deployment_service = DeploymentService()
 evaluation_service = EvaluationService()
 orchestation_service = OrchestrationService(
     data_service=data_service,
-    data_processing_service=data_processing_service,
     deployment_service=deployment_service,
     evaluation_service=evaluation_service,
 )
@@ -54,7 +51,6 @@ monitoring_service = MonitoringService(
     deployment_service,
     orchestation_service,
     data_service,
-    data_processing_service,
     check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
     data_interval_seconds=7 * 24 * 60 * 60,
 )
@@ -72,7 +68,6 @@ async def lifespan(app: FastAPI):
 
         # Initialize services in order of dependencies
         await data_service.initialize()
-        await data_processing_service.initialize()
         await deployment_service.initialize()
         await evaluation_service.initialize()
         await orchestation_service.initialize()
@@ -95,7 +90,6 @@ async def lifespan(app: FastAPI):
             await orchestation_service.cleanup()
             await evaluation_service.cleanup()
             await deployment_service.cleanup()
-            await data_processing_service.cleanup()
             await data_service.cleanup()
             rabbitmq_service.close()  # Close RabbitMQ connection
 

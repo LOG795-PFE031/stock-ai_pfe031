@@ -12,7 +12,7 @@ package "API Gateway" {
   [API Gateway] as api
 }
 
-package "Core Services" {
+package "Core Services" as core_services {
   [Data Service] as dataService
   [Data Processing Service] as dataProcessingService
   [Training Service] as trainingService
@@ -28,6 +28,8 @@ package "Databases" {
   database "Stock Data DB" as stockDB
   database "Prediction Storage" as predictionDB
   database "Prefect DB" as prefectDB
+  database "Mlflow Backend Store DB" as mlflowDB
+  database "Mlflow Minio" as mlflowMinio
 }
 
 package "External Services" {
@@ -45,11 +47,10 @@ orchestrationService --> dataProcessingService : processes data
 orchestrationService --> trainingService : trains models
 orchestrationService --> deploymentService : deploys models
 orchestrationService --> evaluationService : evaluates models
-orchestrationService --> predictionDB : stores predictions
-monitoringService --> deploymentService : monitors models
 monitoringService --> orchestrationService : triggers retraining
-monitoringService --> dataService : detects data drift
-monitoringService --> dataProcessingService : analyzes processed data
+monitoringService --> dataService : fetches raw data
+monitoringService --> dataProcessingService : detects data drift
+deploymentService --> predictionDB : stores predictions
 newsService --> yahooFinance : fetches news data
 dataService --> yahooFinance : fetches market data
 visualizationService --> dataService : fetches stock data
@@ -58,11 +59,17 @@ visualizationService --> dataService : fetches stock data
 trainingService --> mlflow : logs models/metrics
 deploymentService --> mlflow : manages model lifecycle
 orchestrationService --> prefect : schedules workflows
-monitoringService --> prometheus : emits metrics
 prefect --> prefectDB : stores workflow states
+
+' MLflow Data relationships
+mlflow <--> mlflowDB : stores mlflow metadata 
+mlflow <--> mlflowMinio : stores artifacts
 
 ' Grafana interroge Prometheus pour les métriques
 grafana --> prometheus : queries metrics (PromQL)
+
+' Prometheus scrape data de tout les core services
+prometheus --> core_services : scrape metrics
 
 ' API Gateway relationships
 api --> orchestrationService : orchestrates pipelines

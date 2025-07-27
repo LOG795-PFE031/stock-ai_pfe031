@@ -75,14 +75,16 @@ data/stock/
 
 data/models/
 
-# Ignore MlFlow files
-mlruns/
+# Ignore Minio data
+minio_data/
 
 # Ignore Prefect files
 prefect_data/
 
 # Ignore PosgreSQL data
-postgres_data/
+stock_postgres_data/
+prefect_postgres_data/
+mlflow_postgres_data/
 
 # Ignore Scaler data infos (registry)
 data/scalers/scaler_registry.json

@@ -1,5 +1,5 @@
 """
-Main application module for the training service (Stock AI).
+Main application module for the data processing service (Stock AI).
 """
 
 import asyncio
@@ -21,12 +21,11 @@ from core.prometheus_metrics import (
     http_request_duration_seconds,
     http_errors_total,
 )
+from .data_processing_service import DataProcessingService
 from .routes import router
-from .training_service import TrainingService
 
-
-# Create the training service instance
-training_service = TrainingService()
+# Create the data processing service instance
+data_processing_service = DataProcessingService()
 
 
 @asynccontextmanager
@@ -34,52 +33,60 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     try:
-        logger["training"].info("Starting up the training service...")
+        logger["data_processing"].info("Starting up the data processing service...")
 
-        await training_service.initialize()
+        await data_processing_service.initialize()
 
-        logger["training"].info("Training service initialized successfully")
+        logger["data_processing"].info(
+            "Data processing service initialized successfully"
+        )
         yield
 
     except Exception as exception:
-        logger["training"].error(
-            f"Error during training service startup: {str(exception)}"
+        logger["data_processing"].error(
+            f"Error during data processing service startup: {str(exception)}"
         )
         raise
 
     finally:
         # Shutdown
         try:
-            logger["training"].info("Shutting down the training service...")
+            logger["data_processing"].info(
+                "Shutting down the data processing service..."
+            )
 
-            # Cleanup the services
-            await training_service.cleanup()
+            # Cleanup the service
+            await data_processing_service.cleanup()
 
-            logger["training"].info("The training service was cleaned up successfully")
+            logger["data_processing"].info(
+                "The data processing service was cleaned up successfully"
+            )
 
         except Exception as exception:
-            logger["training"].error(
-                f"Error during the training service shutdown: {str(exception)}"
+            logger["data_processing"].error(
+                f"Error during the data processing service shutdown: {str(exception)}"
             )
 
 
 # Create FastAPI app
 app = FastAPI(
-    title="Training Service API",
+    title="Data processing Service API",
     description="""
-    API for training the ML models responsible for next day stock price predictions
+    API for data processing inputs and outputs of the ML models responsible for next day stock 
+    price predictions
 
     ## Features
-    - Get trainers (trainers available to create models)
-    - Train models/trainers
+    - Preprocess raw data
+    - Postprocess ouput of the ML models
+    - Manages scalers
     """,
     version="1.0.0",
     lifespan=lifespan,
     openapi_tags=[
         {"name": "System", "description": "System health and status endpoints"},
         {
-            "name": "Training Services",
-            "description": "Endpoints for model training",
+            "name": "Data Procesing Services",
+            "description": "Endpoints for data processing",
         },
     ],
 )
@@ -102,7 +109,7 @@ async def root():
 
 
 # Include routers
-app.include_router(router, prefix="/training")  # Add /api prefix to all routes
+app.include_router(router, prefix="/processing")  # Add /api prefix to all routes
 
 
 @app.middleware("http")

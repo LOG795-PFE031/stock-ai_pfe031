@@ -1,6 +1,7 @@
 from ...scaler_manager import ScalerManager
+from ...constants import TARGETS_SCALER_TYPE
 from ..abstract import BaseDataProcessor
-from core.types import ProcessedData
+from ..formatters import ProcessedData
 
 import numpy as np
 from typing import Optional
@@ -118,21 +119,20 @@ class DataNormalizer(BaseDataProcessor):
 
         if self.scaler_manager.model_requires_scaling():
 
-            # Extract the targets
-            y = data.y
+            # Extract the targets (ensure numpy format)
+            y = np.array(data.y)
 
             original_y_shape = y.shape
 
             # Reshape for scaler
-            if isinstance(y, np.ndarray):
-                if y.ndim == 3:
-                    y = y.reshape(-1, y.shape[-1])
-                if y.ndim == 1:
-                    y = y.reshape(-1, 1)
+            if y.ndim == 3:
+                y = y.reshape(-1, y.shape[-1])
+            if y.ndim == 1:
+                y = y.reshape(-1, 1)
 
             # Load the targets scaler
             y_scaler = self.scaler_manager.load_scaler(
-                scaler_type=ScalerManager.TARGETS_SCALER_TYPE, phase=phase
+                scaler_type=TARGETS_SCALER_TYPE, phase=phase
             )
 
             # Unscale the targets

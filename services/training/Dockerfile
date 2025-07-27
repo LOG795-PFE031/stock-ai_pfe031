@@ -42,6 +42,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY services/training /app/services/training
+COPY core /app/core
 
 # Set environment variables
 ENV PYTHONPATH=/app \

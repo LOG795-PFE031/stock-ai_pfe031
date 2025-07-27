@@ -485,17 +485,25 @@ class DataService(BaseService):
                             [
                                 {
                                     "Date": r.date,
-                                    "Open": float(r.open) if r.open else None,
-                                    "High": float(r.high) if r.high else None,
-                                    "Low": float(r.low) if r.low else None,
-                                    "Close": float(r.close) if r.close else None,
+                                    "Open": (
+                                        float(r.open) if r.open is not None else None
+                                    ),
+                                    "High": (
+                                        float(r.high) if r.high is not None else None
+                                    ),
+                                    "Low": float(r.low) if r.low is not None else None,
+                                    "Close": (
+                                        float(r.close) if r.close is not None else None
+                                    ),
                                     "Volume": r.volume,
                                     "Dividends": (
-                                        float(r.dividends) if r.dividends else None
+                                        float(r.dividends)
+                                        if r.dividends is not None
+                                        else None
                                     ),
                                     "Stock Splits": (
                                         float(r.stock_splits)
-                                        if r.stock_splits
+                                        if r.stock_splits is not None
                                         else None
                                     ),
                                 }

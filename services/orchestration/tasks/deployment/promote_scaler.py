@@ -1,5 +1,7 @@
+import httpx
 from prefect import task
-from services.data_processing import DataProcessingService
+
+from core.config import config
 
 
 @task(
@@ -8,14 +10,31 @@ from services.data_processing import DataProcessingService
     retries=2,
     retry_delay_seconds=5,
 )
-async def promote_scaler(service: DataProcessingService, model_type: str, symbol: str):
+async def promote_scaler(model_type: str, symbol: str):
     """
     Promote a scaler to production using a data processing service.
 
     Args:
-        service (DataProcessingService): Data service handling scalers.
         model_type (str): Type of model (e.g. "prophet", "lstm").
         symbol (str): Stock ticker symbol.
     """
-    await service.promote_scaler(model_type=model_type, symbol=symbol)
-    return
+
+    # Get the endpoint URL
+    url = (
+        f"http://{config.data_processing_service.HOST}:"
+        f"{config.data_processing_service.PORT}"
+        "/processing/promote-scaler"
+    )
+
+    # Define the query parameters
+    params = {
+        "symbol": symbol,
+        "model_type": model_type,
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, params=params)
+
+        # Check if the response is successful
+        response.raise_for_status()
+        return response.json()

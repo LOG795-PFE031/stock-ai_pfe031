@@ -13,7 +13,7 @@ from ..tasks.data import (
 )
 from ..tasks.deployment import production_model_exists
 from core.utils import get_model_name
-from services import DataService, DataProcessingService, DeploymentService
+from services import DataService, DeploymentService
 from core.types import ProcessedData
 from core.config import config
 
@@ -31,7 +31,6 @@ def run_inference_flow(
     symbol: str,
     phase: str,
     prediction_input: ProcessedData,
-    processing_service: DataProcessingService,
     deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
@@ -49,7 +48,6 @@ def run_inference_flow(
         symbol (str): Stock ticker symbol
         phase (str): Phase of the pipeline (e.g., "prediction", "evaluation", 'training).
         prediction_input (ProcessedData): Preprocessed input features for prediction.
-        processing_service: Service used for postprocessing the prediction.
         deployment_service: Service used for predicting and calculating confidence.
 
     Returns:
@@ -72,7 +70,6 @@ def run_inference_flow(
 
     # Postprocess the predictions
     processed_y_pred_future = postprocess_data.submit(
-        service=processing_service,
         symbol=symbol,
         prediction=y_pred,
         model_type=model_type,
@@ -113,7 +110,6 @@ def run_prediction_pipeline(
     model_type: str,
     symbol: str,
     data_service: DataService,
-    processing_service: DataProcessingService,
     deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
@@ -129,7 +125,6 @@ def run_prediction_pipeline(
         model_type (str): The type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol
         data_service: Service responsible for loading data.
-        processing_service: Service responsible for data preprocessing and postprocessing.
         deployment_service: Service responsible for model deployment and prediction.
 
     Returns:
@@ -157,7 +152,6 @@ def run_prediction_pipeline(
             model_type=model_type,
             symbol=symbol,
             data=raw_data,
-            service=processing_service,
             phase=PHASE,
         )
 
@@ -168,7 +162,6 @@ def run_prediction_pipeline(
             symbol=symbol,
             phase=PHASE,
             prediction_input=prediction_input,
-            processing_service=processing_service,
             deployment_service=deployment_service,
         )
 
@@ -190,7 +183,6 @@ def run_prediction_flow(
     model_type: str,
     symbol: str,
     data_service: DataService,
-    processing_service: DataProcessingService,
     deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
@@ -201,7 +193,6 @@ def run_prediction_flow(
         model_type (str): The type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol
         data_service: Service responsible for loading data.
-        processing_service: Service responsible for data preprocessing and postprocessing.
         deployment_service: Service responsible for model deployment and prediction.
 
     Returns:
@@ -215,7 +206,6 @@ def run_prediction_flow(
         model_type=model_type,
         symbol=symbol,
         data_service=data_service,
-        processing_service=processing_service,
         deployment_service=deployment_service,
     ).result()
 
@@ -230,7 +220,6 @@ def run_batch_prediction(
     model_types: list[str],
     symbols: list[str],
     data_service: DataService,
-    processing_service: DataProcessingService,
     deployment_service: DeploymentService,
 ):
     """
@@ -240,7 +229,6 @@ def run_batch_prediction(
         model_types (list[str]): A list of model types to use (e.g., ["lstm", "xgboost"]).
         symbols (list[str]): A list of stock symbols to generate predictions for.
         data_service: Service responsible for loading data.
-        processing_service: Service responsible for data preprocessing and postprocessing.
         deployment_service: Service responsible for model deployment and prediction.
     """
 
@@ -256,7 +244,6 @@ def run_batch_prediction(
         model_type=model_type_list,
         symbol=symbol_list,
         data_service=data_service,
-        processing_service=processing_service,
         deployment_service=deployment_service,
     )
 
@@ -273,7 +260,6 @@ def historical_prediction(
     symbol: str,
     end_date: datetime,
     data_service: DataService,
-    processing_service: DataProcessingService,
     deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
@@ -284,7 +270,6 @@ def historical_prediction(
         symbol (str): Stock ticker sym
         end_date (datetime): The day before the day to predict
         data_service (DataService): Service to retrieve stock data.
-        processing_service (DataProcessingService): Service to preprocess ata.
         deployment_service (DeploymentService): Deployment service
 
     Returns:
@@ -307,7 +292,6 @@ def historical_prediction(
         model_type=model_type,
         symbol=symbol,
         data=raw_data,
-        service=processing_service,
         phase=PHASE,
     )
 
@@ -321,7 +305,6 @@ def historical_prediction(
         symbol=symbol,
         phase=PHASE,
         prediction_input=prediction_input,
-        processing_service=processing_service,
         deployment_service=deployment_service,
     )
 
@@ -341,7 +324,6 @@ def run_historical_predictions_flow(
     symbol: str,
     trading_days: list[datetime],
     data_service: DataService,
-    processing_service: DataProcessingService,
     deployment_service: DeploymentService,
 ):
     """
@@ -352,7 +334,6 @@ def run_historical_predictions_flow(
         symbol (str): Stock ticker symbol
         trading_days (list[datetime]): The trading days we want to predict
         data_service (DataService): Service to retrieve stock data.
-        processing_service (DataProcessingService): Service to preprocess ata.
         deployment_service (DeploymentService): Deployment service.
 
     Returns:
@@ -379,7 +360,6 @@ def run_historical_predictions_flow(
             symbol=symbol,
             end_date=dates,
             data_service=data_service,
-            processing_service=processing_service,
             deployment_service=deployment_service,
         )
 

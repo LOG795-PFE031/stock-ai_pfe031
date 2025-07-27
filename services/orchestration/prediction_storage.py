@@ -136,6 +136,10 @@ class PredictionStorage:
 
         # Create a new SQLAlchemy session to interact with the database
         AsyncSessionLocal = get_async_session()
+
+        # Convert the model version into an integer
+        model_version = int(model_version)
+
         async with AsyncSessionLocal() as session:
             try:
                 # Check if prediction already exists for that symbol and date
@@ -151,7 +155,7 @@ class PredictionStorage:
                     # Update
                     existing.prediction = float(prediction)
                     existing.confidence = float(confidence)
-                    existing.model_version = model_version
+                    existing.model_version = int(model_version)
 
                 else:
                     # Insert

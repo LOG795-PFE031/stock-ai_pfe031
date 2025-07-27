@@ -52,10 +52,8 @@ class BaseModel(ABC, PythonModel):
         """
 
         try:
-            mlflow.set_tracking_uri(
-                f"http://{config.mlflow_server.HOST}:{config.mlflow_server.PORT}"
-            )
             mlflow.set_experiment("training_experiments")
+
             with mlflow.start_run() as run:
 
                 # Set custom tags

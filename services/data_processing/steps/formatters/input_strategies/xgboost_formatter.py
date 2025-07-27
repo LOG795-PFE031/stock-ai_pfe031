@@ -1,5 +1,5 @@
 from .base_strategy import InputFormatterStrategy
-from core.types import ProcessedData
+from ..types import ProcessedData
 
 
 class XGBoostInputFormatter(InputFormatterStrategy):

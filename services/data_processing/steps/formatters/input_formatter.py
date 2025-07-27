@@ -1,5 +1,5 @@
 from ..abstract import BaseDataProcessor
-from core.types import ProcessedData
+from .types import ProcessedData
 from .input_strategies import (
     InputFormatterStrategy,
     SequenceInputFormatter,

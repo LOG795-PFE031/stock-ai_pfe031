@@ -1,5 +1,5 @@
 from .base_strategy import InputFormatterStrategy
-from core.types import ProcessedData
+from ..types import ProcessedData
 
 from pandas.tseries.offsets import BDay
 import pandas as pd

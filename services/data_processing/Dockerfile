@@ -10,8 +10,12 @@ RUN apt-get update && \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file
-COPY requirements.txt .
+# Copy core and data processing requirements
+COPY services/data_processing/requirements.txt data-processing-requirements.txt
+COPY core/requirements.txt core-requirements.txt
+
+# Combine both requirements into one
+RUN cat data-processing-requirements.txt core-requirements.txt > requirements.txt
 
 # Install build tools and wheel
 RUN pip install --no-cache-dir --upgrade pip && \
@@ -38,7 +42,8 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
-COPY . /app
+COPY services/data_processing /app/services/data_processing
+COPY core /app/core
 
 # Set environment variables
 ENV PYTHONPATH=/app \
@@ -49,4 +54,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
-CMD ["python", "main.py"]
+CMD ["uvicorn", "services.data_processing.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

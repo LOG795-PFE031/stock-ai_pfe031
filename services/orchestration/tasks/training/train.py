@@ -1,5 +1,3 @@
-from datetime import datetime, date
-import json
 from typing import Any
 import httpx
 from prefect import task
@@ -58,15 +56,15 @@ async def train(
                 else training_data.y
             ),
             "feature_index_map": training_data.feature_index_map,
-            "start_date": training_data.start_date.isoformat(),
-            "end_date": training_data.end_date.isoformat(),
+            "start_date": training_data.start_date,
+            "end_date": training_data.end_date,
         },
     }
 
     # Define the query parameters
     params = {
-        "symbol": symbol,  # Example symbol
-        "model_type": model_type,  # Example model type (can also be "prophet")
+        "symbol": symbol,
+        "model_type": model_type,
     }
 
     async with httpx.AsyncClient(timeout=None) as client:
