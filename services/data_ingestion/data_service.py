@@ -18,14 +18,24 @@ from db.session import get_async_session
 from db.models.stock_price import StockPrice
 from core.prometheus_metrics import external_requests_total
 from core import BaseService
+from core.logging import logger
+from core.config import config
 
 
 class DataService(BaseService):
     """Service for managing data collection and processing."""
+    _instance = None
+    _initialized = False
 
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(DataService, cls).__new__(cls)
+        return cls._instance
+    
     def __init__(self):
         super().__init__()
-        self.logger = self.logger["data"]
+        self.logger = logger["data"]
+        self.config = config
         self.news_data_dir = self.config.data.NEWS_DATA_DIR
 
     async def initialize(self) -> None:
@@ -161,7 +171,6 @@ class DataService(BaseService):
 
             # Retrieve the latest trading day
             current_price = df[df["Date"].dt.date == end_date.date()]
-
             # Get the stock_name
             stock_name = self.get_stock_name(symbol)
 
@@ -173,6 +182,41 @@ class DataService(BaseService):
                 "Error getting current stock price for %s: %s", symbol, str(e)
             )
             raise
+        
+    async def calculate_change_percent(self, symbol: str) -> float:
+        """
+        Calculate the percentage change between the current price and previous day's close.
+        
+        Args:
+            symbol (str): Stock symbol
+            
+        Returns:
+            float: Percentage change rounded to 2 decimal places, or None if calculation fails
+        """
+        try:
+            # Get recent data (today and yesterday)
+            recent_data, _ = await self.get_recent_data(symbol, days_back=2)
+            
+            if recent_data.empty or len(recent_data) < 2:
+                self.logger.warning(f"Not enough data to calculate change percent for {symbol}")
+                return None
+                
+            # Sort by date (most recent first)
+            recent_data = recent_data.sort_values('Date', ascending=False)
+            
+            # Get current day and previous day prices
+            current_close = float(recent_data.iloc[0]['Close'])
+            previous_close = float(recent_data.iloc[1]['Close'])
+            
+            # Calculate percentage change
+            if previous_close > 0:
+                change_percent = ((current_close - previous_close) / previous_close) * 100
+                return round(change_percent, 2)
+            
+            return None
+        except Exception as e:
+            self.logger.error(f"Error calculating change percent for {symbol}: {str(e)}")
+            return None
 
     async def get_recent_data(self, symbol: str, days_back: int = None):
         """
@@ -563,6 +607,49 @@ class DataService(BaseService):
 
         return missing_dates
 
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Check the health of the data service.
+
+        Returns:
+            Dictionary containing health status
+        """
+        try:
+            # Check if service is initialized
+            if not self._initialized:
+                return {
+                    "status": "unhealthy",
+                    "message": "Service not initialized",
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+            # Check database connectivity
+            try:
+                AsyncSessionLocal = get_async_session()
+                async with AsyncSessionLocal() as session:
+                    # Simple query to test database connection
+                    stmt = select(StockPrice).limit(1)
+                    await session.execute(stmt)
+                    
+                return {
+                    "status": "healthy",
+                    "message": "Service is healthy",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            except Exception as db_error:
+                return {
+                    "status": "unhealthy",
+                    "message": f"Database connection failed: {str(db_error)}",
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+        except Exception as e:
+            return {
+                "status": "unhealthy",
+                "message": f"Health check failed: {str(e)}",
+                "timestamp": datetime.now().isoformat(),
+            }
+
     async def cleanup_data(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """
         Clean up and maintain data files.
@@ -617,14 +704,12 @@ class DataService(BaseService):
                     raise
 
                 return {
-                    "status": "success",
-                    "symbol": symbol if symbol else "all",
-                    "deleted_count": deleted_count,
+                    "message": f"Successfully deleted {deleted_count} records",
+                    "deleted_records": deleted_count,
+                    "symbols_affected": [symbol] if symbol else ["all"],
                 }
 
         except Exception as e:
-            # Rollback in case of error
-            await session.rollback()
             self.logger.error("Error during cleanup: %s", str(e))
 
             return {
@@ -632,6 +717,3 @@ class DataService(BaseService):
                 "message": str(e),
                 "timestamp": datetime.now().isoformat(),
             }
-        finally:
-            # Close the session
-            session.close()
