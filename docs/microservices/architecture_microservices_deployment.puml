@@ -46,93 +46,103 @@ node "API Gateway" as gateway <<container>> {
   [API Service] as api
 }
 
+' Data Storage Layer
+
+' Bases de données
+
+package "Databases" {
+
+  ' Database Prefect
+  database "Database Server Prefect" as dbPrefect <<container>> {
+  }
+
+  ' Backend store Database for MLflow
+  database "Database Server MLflow" as dbMlflow <<container>> {
+  }
+
+  ' Artifacts store for MLflow
+  database "MinIO Artifacts Store MLflow" as minioMlflow <<container>> {
+  }
+
+
+  ' Database Orchestration
+  database "Predictions Database" as dbPred <<container>> {
+  }
+
+  ' Database Stock Prices
+  database "Database Server Stock Prices" as dbStock <<container>> {
+  }
+
+  ' Database Data Processing
+  database "Database Server Data Processing" as dbDataProcessing <<container>> {
+  }
+}
+
+
 ' Core Services - grouped by functionality
-package "Core Services" {
+package "Core Services" as core_services {
   node "Data Management" as dataNode {
     node "Data Service" as data <<container>> {
-      [Data Service Logic]
+      [Application Code] as ac_data
     }
   }
   
   node "ML Pipeline" as mlNode {
-    node "Data Processing Service" as dataProcessing <<container>> {
-      [Data Processing Logic]
-    }
     node "Training Service" as training <<container>> {
-      [Training Logic]
-    }
-    node "Evaluation Service" as evaluation <<container>> {
-      [Evaluation Logic]
+      [Application Code] as ac_train
     }
     node "Deployment Service" as deployment <<container>> {
-      [Deployment Logic]
+      [Application Code] as ac_deploy
     }
+    node "Evaluation Service" as evaluation <<container>> {
+      [Application Code] as ac_eval
+    }
+    node "Data Processing Service" as dataProcessing <<container>> {
+      [Application Code] as ac_data_processing
+    }
+
   }
   
   node "Operations" as opsNode {
     node "Orchestration Service" as orchestration <<container>> {
-      [Orchestration Logic]
+      [Application Code] as ac_orchestration
     }
     node "Monitoring Service" as monitoring <<container>> {
-      [Monitoring Logic]
+      [Application Code] as ac_monitoring
     }
   }
   
   node "Content" as contentNode {
     node "News Service" as news <<container>> {
-      [News Logic]
+      [Application Code] as ac_news
     }
     node "Visualization Service" as visualization <<container>> {
-    [Visualization Logic]
+    [Application Code] as ac_visualization
     }
   }
 }
 
-' Data Storage Layer
 
-' Bases de données
-
-' Database Prefect
-database "Database Server Prefect" as dbPrefect <<container>> {
-  [Table_prefect] as prefectTable
-}
-
-' Database Orchestration
-database "Database Server Orchestration" as dbOrch <<container>> {
-  [Table_predictions] as predTable
-}
-
-' Database Stock Prices
-database "Database Server Stock Prices" as dbStock <<container>> {
-  [Table_stock_prices] as stockTable
-}
-
-' Database Data Processing
-database "Database Server Data Processing" as dbDataProcessing <<container>> {
-  [Table_processed_data] as processedDataTable
-}
 
 ' MLflow Servers
-node "MLflow Server A" as mlflowA <<container>> {
-  [MLflow A] as mlflowServiceA
-}
-
-node "MLflow Server B" as mlflowB <<container>> {
-  [MLflow B] as mlflowServiceB
+node "MLflow Server" as mlflow <<container>> {
+  [MLflow Service] as mlflowService
 }
 
 ' Prefect Container
 node "Prefect Server" as prefectNode <<container>> {
-  [Prefect] as prefect
+  [Prefect Service] as prefect
 }
 
 ' Monitoring & Visualization Tools
 node "Prometheus Server" as prometheus <<container>> {
   [Prometheus] as prometheusService
+  artifact prometheus.yml
 }
 
 node "Grafana Server" as grafana <<container>> {
-  [Grafana] as grafanaService
+  [Grafana Dashboard Service] as grafanaSvc
+  artifact grafana.db
 }
 
 ' Connections
@@ -149,29 +159,28 @@ orchestration --> training
 orchestration --> deployment
 orchestration --> dataProcessing
 orchestration --> evaluation
-orchestration --> dbOrch
-
-prefect --> prefectTable
-
-data --> stockTable
-training --> mlflowServiceA
-deployment --> mlflowServiceB
-dataProcessing --> processedDataTable
+deployment --> dbPred
 
 monitoring --> deployment
 monitoring --> orchestration
 monitoring --> data
 monitoring --> dataProcessing
 
+prefect --> dbPrefect
+
+data --> dbStock
+training --> mlflow
+deployment --> mlflow
+dataProcessing --> dbDataProcessing
+
+mlflow <--> dbMlflow
+mlflow <--> minioMlflow
+
 api --> visualization
-monitoring --> visualization
 visualization --> data
 
 ' Monitoring connections
-monitoring --> prometheusService : emits metrics
-grafanaService --> prometheusService : queries metrics (PromQL)
-
-' Show that monitoring can visualize via Grafana
-grafanaService --> web : dashboards
+grafanaSvc --> prometheusService : queries metrics (PromQL)
+prometheus --> core_services : scrape metrics from core services
 
 @enduml
