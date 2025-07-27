@@ -1,0 +1,160 @@
+@startuml Architecture Microservices Deployment - Cleaned
+
+title Architecture Microservices Deployment - PFE031
+
+!define DARKBLUE #052C65
+!define LIGHTBLUE #4682B4
+!define GREEN #3CB371
+!define ORANGE #FFA500
+!define GRAY #808080
+!define CONTAINER_COLOR #0db7ed
+!define CONTAINER_BORDER_COLOR #066da5
+
+left to right direction
+
+skinparam node {
+  BorderColor DARKBLUE
+  BackgroundColor LIGHTBLUE
+  FontColor white
+}
+
+skinparam database {
+  BorderColor GREEN
+  BackgroundColor #E0FFE0
+  FontColor DARKBLUE
+}
+
+skinparam artifact {
+  BorderColor ORANGE
+  BackgroundColor #FFDCB7
+  FontColor DARKBLUE
+}
+
+skinparam node<<container>> {
+  BackgroundColor CONTAINER_COLOR
+  BorderColor CONTAINER_BORDER_COLOR
+  FontColor white
+  StereotypeFontColor white
+  Shadowing true
+}
+
+skinparam Arrow {
+  Color DARKBLUE
+  Thickness 2
+}
+
+' ========== CLIENT ==========
+node "Client Device" {
+  component "Client Web" <<frontend>> as web
+}
+
+' ========== DATABASE ==========
+database "Stock Prices DB" as db <<container>> {
+  component "stock_prices" <<table>>
+  component "predictions" <<table>>
+  component "data_processing" <<table>>
+  component "prefect" <<table>>
+}
+
+' ========== APPLICATION ==========
+node "Stock-ai Application" as app <<container>> {
+
+  ' -- API Layer
+  node "API Layer" {
+    component "routes.py" as api
+  }
+
+  ' -- Operations
+  node "Operations" {
+    component "Orchestration Service" as orchestration_service
+    component "Monitoring Service" as monitoring_service
+  }
+
+  ' -- Data Management
+  node "Data Management" {
+    component "Data Service" as data_service
+  }
+
+  ' -- ML Pipeline
+  node "ML Pipeline" {
+    component "Training Service" as training_service
+    component "Deployment Service" as deployment_service
+    component "Evaluation Service" as evaluation_service
+    component "Data Processing Service" as data_processing_service
+  }
+
+  ' -- Content Services
+  node "Content Services" {
+    component "News Service" as news_service
+    component "Visualization Service" as visualization_service
+  }
+
+  ' -- Local Store for MLflow
+  database "MLflow Local Store (./mlruns)" as mlruns
+}
+
+' ========== EXTERNAL TOOLS ==========
+
+node "MLflow UI Server" <<container>> {
+  component "MLflow UI Service" as mlflowService
+}
+
+node "Prefect Server" <<container>> {
+  component "Prefect Service" as prefect_service
+}
+
+node "Prometheus Server" <<container>> {
+  component "Prometheus" as prometheusService
+  artifact "prometheus.yml"
+}
+
+node "Grafana Server" <<container>> {
+  component "Grafana Dashboard Service" as grafanaSvc
+  artifact "grafana.db"
+}
+
+' ========== CONNECTIONS ==========
+
+' Client to API
+web --> api : <color:GREEN>HTTP Request</color>
+
+' API to Core Services
+api --> orchestration_service
+api --> data_service
+api --> deployment_service
+api --> news_service
+api --> visualization_service
+
+' Visualization
+visualization_service --> data_service
+
+' Orchestration
+orchestration_service <--> prefect_service
+orchestration_service --> training_service
+orchestration_service --> deployment_service
+orchestration_service --> evaluation_service
+orchestration_service --> data_processing_service
+orchestration_service --> data_service
+
+' Monitoring
+monitoring_service --> deployment_service
+monitoring_service --> orchestration_service
+monitoring_service --> data_service
+monitoring_service --> data_processing_service
+
+' Database Connections
+data_service --> db
+deployment_service --> db
+data_processing_service --> db
+prefect_service --> db
+
+' MLflow Logging
+training_service --> mlruns
+deployment_service --> mlruns
+mlflowService --> mlruns
+
+' Monitoring Tools
+grafanaSvc --> prometheusService : PromQL queries
+prometheusService --> app : scrapes metrics
+
+@enduml
