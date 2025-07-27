@@ -114,6 +114,8 @@ async def get_current_price(
                 endpoints=["/stock/current"],
             ),
         )
+    except HTTPException as http_exc:
+        raise http_exc
     except Exception as e:
         error_detail = f"Failed to get current price for {symbol}: {str(e)}"
         api_logger.error(error_detail)
@@ -193,6 +195,8 @@ async def get_historical_data(
                 endpoints=["/stock/historical"],
             ),
         )
+    except HTTPException as http_exc:
+        raise http_exc
     except Exception as e:
         error_detail = f"Failed to get historical data for {symbol} from {start_date} to {end_date}: {str(e)}"
         api_logger.error(error_detail)
@@ -269,6 +273,8 @@ async def get_recent_data(
                 endpoints=["/stock/recent"],
             ),
         )
+    except HTTPException as http_exc:
+        raise http_exc
     except Exception as e:
         error_detail = f"Failed to get recent data for {symbol} (last {days_back} days): {str(e)}"
         api_logger.error(error_detail)
@@ -369,6 +375,8 @@ async def get_data_from_end_date(
                 endpoints=["/stock/from-end-date"],
             ),
         )
+    except HTTPException as http_exc:
+        raise http_exc
     except Exception as e:
         error_detail = f"Failed to get data from end date for {symbol} from {end_date} going back {days_back} days: {str(e)}"
         api_logger.error(error_detail)

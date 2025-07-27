@@ -14,9 +14,10 @@ def test_data_service():
     
     print("Testing Data Service Microservice...")
     print("=" * 50)
-    
+    print(f"Base URL: {base_url}")
     # Test health check
     print("\n1. Testing health check...")
+    # The container need to be running for this test to pass
     try:
         response = requests.get(f"{base_url}/health")
         print(f"Status: {response.status_code}")
