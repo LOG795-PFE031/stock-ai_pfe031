@@ -1,4 +1,5 @@
-from typing import Union, Tuple
+from typing import Any, Union, Tuple
+import numpy as np
 import pandas as pd
 
 from core.logging import logger
@@ -88,6 +89,7 @@ class DataProcessingService(BaseService):
         model_type: str,
         phase: str,
     ) -> Union[ProcessedData, Tuple[ProcessedData, ProcessedData]]:
+    # ) -> Union[dict[str, Any], Tuple[dict[str, Any], dict[str, Any]]]:
         """
         Preprocess the stock data for models input (raw data to preprocessed data).
 
@@ -160,7 +162,7 @@ class DataProcessingService(BaseService):
         prediction,
         model_type: str,
         phase: str,
-    ) -> ProcessedData:
+    ) -> dict[str,Any]:
         """
         Postprocess the predictions by reversing the scaling applied during preprocessing.
 
@@ -179,7 +181,15 @@ class DataProcessingService(BaseService):
                 f"Starting postprocessing for {symbol} symbol for {model_type} model during {phase} phase"
             )
 
-            data = ProcessedData(y=prediction)
+            # Wrap prediction in an ndarray so .shape exists
+            if isinstance(prediction, list):
+                y_raw = np.array(prediction)
+            elif hasattr(prediction, "values"):  
+                y_raw = prediction.values
+            else:
+                y_raw = prediction
+            
+            data = ProcessedData(y=y_raw)
 
             data = DataNormalizer(symbol=symbol, model_type=model_type).unprocess(
                 data, phase=phase
@@ -193,11 +203,32 @@ class DataProcessingService(BaseService):
                 f"Targets formatted for symbol={symbol}, model_type={model_type}"
             )
 
+            result: dict[str, Any] = {}
+            if data.y is not None:
+                result["y"] = (
+                    data.y.tolist()
+                    if isinstance(data.y, np.ndarray)
+                    else data.y
+                )
+            if data.X is not None:
+                result["X"] = (
+                    data.X.tolist()
+                    if isinstance(data.X, np.ndarray)
+                    else data.X
+                )
+            if data.feature_index_map is not None:
+                result["feature_index_map"] = data.feature_index_map
+            if data.start_date is not None:
+                result["start_date"] = data.start_date.isoformat()
+            if data.end_date is not None:
+                result["end_date"] = data.end_date.isoformat()
+            
             self.logger.info(
                 f"Postprocessing completed for {symbol} symbol for {model_type} model during {phase} phase"
             )
 
-            return data
+            return result
+            # return data
         except Exception as e:
             self.logger.error(
                 f"Error postprocessing the stock data for {model_type} model for {symbol} during {phase} phase: {str(e)}"

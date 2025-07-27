@@ -1,6 +1,7 @@
 from prefect import task
 import httpx
 
+from typing import Any
 from core.config import config
 
 # from services import DeploymentService
@@ -14,8 +15,11 @@ from core.config import config
 )
 async def calculate_prediction_confidence(
     model_type: str,
-    symbol: str, y_pred,
-    prediction_input, 
+    symbol: str,
+    # y_pred,
+    # prediction_input, 
+    y_pred: list[float],
+    prediction_input: dict[str, Any],
     # service: DeploymentService
 ) -> list[float]:
     """
@@ -35,13 +39,22 @@ async def calculate_prediction_confidence(
         f"{config.deployment_service.PORT}"
         f"/deployment/metrics/calculate_prediction_confidence"
     )
+    # payload = {
+    #     "model_type": model_type,
+    #     "symbol": symbol,
+    #     "prediction_input": prediction_input,
+    #     "y_pred": y_pred,
+    # }
+    # extract the raw feature array
+    features = prediction_input["X"]
     payload = {
         "model_type": model_type,
-        "symbol": symbol,
-        "prediction_input": prediction_input,
-        "y_pred": y_pred,
+        "symbol":    symbol,
+        "X":          prediction_input["X"],
+        "feature_index_map": prediction_input["feature_index_map"],
+        "y_pred":     y_pred,
     }
-    
+
     async with httpx.AsyncClient(timeout=None) as client:
         response = await client.post(url, json=payload)
         response.raise_for_status()

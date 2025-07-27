@@ -9,7 +9,8 @@ from core.config import config
     description="Log evaluation metrics to MLflow using the deployment service.",
     retries=3,
     retry_delay_seconds=5,
-    timeout_seconds=30,
+    # timeout_seconds=30,
+    timeout_seconds=500,
 )
 async def log_metrics_to_mlflow(
     model_identifier: str,

@@ -136,8 +136,16 @@ class DeploymentService(BaseService):
         try:
             self.logger.info("Starting prediction using model %s.", model_identifier)
 
+            # ensure X is a numpy array to satisfy MLflow schema checks (cause it might cause "Enforce schema of data not work")
+            if isinstance(X, pd.DataFrame):
+                X_input = X.values
+            elif not isinstance(X, np.ndarray):
+                X_input = np.array(X)
+            else:
+                X_input = X
+            
             # Generate input hash for caching
-            input_hash = self._hash_input(X)
+            input_hash = self._hash_input(X_input)
             if not input_hash:
                 self.logger.warning(
                     "Could not generate a valid input hash. Caching will be skipped."
@@ -171,8 +179,13 @@ class DeploymentService(BaseService):
                     return {"predictions": cached_pred, "model_version": cached_ver}
 
             # Perform prediction
-            predictions = model.predict(X)
+            predictions = model.predict(X_input)
 
+            if isinstance(predictions, np.ndarray):
+                predictions = predictions.tolist()
+            elif isinstance(predictions, pd.DataFrame):
+                predictions = predictions.to_dict(orient="records")
+            
             # Log the completion of the prediction
             self.logger.info("Prediction completed for model %s.", model_identifier)
 

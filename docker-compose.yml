@@ -87,7 +87,8 @@ services:
       - ./data/models:/app/data/models
       - ./core:/app/core
     environment:
-      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+      # MLFLOW_TRACKING_URI: http://mlflow-server:5000
     networks:
       - microservices_auth
     restart: on-failure
@@ -103,7 +104,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # - .:/app
+      - .:/app
+      - /app/__pycache__  
       - ./data:/app/data
       - ./mlruns:/app/mlruns
     environment:

@@ -1,6 +1,6 @@
 from datetime import datetime, date
 import json
-from typing import Any
+from typing import Any, Dict
 import httpx
 from prefect import task
 import numpy as np
@@ -17,7 +17,10 @@ from core.types import ProcessedData
     retry_delay_seconds=5,
 )
 async def train(
-    symbol: str, model_type: str, training_data: ProcessedData
+    symbol: str, 
+    model_type: str,
+    # training_data: ProcessedData
+    training_data: Dict[str, Any],
 ) -> dict[str, Any]:
     """
     Train a model for a given symbol using training data.
@@ -33,36 +36,53 @@ async def train(
 
     # Form the url to the training endpoint of the training service
     url = f"http://{config.training_service.HOST}:{config.training_service.PORT}/training/train"
-
+    
     # TODO Toute la logique de regarder les instances ne devraient pas se passer
     # il faut continuer le preprocessing service
-    is_numpy_instance = isinstance(training_data.X, np.ndarray)
-    is_dataframe = hasattr(training_data.X, "to_dict")
+    # is_numpy_instance = isinstance(training_data.X, np.ndarray)
+    # is_dataframe = hasattr(training_data.X, "to_dict")
 
-    # Build X payload safely
-    if is_numpy_instance:
-        X_payload = training_data.X.tolist()
-    elif is_dataframe:
-        X_payload = training_data.X.to_dict(orient="records")
-    else:
-        X_payload = training_data.X  # Fallback: already JSON-compatible
+    # # Build X payload safely
+    # if is_numpy_instance:
+    #     X_payload = training_data.X.tolist()
+    # elif is_dataframe:
+    #     X_payload = training_data.X.to_dict(orient="records")
+    # else:
+    #     X_payload = training_data.X  # Fallback: already JSON-compatible
 
-    # Define the payload
+    # # Define the payload
+    # payload = {
+    #     "data": {
+    #         "X": X_payload,
+    #         "y": (
+    #             training_data.y.tolist()
+    #             if isinstance(training_data.y, np.ndarray)
+    #             or isinstance(training_data.y, pd.Series)
+    #             else training_data.y
+    #         ),
+    #         "feature_index_map": training_data.feature_index_map,
+    #         "start_date": training_data.start_date.isoformat(),
+    #         "end_date": training_data.end_date.isoformat(),
+    #     },
+    # }
+
+    # Extract primitives from the dict
+    X_payload = training_data.get("X")
+    y_payload = training_data.get("y")
+    feature_index_map = training_data.get("feature_index_map")
+    start_date = training_data.get("start_date")
+    end_date = training_data.get("end_date")
+
     payload = {
         "data": {
             "X": X_payload,
-            "y": (
-                training_data.y.tolist()
-                if isinstance(training_data.y, np.ndarray)
-                or isinstance(training_data.y, pd.Series)
-                else training_data.y
-            ),
-            "feature_index_map": training_data.feature_index_map,
-            "start_date": training_data.start_date.isoformat(),
-            "end_date": training_data.end_date.isoformat(),
+            "y": y_payload,
+            "feature_index_map": feature_index_map,
+            "start_date": start_date,
+            "end_date": end_date,
         },
     }
-
+    
     # Define the query parameters
     params = {
         "symbol": symbol,  # Example symbol

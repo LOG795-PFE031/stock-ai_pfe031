@@ -3,6 +3,7 @@ from ..abstract import BaseDataProcessor
 from core.types import ProcessedData
 
 import numpy as np
+import pandas as pd
 from typing import Optional
 
 
@@ -121,6 +122,12 @@ class DataNormalizer(BaseDataProcessor):
             # Extract the targets
             y = data.y
 
+            # Make sure y is an ndarray (I had "'list' object has no attribute 'shape' error.", during model/train )
+            if isinstance(y, list):
+                y = np.array(y)
+            elif isinstance(y, pd.DataFrame):
+                y = y.values
+            
             original_y_shape = y.shape
 
             # Reshape for scaler

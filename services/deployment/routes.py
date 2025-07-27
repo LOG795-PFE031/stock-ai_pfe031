@@ -6,6 +6,8 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
+from types import SimpleNamespace
+import numpy as np
 
 from core.config import config
 from core.logging import logger
@@ -325,11 +327,19 @@ async def calculate_prediction_confidence(
         # Import services from main to avoid circular imports
         from .main import deployment_service
         
+        # rebuild a minimal ProcessedData-like object
+        mini_input = SimpleNamespace(
+            X=np.array(payload.X),
+            feature_index_map=payload.feature_index_map,
+        )
+        
         confidences = await deployment_service.calculate_prediction_confidence(
             model_type=payload.model_type,
             symbol=payload.symbol,
-            prediction_input=payload.prediction_input,
-            y_pred=payload.y_pred,
+            # prediction_input=payload.prediction_input,
+            prediction_input=mini_input,
+            # y_pred=payload.y_pred,
+            y_pred=np.array(payload.y_pred),
         )
         return confidences
     except Exception as e:

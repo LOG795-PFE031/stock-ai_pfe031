@@ -99,10 +99,15 @@ class PromoteModelResponse(BaseModel):
     
 
 class PredictionConfidenceRequest(BaseModel):
+    # model_type: str
+    # symbol: str
+    # prediction_input: Any
+    # y_pred: Any
     model_type: str
     symbol: str
-    prediction_input: Any
-    y_pred: Any
+    X: List[Any]    
+    feature_index_map: Dict[str, int]
+    y_pred: List[Any]
     
 # The one in deployment_service.py predict()
 class PredictionRequest(BaseModel):

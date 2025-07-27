@@ -30,7 +30,8 @@ def run_inference_flow(
     model_type: str,
     symbol: str,
     phase: str,
-    prediction_input: ProcessedData,
+    # prediction_input: ProcessedData,
+    prediction_input: dict[str, Any],
     processing_service: DataProcessingService,
     # deployment_service: DeploymentService,
 ) -> dict[str, Any]:
@@ -58,10 +59,14 @@ def run_inference_flow(
             - confidence (float or None): Optional prediction confidence score.
             - model_version (int): Version number of the model that made the prediction.
     """
+    # extract the array from the dict
+    X = prediction_input["X"]
+    
     # Prediction
     predict_result = predict.submit(
         model_identifier=model_identifier,
-        X=prediction_input.X,
+        X=X,
+        # X=prediction_input.X,
         # service=deployment_service,
     ).result()
 

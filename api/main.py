@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     try:
-        logger["main"].info("Starting up services...BBBBB")
+        logger["main"].info("Starting up services...")
 
         # Create the tables
         create_database()

@@ -1,5 +1,5 @@
 from prefect import flow
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from .prediction_flow import run_inference_flow
 from ..tasks.data import load_recent_stock_data, postprocess_data, preprocess_data
@@ -100,8 +100,10 @@ def run_evaluate_and_log_flow(
     model_identifier: str,
     model_type: str,
     symbol: str,
-    true_target: ProcessedData,
-    pred_target: ProcessedData,
+    # true_target: ProcessedData,
+    # pred_target: ProcessedData,
+    true_target: Dict[str, Any],
+    pred_target: Dict[str, Any],
     evaluation_service: EvaluationService,
     # deployment_service: DeploymentService,
 ) -> dict[str, float]:
@@ -123,11 +125,15 @@ def run_evaluate_and_log_flow(
     Returns:
         dict[str,float]: Dictionary of evaluation metrics (e.g., rmse, r2, etc).
     """
-
+    y_true = true_target["y"]
+    y_pred = pred_target["y"]
+    
     # Evaluate the model
     metrics_future = evaluate.submit(
-        true_target=true_target.y,
-        pred_target=pred_target.y,
+        # true_target=true_target.y,
+        # pred_target=pred_target.y,
+        true_target=y_true,
+        pred_target=y_pred,
         model_type=model_type,
         symbol=symbol,
         service=evaluation_service,
@@ -156,7 +162,7 @@ def evaluate_model(
     model_type: str,
     symbol: str,
     phase: str,
-    eval_data: ProcessedData,
+    eval_data: dict[str, Any], #ProcessedData,
     processing_service: DataProcessingService,
     # deployment_service: DeploymentService,
     evaluation_service: EvaluationService,
@@ -186,15 +192,24 @@ def evaluate_model(
     """
 
     # Run inference (prediction) pipelines
-    pred_target = run_inference_flow(
+    # pred_target = run_inference_flow(
+    #     model_identifier=model_identifier,
+    #     model_type=model_type,
+    #     symbol=symbol,
+    #     phase=phase,
+    #     prediction_input=eval_data,
+    #     processing_service=processing_service,
+    #     # deployment_service=deployment_service,
+    # )["prediction"]
+    inf = run_inference_flow(
         model_identifier=model_identifier,
         model_type=model_type,
         symbol=symbol,
         phase=phase,
-        prediction_input=eval_data,
+        prediction_input=eval_data,            
         processing_service=processing_service,
-        # deployment_service=deployment_service,
-    )["prediction"]
+    )
+    pred_target = inf["prediction"]  
 
     # Postprocess ground truth
     true_target = postprocess_data.submit(
@@ -202,7 +217,8 @@ def evaluate_model(
         symbol=symbol,
         model_type=model_type,
         phase=phase,
-        prediction=eval_data.y,
+        # prediction=eval_data.y,
+        prediction=eval_data["y"], 
     ).result()
 
     # Run evaluation and log metrics
