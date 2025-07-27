@@ -10,6 +10,8 @@ title Architecture Microservices Deployment - PFE031
 !define CONTAINER_COLOR #0db7ed
 !define CONTAINER_BORDER_COLOR #066da5
 
+left to right direction
+
 skinparam node {
   BorderColor DARKBLUE
   BackgroundColor LIGHTBLUE
@@ -73,23 +75,24 @@ package "Databases" {
   }
 }
 
+node "RabbitMQ" as rmqN <<container>> {
+  [RabbitMQ] as rmq
+}
 
-' Core Services - grouped by functionality
-package "Core Services" as core_services {
+
+package "Services" as core_services {
 
   ' API Gateway Layer
   node "API Gateway" as gateway <<container>> {
     [API Service] as api
   }
 
+  node "ML Pipeline" as mlNode {
 
-  node "Data Management" as dataNode {
     node "Data Service" as data <<container>> {
       [Application Code] as ac_data
     }
-  }
-  
-  node "ML Pipeline" as mlNode {
+
     node "Training Service" as training <<container>> {
       [Application Code] as ac_train
     }
@@ -102,9 +105,8 @@ package "Core Services" as core_services {
     node "Data Processing Service" as dataProcessing <<container>> {
       [Application Code] as ac_data_processing
     }
-
   }
-  
+
   node "Operations" as opsNode {
     node "Orchestration Service" as orchestration <<container>> {
       [Application Code] as ac_orchestration
@@ -113,17 +115,16 @@ package "Core Services" as core_services {
       [Application Code] as ac_monitoring
     }
   }
-  
-  node "Content" as contentNode {
-    node "News Service" as news <<container>> {
-      [Application Code] as ac_news
-    }
-    node "Visualization Service" as visualization <<container>> {
-    [Application Code] as ac_visualization
-    }
-  }
-}
 
+
+  node "News Service" as news <<container>> {
+    [Application Code] as ac_news
+  }
+  node "Visualization Service" as visualization <<container>> {
+    [Application Code] as ac_visualization
+  }
+
+}
 
 
 ' MLflow Servers
@@ -150,42 +151,45 @@ node "Monitoring" as monitoringN {
   }
 }
 
-' Connections
-web --> api : <color:GREEN>Request</color>
+' ======= Connections =======
 
-api --> orchestration
-api --> data
-api --> deployment
-api --> news
+visualization --[hidden]> news
 
-orchestration <--> prefect
-orchestration --> data
-orchestration --> training
-orchestration --> deployment
-orchestration --> dataProcessing
-orchestration --> evaluation
+' Client to Gateway
+web --> gateway : <color:GREEN>Request</color>
+
+' API Gateway interactions
+gateway --> orchestration : trigger pipeline
+gateway --> data : request stock data
+gateway --> deployment : manage models
+gateway --> news : fetch news
+gateway -up-> visualization: request plots
+
+' Visualization
+visualization --> data : request stock data
+
+' RabbitMQ Messaging
+orchestration --> rmqN : publish tasks
+monitoring --> rmqN : publish tasks
+rmqN --> mlNode : publish messages to ML services
+
+' Orchestration & Prefect
+orchestration <-up-> prefectNode : orchestrate flows
+prefectNode --> dbPrefect
+
+' Data Flow to Databases
+data --> dbStock
+dataProcessing --> dbDataProcessing
 deployment --> dbPred
 
-monitoring --> deployment
-monitoring --> orchestration
-monitoring --> data
-monitoring --> dataProcessing
-
-prefect --> dbPrefect
-
-data --> dbStock
+' MLflow Integration
 training --> mlflow
 deployment --> mlflow
-dataProcessing --> dbDataProcessing
-
 mlflow <--> dbMlflow
 mlflow <--> minioMlflow
 
-api --> visualization
-visualization --> data
-
-' Monitoring connections
-grafanaSvc --> prometheusService : queries metrics (PromQL)
-prometheus --> core_services : scrape metrics from core services
+' Monitoring Stack
+grafanaSvc --> prometheusService : PromQL queries
+prometheus --> core_services : scrape metrics
 
 @enduml

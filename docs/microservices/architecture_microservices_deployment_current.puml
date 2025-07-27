@@ -1,0 +1,191 @@
+@startuml Architecture Microservices Deployment
+
+title Architecture Microservices Deployment - PFE031
+
+!define DARKBLUE #052C65
+!define LIGHTBLUE #4682B4
+!define GREEN #3CB371
+!define ORANGE #FFA500
+!define GRAY #808080
+!define CONTAINER_COLOR #0db7ed
+!define CONTAINER_BORDER_COLOR #066da5
+
+skinparam node {
+  BorderColor DARKBLUE
+  BackgroundColor LIGHTBLUE
+  FontColor white
+}
+
+skinparam database {
+  BorderColor GREEN
+  BackgroundColor #E0FFE0
+  FontColor DARKBLUE
+}
+
+skinparam node<<container>> {
+  BackgroundColor CONTAINER_COLOR
+  BorderColor CONTAINER_BORDER_COLOR
+  StereotypeFontColor white
+  FontColor white
+  Shadowing true
+}
+
+' Define arrow colors
+skinparam Arrow {
+  Color DARKBLUE
+  Thickness 2
+}
+
+' Client Layer
+node "Client" as client {
+  [Client Web] as web
+}
+
+' Data Storage Layer
+
+' Bases de données
+
+package "Databases" {
+
+  ' Database Prefect
+  database "Database Server Prefect" as dbPrefect <<container>> {
+  }
+
+  ' Backend store Database for MLflow
+  database "Database Server MLflow" as dbMlflow <<container>> {
+  }
+
+  ' Artifacts store for MLflow
+  database "MinIO Artifacts Store MLflow" as minioMlflow <<container>> {
+  }
+
+
+  ' Database Orchestration
+  database "Predictions Database" as dbPred <<container>> {
+  }
+
+  ' Database Stock Prices
+  database "Database Server Stock Prices" as dbStock <<container>> {
+  }
+
+  ' Database Data Processing
+  database "Database Server Data Processing" as dbDataProcessing <<container>> {
+  }
+}
+
+
+' Core Services - grouped by functionality
+package "Core Services" as core_services {
+
+  ' API Gateway Layer
+  node "API Gateway" as gateway <<container>> {
+    [API Service] as api
+  }
+
+
+  node "Data Management" as dataNode {
+    node "Data Service" as data <<container>> {
+      [Application Code] as ac_data
+    }
+  }
+  
+  node "ML Pipeline" as mlNode {
+    node "Training Service" as training <<container>> {
+      [Application Code] as ac_train
+    }
+    node "Deployment Service" as deployment <<container>> {
+      [Application Code] as ac_deploy
+    }
+    node "Evaluation Service" as evaluation <<container>> {
+      [Application Code] as ac_eval
+    }
+    node "Data Processing Service" as dataProcessing <<container>> {
+      [Application Code] as ac_data_processing
+    }
+
+  }
+  
+  node "Operations" as opsNode {
+    node "Orchestration Service" as orchestration <<container>> {
+      [Application Code] as ac_orchestration
+    }
+    node "Monitoring Service" as monitoring <<container>> {
+      [Application Code] as ac_monitoring
+    }
+  }
+  
+  node "Content" as contentNode {
+    node "News Service" as news <<container>> {
+      [Application Code] as ac_news
+    }
+    node "Visualization Service" as visualization <<container>> {
+    [Application Code] as ac_visualization
+    }
+  }
+}
+
+
+
+' MLflow Servers
+node "MLflow Server" as mlflow <<container>> {
+  [MLflow Service] as mlflowService
+}
+
+' Prefect Container
+node "Prefect Server" as prefectNode <<container>> {
+  [Prefect Service] as prefect
+}
+
+node "Monitoring" as monitoringN {
+
+  ' Monitoring & Visualization Tools
+  node "Prometheus Server" as prometheus <<container>> {
+    [Prometheus] as prometheusService
+    artifact prometheus.yml
+  }
+
+  node "Grafana Server" as grafana <<container>> {
+    [Grafana Dashboard Service] as grafanaSvc
+    artifact grafana.db
+  }
+}
+
+' Connections
+web --> api : <color:GREEN>Request</color>
+
+api --> orchestration
+api --> data
+api --> deployment
+api --> news
+
+orchestration <--> prefect
+orchestration --> data
+orchestration --> training
+orchestration --> deployment
+orchestration --> dataProcessing
+orchestration --> evaluation
+deployment --> dbPred
+
+monitoring --> deployment
+monitoring --> orchestration
+monitoring --> data
+monitoring --> dataProcessing
+
+prefect --> dbPrefect
+
+data --> dbStock
+training --> mlflow
+deployment --> mlflow
+dataProcessing --> dbDataProcessing
+
+mlflow <--> dbMlflow
+mlflow <--> minioMlflow
+
+api --> visualization
+visualization --> data
+
+' Monitoring connections
+grafanaSvc --> prometheusService : queries metrics (PromQL)
+prometheus -left-> core_services : scrape metrics from core services
+
+@enduml
