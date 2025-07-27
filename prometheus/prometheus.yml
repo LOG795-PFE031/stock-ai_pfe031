@@ -14,6 +14,10 @@ scrape_configs:
     static_configs:
       - targets: ['data-processing-service:8000']
 
+  - job_name: 'news-service'
+    static_configs:
+      - targets: ['news-service:8000']
+
   - job_name: 'prometheus'
     static_configs:
       - targets: 
