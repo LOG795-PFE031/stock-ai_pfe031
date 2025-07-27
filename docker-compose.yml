@@ -38,7 +38,7 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
-      
+
   news-service:
     build:
       context: .
@@ -143,9 +143,10 @@ services:
       - microservices_auth
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000"]
-      interval: 5s
-      timeout: 10s
+      interval: 10s
+      timeout: 30s
       retries: 5
+      start_period: 10s
     depends_on:
       - mlflow-postgres
       - mlflow-minio
