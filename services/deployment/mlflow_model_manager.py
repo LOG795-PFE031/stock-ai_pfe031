@@ -102,6 +102,7 @@ class MLflowModelManager:
                 creation_timestamp=model.creation_timestamp,
                 last_updated_timestamp=model.last_updated_timestamp,
                 tags={tag.key: tag.value for tag in model.tags},
+                aliases={alias: v.version for alias, v in zip(model.aliases, model.latest_versions)}, # Map them
                 latest_versions=latest_versions,
             )
         except Exception as e:

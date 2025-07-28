@@ -136,6 +136,7 @@ services:
       MLFLOW_S3_ENDPOINT_URL: http://mlflow-minio:9000
       AWS_ACCESS_KEY_ID: minio_user
       AWS_SECRET_ACCESS_KEY: minio_password
+      AWS_DEFAULT_REGION: us-east-1
     ports:
       - "5000:5000"
     command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri postgresql://mlflow_user:mlflow_password@mlflow-postgres:5432/mlflow_db --artifacts-destination s3://mlflow/artifacts
@@ -184,6 +185,27 @@ services:
       mlflow-server:
         condition: service_healthy
 
+  deployment-service:
+    build:
+      context: .
+      dockerfile: services/deployment/Dockerfile
+    container_name: deployment-service
+    ports:
+      - "8005:8000"
+    volumes:
+      - ./services/deployment:/app/services/deployment
+      - ./services/training:/app/services/training 
+      - /app/__pycache__
+      - ./data/models:/app/data/models
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+    networks:
+      - microservices_auth
+    restart: on-failure
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+
   stock-ai:
     build:
       context: .
@@ -192,7 +214,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # - .:/app
+      - .:/app                 
+      - /app/__pycache__  
       - ./data:/app/data
     environment:
       - RABBITMQ_HOST=rabbitmq
