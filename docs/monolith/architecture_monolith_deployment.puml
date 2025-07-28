@@ -19,15 +19,7 @@ skinparam node {
 }
 
 skinparam database {
-  BorderColor GREEN
-  BackgroundColor #E0FFE0
-  FontColor DARKBLUE
-}
-
-skinparam artifact {
-  BorderColor ORANGE
-  BackgroundColor #FFDCB7
-  FontColor DARKBLUE
+  BackgroundColor ORANGE
 }
 
 skinparam node<<container>> {
@@ -38,10 +30,23 @@ skinparam node<<container>> {
   Shadowing true
 }
 
+skinparam component<<New Service>> {
+  BackgroundColor orange
+  Shadowing true
+}
+
 skinparam Arrow {
   Color DARKBLUE
   Thickness 2
 }
+
+legend left
+  <b><size:50>Legend</size></b>
+  <size:25><color:CONTAINER_COLOR>■</color> Docker Container
+  <size:25><color:LIGHTBLUE>■</color> Domain
+  <size:25><color:ORANGE>■</color> New Service
+  <size:25><color:GREEN>➝</color> HTTP Request
+endlegend
 
 ' ========== CLIENT ==========
 node "Client Device" {
@@ -66,21 +71,21 @@ node "Stock-ai Application" as app <<container>> {
 
   ' -- Operations
   node "Operations" {
-    component "Orchestration Service" as orchestration_service
-    component "Monitoring Service" as monitoring_service
+    component "Orchestration Service" as orchestration_service <<New Service>>
+    component "Monitoring Service" as monitoring_service <<New Service>>
   }
 
   ' -- Data Management
   node "Data Management" {
-    component "Data Service" as data_service
+    component "Data Service" as data_service <<Old Service>>
   }
 
   ' -- ML Pipeline
   node "ML Pipeline" {
     component "Training Service" as training_service
-    component "Deployment Service" as deployment_service
-    component "Evaluation Service" as evaluation_service
-    component "Data Processing Service" as data_processing_service
+    component "Deployment Service" as deployment_service <<New Service>>
+    component "Evaluation Service" as evaluation_service <<New Service>>
+    component "Data Processing Service" as data_processing_service <<New Service>>
   }
 
   ' -- Content Services
@@ -96,21 +101,21 @@ node "Stock-ai Application" as app <<container>> {
 ' ========== EXTERNAL TOOLS ==========
 
 node "MLflow UI Server" <<container>> {
-  component "MLflow UI Service" as mlflowService
+  component "MLflow UI Service" as mlflowService <<New Service>>
 }
 
 node "Prefect Server" <<container>> {
-  component "Prefect Service" as prefect_service
+  component "Prefect Service" as prefect_service <<New Service>>
 }
 
 node "Monitoring" {
   node "Prometheus Server" <<container>> {
-    component "Prometheus" as prometheusService
+    component "Prometheus" as prometheusService <<New Service>>
     artifact "prometheus.yml"
   }
 
   node "Grafana Server" <<container>> {
-    component "Grafana Dashboard Service" as grafanaSvc
+    component "Grafana Dashboard Service" as grafanaSvc <<New Service>>
     artifact "grafana.db"
   }
 }
