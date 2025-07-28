@@ -137,15 +137,15 @@ class DeploymentService(BaseService):
             self.logger.info("Starting prediction using model %s.", model_identifier)
 
             # Generate input hash for caching
-            input_hash = self._hash_input(X)
-            if not input_hash:
-                self.logger.warning(
-                    "Could not generate a valid input hash. Caching will be skipped."
-                )
-                cache_key = None
-            else:
-                cache_key = (model_identifier, input_hash)
-                self.logger.debug("Cache key generated: %s", cache_key)
+            # input_hash = self._hash_input(X)
+            # if not input_hash:
+            #     self.logger.warning(
+            #         "Could not generate a valid input hash. Caching will be skipped."
+            #     )
+            #     cache_key = None
+            # else:
+            #     cache_key = (model_identifier, input_hash)
+            #     self.logger.debug("Cache key generated: %s", cache_key)
 
             # Load model version
             model_result = self.mlflow_model_manager.load_model(model_identifier)
@@ -160,15 +160,15 @@ class DeploymentService(BaseService):
             )
 
             # Use cache if available and version matches
-            if cache_key and cache_key in self._prediction_cache:
-                cached_pred, cached_ver = self._prediction_cache[cache_key]
-                if cached_ver == current_version:
-                    self.logger.debug(
-                        "Using cached prediction for model %s with input hash %s",
-                        model_identifier,
-                        input_hash,
-                    )
-                    return {"predictions": cached_pred, "model_version": cached_ver}
+            # if cache_key and cache_key in self._prediction_cache:
+            #     cached_pred, cached_ver = self._prediction_cache[cache_key]
+            #     if cached_ver == current_version:
+            #         self.logger.debug(
+            #             "Using cached prediction for model %s with input hash %s",
+            #             model_identifier,
+            #             input_hash,
+            #         )
+            #         return {"predictions": cached_pred, "model_version": cached_ver}
 
             # Perform prediction
             predictions = model.predict(X)
@@ -177,11 +177,11 @@ class DeploymentService(BaseService):
             self.logger.info("Prediction completed for model %s.", model_identifier)
 
             # Cache the result
-            if cache_key:
-                self._prediction_cache[cache_key] = (predictions, current_version)
-                self.logger.debug("Prediction cached for key %s.", cache_key)
+            # if cache_key:
+            #     self._prediction_cache[cache_key] = (predictions, current_version)
+            #     self.logger.debug("Prediction cached for key %s.", cache_key)
 
-            return {"predictions": predictions, "model_version": current_version}
+            return {"predictions": predictions, "model_version": str(current_version or "unknown")} # Because sometime version is none
 
         except Exception as e:
 

@@ -23,6 +23,10 @@ from .schemas import (
     ConfidenceResponse,
     ConfidenceRequest,
     ModelExistResponse,
+    PromoteModelRequest,
+    PromoteModelResponse,
+    LogMetricsRequest,
+    LogMetricsResponse,
 )
 
 from core.types import ProcessedData
@@ -57,7 +61,8 @@ async def api_welcome():
             "/models/{prod_model_name}/exists"
             "/predict",
             "/calculate_prediction_confidence",
-            "/predict/historical",
+            "/models/{prod_model_name}/promote",
+            "/models/{model_identifier}/log_metrics",
             "/cleanup",
         ],
     }
@@ -272,6 +277,62 @@ async def calculate_prediction_confidence(
         )
         
         
+@router.post(
+    "/models/{prod_model_name}/promote",
+    response_model=PromoteModelResponse,
+    tags=["Deployment Services"],
+)
+async def promote_model(
+    prod_model_name: str,
+    payload: PromoteModelRequest,
+):
+    try:
+        # Import services from main to avoid circular imports
+        from .main import deployment_service
+        
+        result = await deployment_service.promote_model(
+            run_id=payload.run_id,
+            prod_model_name=prod_model_name,
+        )
+        
+        return PromoteModelResponse(**result)
+    
+    except Exception as e:
+        api_logger.error(f"Promote model failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Promote model failed: {str(e)}"
+        ) from e
+
+
+@router.post(
+    "/models/{model_identifier}/log_metrics",
+    response_model=LogMetricsResponse,
+    tags=["Deployment Services"],
+)
+async def log_metrics(
+    model_identifier: str,
+    payload: LogMetricsRequest,
+):
+    """
+    Log evaluation metrics for the specified model.
+    """
+    try:
+        # Import services from main to avoid circular imports
+        from .main import deployment_service
+        
+        success = await deployment_service.log_metrics(
+            model_identifier=model_identifier,
+            metrics=payload.metrics,
+        )
+        return {"logged": success, "model_identifier": model_identifier}
+    
+    except Exception as e:
+        api_logger.error(f"Failed to log metrics for {model_identifier}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to log metrics: {e}"
+        ) from e
+
+
 # Prediction endpoints
 # @router.get(
 #     "/predict", 
@@ -377,60 +438,8 @@ async def cleanup_deployment_service():
             status_code=500, detail=f"Deployment service cleanup failed: {str(exception)}"
         ) from exception
         
-
-# @router.post(
-#     "/models/{model_name}/promote",
-#     response_model=PromoteModelResponse,
-#     tags=["Deployment"],
-# )
-# async def promote_model(
-#     model_name: str,
-#     payload: PromoteModelRequest,
-# ):
-#     try:
-#         # Import services from main to avoid circular imports
-#         from .main import deployment_service
-        
-#         result = await deployment_service.promote_model(
-#             run_id=payload.run_id,
-#             prod_model_name=model_name,
-#         )
-        
-#         return PromoteModelResponse(**result)
-    
-#     except Exception as e:
-#         api_logger.error(f"Promote model failed: {str(e)}")
-#         raise HTTPException(
-#             status_code=500, detail=f"Promote model failed: {str(e)}"
-#         ) from e
                 
 
-# @router.post(
-#     "/models/{model_identifier}/log_metrics",
-#     tags=["Deployment"],
-# )
-# async def log_metrics(
-#     model_identifier: str,
-#     metrics: dict[str, float],
-# ):
-#     """
-#     Log evaluation metrics for the specified model.
-#     """
-#     try:
-#         # Import services from main to avoid circular imports
-#         from .main import deployment_service
-        
-#         success: bool = await deployment_service.log_metrics(
-#             model_identifier=model_identifier,
-#             metrics=metrics,
-#         )
-#         return success
-    
-#     except Exception as e:
-#         api_logger.error(f"Failed to log metrics for {model_identifier}: {e}")
-#         raise HTTPException(
-#             status_code=500, detail=f"Failed to log metrics: {e}"
-#         ) from e
         
 
 

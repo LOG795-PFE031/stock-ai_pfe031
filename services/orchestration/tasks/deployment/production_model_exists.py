@@ -2,7 +2,7 @@ from prefect import task
 import httpx
 
 from core.config import config
-from services import DeploymentService
+# from services import DeploymentService
 
 @task(
     name="production_model_exists",
@@ -12,7 +12,7 @@ from services import DeploymentService
 )
 async def production_model_exists(
     prod_model_name: str,
-    service: DeploymentService
+    # service: DeploymentService
 ) -> bool:
     """
     Check if a production model with the given name exists.

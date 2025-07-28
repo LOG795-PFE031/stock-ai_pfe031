@@ -6,8 +6,7 @@ import pandas as pd
 import httpx
 from core.config import config
 
-from services import DeploymentService
-from core.types import ProcessedData
+# from services import DeploymentService
 
 @task(
     name="prediction_confidence_calculation",
@@ -20,7 +19,7 @@ async def calculate_prediction_confidence(
     symbol: str,
     y_pred,
     prediction_input,
-    service: DeploymentService
+    # service: DeploymentService
 ) -> list[float]:
     """
     Calculate prediction confidence scores using a deployment service.

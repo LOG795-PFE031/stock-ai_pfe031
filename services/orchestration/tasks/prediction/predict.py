@@ -5,7 +5,7 @@ import pandas as pd
 import httpx
 
 from core.config import config
-from services import DeploymentService
+# from services import DeploymentService
 
 
 @task(
@@ -17,7 +17,7 @@ from services import DeploymentService
 async def predict(
     model_identifier: str,
     X: Union[pd.DataFrame, np.ndarray, list],
-    service: DeploymentService,
+    # service: DeploymentService,
 ) -> Dict[str, Any]:
     """
     Make predictions using a MLFlow model and input data.

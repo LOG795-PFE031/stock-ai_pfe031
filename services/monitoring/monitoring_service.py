@@ -12,14 +12,15 @@ from core import BaseService
 from core.logging import logger
 from core.config import config
 from core.prometheus_metrics import evaluation_mae
-from services import DeploymentService, DataService
+from services import DataService
 from services.orchestration import OrchestrationService
+from api.schemas import ModelListMlflowResponse
 
 
 class MonitoringService(BaseService):
     def __init__(
         self,
-        deployment_service: DeploymentService,
+        # deployment_service: DeploymentService,
         orchestration_service: OrchestrationService,
         data_service: DataService,
         check_interval_seconds: int = 24 * 60 * 60,  # default: once per day
@@ -31,7 +32,7 @@ class MonitoringService(BaseService):
     ):
         super().__init__()
         self.logger = logger["monitoring"]
-        self.deployment_service = deployment_service
+        # self.deployment_service = deployment_service
         self.orchestration_service = orchestration_service
         self.data_service = data_service
         self.check_interval_seconds = check_interval_seconds
@@ -91,10 +92,22 @@ class MonitoringService(BaseService):
         """
         self.logger.info("Starting daily drift check")
         try:
-            live_models = await self.deployment_service.list_models()
+            # URL to the endpoint to preprocess the data
+            url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models"  
+            async with httpx.AsyncClient(timeout=None) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                payload = resp.json()
+
+            # Parse with Pydantic to get .models list
+            mlflow_list = ModelListMlflowResponse(**payload)
+            live_models = mlflow_list.models
+            
+            # live_models = await self.deployment_service.list_models()
             for model in live_models:
                 # grab the name string from the dict
-                full_name = model.get("name")
+                # full_name = model.get("name")
+                full_name = model.name
                 if not full_name or "_" not in full_name:
                     self.logger.warning(f"Skipping unexpected model entry: {model}")
                     continue
@@ -183,10 +196,22 @@ class MonitoringService(BaseService):
         """
         self.logger.info("Starting weekly data drift check")
         try:
-            models = await self.deployment_service.list_models()
-            self.logger.debug(f"Found {len(models)} live models: {models}")
-            for model in models:
-                full_name = model.get("name")
+            # live_models = await self.deployment_service.list_models()
+             # URL to the endpoint to preprocess the data
+            url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models"  
+            async with httpx.AsyncClient(timeout=None) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                payload = resp.json()
+
+            # Parse with Pydantic to get .models list
+            mlflow_list = ModelListMlflowResponse(**payload)
+            live_models = mlflow_list.models
+            
+            self.logger.debug(f"Found {len(live_models)} live models: {live_models}")
+            for model in live_models:
+                # full_name = model.get("name")
+                full_name = model.name
                 if not full_name or "_" not in full_name:
                     self.logger.warning(f"Skipping unexpected model entry: {model}")
                     continue

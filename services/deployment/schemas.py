@@ -132,3 +132,24 @@ class ConfidenceRequest(BaseModel):
 
 class ConfidenceResponse(BaseModel):
     confidences: List[float]
+
+
+class PromoteModelRequest(BaseModel):
+    run_id: str
+
+
+class PromoteModelResponse(BaseModel):
+    deployed: bool
+    model_name: str
+    version: Union[int, str]
+    run_id: str
+
+
+class LogMetricsRequest(BaseModel):
+    metrics: Dict[str, Any]
+    
+    
+class LogMetricsResponse(BaseModel):
+    logged: bool
+    model_identifier: str
+
