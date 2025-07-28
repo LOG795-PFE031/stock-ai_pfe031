@@ -1,6 +1,5 @@
 # Stage 1: Builder
 FROM python:3.12.9-slim AS builder
-# FROM python:3.10-slim AS builder
 
 # Set working directory
 WORKDIR /app
@@ -27,7 +26,6 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 
 # Stage 2: Runtime
 FROM python:3.12.9-slim
-# FROM python:3.10-slim
 
 # Set working directory
 WORKDIR /app  
@@ -40,7 +38,6 @@ RUN apt-get update && \
 
 # # Copy installed Python packages from builder
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-# COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
@@ -61,4 +58,3 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 
 # Run the application
 CMD ["uvicorn", "services.deployment.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-# CMD ["uvicorn", "services.deployment_service.main:app", "--host", "0.0.0.0", "--port", "8000"]

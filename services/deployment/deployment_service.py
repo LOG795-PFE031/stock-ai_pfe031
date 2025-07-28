@@ -305,7 +305,7 @@ class DeploymentService(BaseService):
             )
             raise
 
-    async def cleanup(self) -> dict[str, Any]:
+    async def cleanup(self) -> None:
         """Clean up resources."""
         try:
             self._initialized = False

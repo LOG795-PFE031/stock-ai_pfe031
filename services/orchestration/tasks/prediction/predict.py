@@ -5,7 +5,6 @@ import pandas as pd
 import httpx
 
 from core.config import config
-# from services import DeploymentService
 
 
 @task(
@@ -17,7 +16,6 @@ from core.config import config
 async def predict(
     model_identifier: str,
     X: Union[pd.DataFrame, np.ndarray, list],
-    # service: DeploymentService,
 ) -> Dict[str, Any]:
     """
     Make predictions using a MLFlow model and input data.
@@ -26,7 +24,6 @@ async def predict(
         model_identifier (str): Identifier for the model (run ID of a
                 logged model (training model) or name of a registered model (live model)).
         X: Input data for prediction.
-        service (DeploymentService): Service that handles the model prediction.
 
     Returns:
         Prediction result.
@@ -55,5 +52,3 @@ async def predict(
         result["predictions"] = np.array(predictions)
 
     return result
-
-# return await service.predict(model_identifier, X)

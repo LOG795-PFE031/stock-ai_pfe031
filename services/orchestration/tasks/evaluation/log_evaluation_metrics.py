@@ -1,5 +1,4 @@
 from prefect import task
-# from services import DeploymentService
 from typing import Any, Dict
 import httpx
 from core.config import config
@@ -13,8 +12,7 @@ from core.config import config
 )
 async def log_metrics_to_mlflow(
     model_identifier: str,
-    metrics: Dict[str, Any], # metrics: dict
-    # service: DeploymentService,
+    metrics: Dict[str, Any],
 ) -> bool:
     """
     Log evaluation metrics to MLflow for a specific model.
@@ -22,7 +20,6 @@ async def log_metrics_to_mlflow(
     Args:
         model_identifier (str): Unique identifier for the model (e.g., run ID or model name).
         metrics (dict): Dictionary of metric names and values to log.
-        service (DeploymentService): Deployment service interacting with MLflow.
 
     Returns:
         bool: True if the metrics were logged successfully to Mlflow.
@@ -36,5 +33,3 @@ async def log_metrics_to_mlflow(
         resp.raise_for_status()
         data = resp.json()
         return data.get("logged", False)
-    
-    # return await service.log_metrics(model_identifier=model_identifier, metrics=metrics)

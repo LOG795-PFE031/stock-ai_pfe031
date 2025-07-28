@@ -92,27 +92,17 @@ class ModelMetadataResponse(BaseModel):
 
 class PredictionRequest(BaseModel):
     model_identifier: str
-    X: Any
+    X: List[Union[Dict[str, Any], List[Any]]]
 
 
 class PredictionResponse(BaseModel):
     predictions: List[Union[int, float, Any]]
     model_version: str
 
+
 class ModelExistResponse(BaseModel):
     exists: bool
     model_name: str
-# class PredictionResponse(BaseModel):
-#     """Prediction response schema."""
-
-#     status: str
-#     symbol: str
-#     date: str
-#     predicted_price: float
-#     confidence: float
-#     model_type: str
-#     model_version: int
-#     timestamp: str
 
 
 class PredictionsResponse(BaseModel):
@@ -122,13 +112,12 @@ class PredictionsResponse(BaseModel):
     predictions: List[PredictionResponse]
     timestamp: str
     
-    
+
 class ConfidenceRequest(BaseModel):
     model_type: str
     symbol: str
-    prediction_input: Any
-    y_pred: Any
-
+    prediction_input: Dict[str, Any]
+    y_pred: List[Any]
 
 class ConfidenceResponse(BaseModel):
     confidences: List[float]

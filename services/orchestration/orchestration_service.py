@@ -11,7 +11,6 @@ from core.logging import logger
 from core.utils import format_prediction_response, get_next_trading_day
 from core.config import config
 from core import BaseService
-# from services.deployment import DeploymentService
 
 from services.evaluation import EvaluationService
 from services.data_ingestion import DataService
@@ -35,12 +34,10 @@ class OrchestrationService(BaseService):
     def __init__(
         self,
         data_service: DataService,
-        # deployment_service: DeploymentService,
         evaluation_service: EvaluationService,
     ):
         super().__init__()
         self.data_service = data_service
-        # self.deployment_service = deployment_service
         self.evaluation_service = evaluation_service
         self.logger = logger["orchestration"]
         self.prediction_storage = PredictionStorage(self.logger)
@@ -83,7 +80,6 @@ class OrchestrationService(BaseService):
                 model_type,
                 symbol,
                 self.data_service,
-                # self.deployment_service,
                 self.evaluation_service,
             )
 
@@ -165,7 +161,6 @@ class OrchestrationService(BaseService):
                 model_type,
                 symbol,
                 self.data_service,
-                # self.deployment_service,
             )
 
             if prediction_result:
@@ -257,7 +252,6 @@ class OrchestrationService(BaseService):
                 model_type,
                 symbol,
                 self.data_service,
-                # self.deployment_service,
                 self.evaluation_service,
             )
 
@@ -347,7 +341,6 @@ class OrchestrationService(BaseService):
                     symbol,
                     trading_days,
                     self.data_service,
-                    # self.deployment_service,
                 )
 
                 if predictions:
@@ -496,5 +489,4 @@ class OrchestrationService(BaseService):
             model_types,
             symbols,
             self.data_service,
-            # self.deployment_service,
         )

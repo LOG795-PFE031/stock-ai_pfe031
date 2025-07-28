@@ -1,12 +1,10 @@
 from prefect import task
 
-from typing import Any, List, Union
 import numpy as np
 import pandas as pd
 import httpx
 from core.config import config
 
-# from services import DeploymentService
 
 @task(
     name="prediction_confidence_calculation",
@@ -19,7 +17,6 @@ async def calculate_prediction_confidence(
     symbol: str,
     y_pred,
     prediction_input,
-    # service: DeploymentService
 ) -> list[float]:
     """
     Calculate prediction confidence scores using a deployment service.
@@ -28,7 +25,6 @@ async def calculate_prediction_confidence(
         model_type (str): Type of model (e.g. "prophet", "lstm").
         y_pred: Model output predictions.
         prediction_input: Original input data used for predictions.
-        service (DeploymentService): Service handling deployment logic.
 
     Returns:
         list[float]: Confidence scores
@@ -66,10 +62,6 @@ async def calculate_prediction_confidence(
     }
 
     url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/calculate_prediction_confidence"
-    # response = httpx.post(url, json=payload, timeout=None)
-    # response.raise_for_status()
-
-    # return response.json().get("confidences", [])
     
     async with httpx.AsyncClient(timeout=None) as client:
             response = await client.post(url, json=payload)
@@ -77,6 +69,3 @@ async def calculate_prediction_confidence(
             result = response.json()
 
     return result.get("confidences", [])    
-    # return await service.calculate_prediction_confidence(
-    #     model_type=model_type, symbol=symbol, prediction_input=prediction_input, y_pred=y_pred
-    # )

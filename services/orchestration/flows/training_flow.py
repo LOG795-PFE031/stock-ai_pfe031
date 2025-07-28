@@ -5,7 +5,6 @@ from typing import Any
 from core.utils import get_model_name
 from services import (
     DataService,
-    # DeploymentService,
     EvaluationService,
 )
 from ..tasks.data import load_recent_stock_data, preprocess_data
@@ -26,7 +25,6 @@ def run_training_flow(
     model_type: str,
     symbol: str,
     data_service: DataService,
-    # deployment_service: DeploymentService,
     evaluation_service: EvaluationService,
 ) -> dict[str, Any]:
     """
@@ -44,7 +42,6 @@ def run_training_flow(
         model_type (str): Type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol.
         data_service: Service used to load raw market data.
-        deployment_service: Service used to perform predictions and manage models.
         evaluation_service: Service used to evaluate and compare models based on performance metrics.
 
     Returns:
@@ -90,7 +87,6 @@ def run_training_flow(
 
     prod_model_exists = production_model_exists.submit(
         prod_model_name=production_model_name,
-        # service=deployment_service
     ).result()
 
     if prod_model_exists:
@@ -110,7 +106,6 @@ def run_training_flow(
             symbol=symbol,
             phase=production_phase,
             eval_data=prod_eval_data,
-            # deployment_service=deployment_service,
             evaluation_service=evaluation_service,
         )
 
@@ -131,7 +126,6 @@ def run_training_flow(
         symbol,
         PHASE,
         test_data,
-        # deployment_service,
         evaluation_service,
     )
 
@@ -146,7 +140,6 @@ def run_training_flow(
         prod_model_name=production_model_name,
         live_metrics=live_metrics,
         evaluation_service=evaluation_service,
-        # deployment_service=deployment_service,
     )
     logger.info(f"Deployment process completed. Result: {deployment_results}")
 
