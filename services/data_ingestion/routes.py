@@ -138,8 +138,8 @@ async def get_current_price(
             change_percent=change_percent,  
             timestamp=now_iso,
             meta=MetaInfo(
-                start_date=now_iso,
-                end_date=now_iso,
+                start_date=current_price_df.iloc[0]['Date'],
+                end_date=current_price_df.iloc[0]['Date'],
                 version=config.api.API_VERSION,
                 message=message,
                 documentation="/docs",
@@ -468,4 +468,29 @@ async def pre_populate_database(
         error_detail = f"Failed to pre-populate database: {str(e)}"
         api_logger.error(error_detail)
         api_logger.error(f"Full error details: {repr(e)}")
+        raise HTTPException(status_code=500, detail=error_detail)
+
+@router.get("/verify-yahoo", tags=["Data"])
+async def verify_yahoo_finance_data(
+    symbol: str = Query(..., description="Stock symbol to verify"),
+    days_back: int = Query(30, description="Number of days to look back")
+):
+    """Verify if data is available in Yahoo Finance for a given symbol."""
+    try:
+        # Validate symbol
+        if not symbol.isalnum():
+            raise HTTPException(status_code=400, detail=f"Invalid stock symbol: {symbol}")
+        
+        api_logger.debug(f"Verifying Yahoo Finance data for {symbol}")
+        
+        # Get verification result
+        result = await data_service.verify_yahoo_finance_data(symbol, days_back)
+        
+        return result
+        
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        error_detail = f"Failed to verify Yahoo Finance data for {symbol}: {str(e)}"
+        api_logger.error(error_detail)
         raise HTTPException(status_code=500, detail=error_detail)

@@ -1,5 +1,5 @@
-# Use Python 3.12 slim image
-FROM python:3.12.9-slim
+# Stage 1: Builder
+FROM python:3.12.9-slim AS builder
 
 # Set working directory
 WORKDIR /app
@@ -7,34 +7,53 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+    build-essential \
     curl \
-    netcat-traditional \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy requirements file
 COPY services/data_ingestion/requirements.txt data_ingestion-requirements.txt
 COPY core/requirements.txt core-requirements.txt
 
 # Combine both requirements into one
 RUN cat data_ingestion-requirements.txt core-requirements.txt > requirements.txt
 
-
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
+# Install build tools and wheel
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir torch>=2.0.1 && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy the entire project for core modules
-COPY . /app
+# Stage 2: Runtime
+FROM python:3.12.9-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install only runtime dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    netcat-traditional \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed Python packages from builder
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy data ingestion service code
+COPY services/data_ingestion /app/services/data_ingestion
+
+# Copy core shared code
+COPY /core /app/core
 
 # Set environment variables
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
+    CUDA_VISIBLE_DEVICES=-1 \
     API_HOST=0.0.0.0 \
     API_PORT=8000
-
-# Expose port
-EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
@@ -44,8 +63,10 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 COPY services/data_ingestion/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
+EXPOSE 8000
+
 # Set the entry point script that will initialize the database before starting the app
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
-# Run the application with uvicorn
+# Run the application
 CMD ["uvicorn", "services.data_ingestion.main:app", "--host", "0.0.0.0", "--port", "8000"]

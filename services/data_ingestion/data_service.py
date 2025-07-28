@@ -236,19 +236,42 @@ class DataService(BaseService):
             str: Stock Company Name
         """
         try:
-            # Get start and end dates (as today)
-            start_date = get_latest_trading_day()
-            end_date = start_date
+            # Get a broader date range to ensure we get recent data
+            end_date = datetime.now(timezone.utc)
+            start_date = get_start_date_from_trading_days(end_date, 10)  # Look back 10 trading days
+
+            self.logger.debug(f"Getting current price for {symbol} from {start_date.date()} to {end_date.date()}")
 
             # Retrieve stock data prices
             df = await self._get_stock_data(symbol, start_date, end_date)
 
-            # Retrieve the latest trading day
-            current_price = df[df["Date"].dt.date == end_date.date()]
+            # Check if DataFrame is empty
+            if df.empty:
+                self.logger.warning(f"No data found for {symbol} between {start_date.date()} and {end_date.date()}")
+                return df, self.get_stock_name(symbol)
+
+            # Ensure Date column is datetime type
+            if 'Date' in df.columns:
+                df['Date'] = pd.to_datetime(df['Date'])
+            else:
+                # If Date is the index, convert it to a column
+                df = df.reset_index()
+                if 'Date' in df.columns:
+                    df['Date'] = pd.to_datetime(df['Date'])
+                else:
+                    self.logger.error(f"Date column not found in DataFrame for {symbol}")
+                    return df, self.get_stock_name(symbol)
+
+            # Get the most recent data point
+            df = df.sort_values('Date', ascending=False)
+            current_price = df.iloc[0:1]  # Get the most recent row
+            most_recent_date = current_price.iloc[0]['Date']
+            
             # Get the stock_name
             stock_name = self.get_stock_name(symbol)
 
-            self.logger.info("Retrieved current stock price for %s", symbol)
+            self.logger.info("Retrieved current stock price for %s at the date %s", symbol, most_recent_date)
+
 
             return current_price, stock_name
         except Exception as e:
@@ -285,8 +308,15 @@ class DataService(BaseService):
                 # Sort by date (most recent first)
                 recent_data = recent_data.sort_values('Date', ascending=False)
             else:
-                # If Date is the index
-                recent_data = recent_data.sort_index(ascending=False)
+                # If Date is the index, convert it to a column
+                recent_data = recent_data.reset_index()
+                if 'Date' in recent_data.columns:
+                    recent_data['Date'] = pd.to_datetime(recent_data['Date'])
+                    # Sort by date (most recent first)
+                    recent_data = recent_data.sort_values('Date', ascending=False)
+                else:
+                    self.logger.error(f"Date column not found in DataFrame for {symbol}")
+                    return None
             
             # Check if we have at least 2 data points
             if len(recent_data) < 2:
@@ -361,6 +391,18 @@ class DataService(BaseService):
                 self.logger.warning(f"No data retrieved for {symbol} between {start_date.date()} and {end_date.date()}")
                 return df, self.get_stock_name(symbol)
 
+            # Ensure Date column is datetime type
+            if 'Date' in df.columns:
+                df['Date'] = pd.to_datetime(df['Date'])
+            else:
+                # If Date is the index, convert it to a column
+                df = df.reset_index()
+                if 'Date' in df.columns:
+                    df['Date'] = pd.to_datetime(df['Date'])
+                else:
+                    self.logger.error(f"Date column not found in DataFrame for {symbol}")
+                    return pd.DataFrame(), self.get_stock_name(symbol)
+
             # Filter data for requested date range and ensure we're getting the right columns
             try:
                 mask = (df["Date"].dt.date >= start_date.date()) & (
@@ -428,6 +470,23 @@ class DataService(BaseService):
             # Retrieve stock data prices
             df = await self._get_stock_data(symbol, start_date, end_date)
 
+            # Check if DataFrame is empty
+            if df.empty:
+                self.logger.warning(f"No data found for {symbol} between {start_date.date()} and {end_date.date()}")
+                return df, self.get_stock_name(symbol)
+
+            # Ensure Date column is datetime type
+            if 'Date' in df.columns:
+                df['Date'] = pd.to_datetime(df['Date'])
+            else:
+                # If Date is the index, convert it to a column
+                df = df.reset_index()
+                if 'Date' in df.columns:
+                    df['Date'] = pd.to_datetime(df['Date'])
+                else:
+                    self.logger.error(f"Date column not found in DataFrame for {symbol}")
+                    return df, self.get_stock_name(symbol)
+
             # Filter data for requested date range
             mask = (df["Date"].dt.date >= start_date.date()) & (
                 df["Date"].dt.date <= end_date.date()
@@ -475,6 +534,23 @@ class DataService(BaseService):
         try:
             # Retrieve stock data prices
             df = await self._get_stock_data(symbol, start_date, end_date)
+
+            # Check if DataFrame is empty
+            if df.empty:
+                self.logger.warning(f"No data found for {symbol} between {start_date.date()} and {end_date.date()}")
+                return df
+
+            # Ensure Date column is datetime type
+            if 'Date' in df.columns:
+                df['Date'] = pd.to_datetime(df['Date'])
+            else:
+                # If Date is the index, convert it to a column
+                df = df.reset_index()
+                if 'Date' in df.columns:
+                    df['Date'] = pd.to_datetime(df['Date'])
+                else:
+                    self.logger.error(f"Date column not found in DataFrame for {symbol}")
+                    return df
 
             # Ensure dates are timezone-aware
             if start_date.tzinfo is None:
@@ -532,22 +608,30 @@ class DataService(BaseService):
             if end_date.tzinfo is None:
                 end_date = end_date.replace(tzinfo=timezone.utc)
 
-            # Adjust the end date to the last possible moment of the day (to have the full-day)
-            end_date = datetime.combine(end_date, time.max)
+            # Log the date range being requested
+            self.logger.debug(f"Requesting Yahoo Finance data for {symbol} from {start_date.date()} to {end_date.date()}")
 
             # Download data from Yahoo Finance
             stock = yf.Ticker(symbol)
 
-            # Retrieve the data
-            df = stock.history(start=start_date, end=end_date)
-
+            # Retrieve the data using asyncio.to_thread
             df = await asyncio.to_thread(stock.history, start=start_date, end=end_date)
+
+            # Check if we got any data
+            if df.empty:
+                self.logger.warning(f"No data returned from Yahoo Finance for {symbol} between {start_date.date()} and {end_date.date()}")
+                # Log the unsuccessful external request to Yahoo Finance (Prometheus)
+                external_requests_total.labels(site="yahoo_finance", result="error").inc()
+                return df
 
             # Log the successful external request to Yahoo Finance (Prometheus)
             external_requests_total.labels(site="yahoo_finance", result="success").inc()
 
             # Reset index to make Date a column
             df = df.reset_index()
+
+            # Log the data we received
+            self.logger.debug(f"Received {len(df)} rows of data for {symbol}")
 
             # Get the stock_name
             stock_name = self.get_stock_name(symbol)
@@ -595,10 +679,14 @@ class DataService(BaseService):
                             )
 
                     # Add all the new entries to the db
-                    session.add_all(new_entries)
+                    if new_entries:
+                        session.add_all(new_entries)
+                        # Commit the transaction
+                        await session.commit()
+                        self.logger.info(f"Added {len(new_entries)} new entries to database for {symbol}")
+                    else:
+                        self.logger.debug(f"No new entries to add for {symbol}")
 
-                    # Commit the transaction
-                    await session.commit()
                 except Exception as db_error:
                     # Rollback in case of error
                     await session.rollback()
@@ -617,6 +705,73 @@ class DataService(BaseService):
             # Log the unsuccessful external request to Yahoo Finance (Prometheus)
             external_requests_total.labels(site="yahoo_finance", result="error").inc()
             raise
+
+    async def verify_yahoo_finance_data(self, symbol: str, days_back: int = 30) -> Dict[str, Any]:
+        """
+        Verify if data is available in Yahoo Finance for a given symbol.
+        
+        Args:
+            symbol: Stock symbol to verify
+            days_back: Number of days to look back
+            
+        Returns:
+            Dictionary with verification results
+        """
+        try:
+            # Set date range
+            end_date = datetime.now(timezone.utc)
+            start_date = get_start_date_from_trading_days(end_date, days_back)
+            
+            self.logger.info(f"Verifying Yahoo Finance data availability for {symbol}")
+            self.logger.info(f"Date range: {start_date.date()} to {end_date.date()}")
+            
+            # Download data from Yahoo Finance
+            stock = yf.Ticker(symbol)
+            
+            # Get basic info first
+            info = await asyncio.to_thread(stock.info)
+            
+            # Get historical data
+            df = await asyncio.to_thread(stock.history, start=start_date, end=end_date)
+            
+            result = {
+                "symbol": symbol,
+                "date_range": {
+                    "start": start_date.date().isoformat(),
+                    "end": end_date.date().isoformat()
+                },
+                "data_available": not df.empty,
+                "rows_returned": len(df),
+                "columns": list(df.columns) if not df.empty else [],
+                "info_available": bool(info),
+                "company_name": info.get("longName", "Unknown") if info else "Unknown",
+                "sector": info.get("sector", "Unknown") if info else "Unknown",
+                "industry": info.get("industry", "Unknown") if info else "Unknown"
+            }
+            
+            if not df.empty:
+                result["date_range_data"] = {
+                    "first_date": df.index[0].date().isoformat() if len(df) > 0 else None,
+                    "last_date": df.index[-1].date().isoformat() if len(df) > 0 else None,
+                    "sample_data": {
+                        "Open": float(df.iloc[-1]["Open"]) if len(df) > 0 else None,
+                        "High": float(df.iloc[-1]["High"]) if len(df) > 0 else None,
+                        "Low": float(df.iloc[-1]["Low"]) if len(df) > 0 else None,
+                        "Close": float(df.iloc[-1]["Close"]) if len(df) > 0 else None,
+                        "Volume": int(df.iloc[-1]["Volume"]) if len(df) > 0 else None
+                    }
+                }
+            
+            self.logger.info(f"Verification result for {symbol}: {result}")
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error verifying Yahoo Finance data for {symbol}: {str(e)}")
+            return {
+                "symbol": symbol,
+                "error": str(e),
+                "data_available": False
+            }
 
     async def _get_stock_data(
         self, symbol: str, start_date: datetime, end_date: datetime
@@ -722,6 +877,18 @@ class DataService(BaseService):
         Returns:
             set: A set of missing trading dates. If empty, the cache is considered valid.
         """
+        # Ensure Date column is datetime type
+        if 'Date' in df.columns:
+            df['Date'] = pd.to_datetime(df['Date'])
+        else:
+            # If Date is the index, convert it to a column
+            df = df.reset_index()
+            if 'Date' in df.columns:
+                df['Date'] = pd.to_datetime(df['Date'])
+            else:
+                self.logger.error("Date column not found in DataFrame for cache validation")
+                return set()  # Return empty set to indicate cache is invalid
+
         # Get the trading days within start_date and end_date
         nyse = mcal.get_calendar("NYSE")
         schedule = nyse.schedule(start_date=start_date, end_date=end_date)
