@@ -14,7 +14,6 @@ from core import BaseService
 from services.deployment import DeploymentService
 
 from services.evaluation import EvaluationService
-from services.data_ingestion import DataService
 from .prediction_storage import PredictionStorage
 from .flows import (
     run_evaluation_flow,
@@ -34,12 +33,10 @@ class OrchestrationService(BaseService):
 
     def __init__(
         self,
-        data_service: DataService,
         deployment_service: DeploymentService,
         evaluation_service: EvaluationService,
     ):
         super().__init__()
-        self.data_service = data_service
         self.deployment_service = deployment_service
         self.evaluation_service = evaluation_service
         self.logger = logger["orchestration"]
@@ -55,6 +52,57 @@ class OrchestrationService(BaseService):
             self.logger.info("Orchestration service initialized successfully")
         except Exception as e:
             self.logger.error("Failed to initialize orchestration service: %s", str(e))
+            raise
+
+    async def _fetch_stock_data(self, symbol: str, days_back: int = None):
+        """
+        Fetch stock data from the API endpoint.
+        
+        Args:
+            symbol: Stock symbol (e.g., 'AAPL')
+            days_back: Number of days to look back (optional, defaults to LOOKBACK_PERIOD_DAYS)
+            
+        Returns:
+            Dictionary containing stock data
+        """
+        try:
+            # API endpoint URL
+            api_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stock/recent"
+            params = {"symbol": symbol}
+            
+            # Use default lookback period if days_back is not specified
+            if days_back is None:
+                days_back = config.data.LOOKBACK_PERIOD_DAYS
+            
+            params["days_back"] = days_back
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(api_url, params=params)
+                response.raise_for_status()
+                return response.json()
+                
+        except Exception as e:
+            self.logger.error(f"Error fetching stock data for {symbol}: {e}")
+            raise
+
+    async def _fetch_nasdaq_stocks(self):
+        """
+        Fetch list of NASDAQ stocks from the API endpoint.
+        
+        Returns:
+            Dictionary containing list of stocks
+        """
+        try:
+            # API endpoint URL for stocks list
+            api_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stocks"
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(api_url)
+                response.raise_for_status()
+                return response.json()
+                
+        except Exception as e:
+            self.logger.error(f"Error fetching NASDAQ stocks: {e}")
             raise
 
     async def run_training_pipeline(self, model_type: str, symbol: str):
@@ -82,7 +130,7 @@ class OrchestrationService(BaseService):
                 run_training_flow,
                 model_type,
                 symbol,
-                self.data_service,
+                self._fetch_stock_data,
                 self.deployment_service,
                 self.evaluation_service,
             )
@@ -164,57 +212,32 @@ class OrchestrationService(BaseService):
                 run_prediction_flow,
                 model_type,
                 symbol,
-                self.data_service,
+                self._fetch_stock_data,
                 self.deployment_service,
             )
 
-            if prediction_result:
-
-                # Extract the prediction results
-                prediction = prediction_result["y_pred"][0]
-                confidence = prediction_result["confidence"][0]
-                model_version = prediction_result["model_version"]
-
-                self.logger.info(
-                    "Prediction pipeline completed for %s model for %s with version %s.",
-                    model_type,
-                    symbol,
-                    model_version,
-                )
-
-                # Save prediction to db
-                await self.prediction_storage.save_prediction_to_db(
+            if prediction_result["status"] == "success":
+                # Store the prediction in the database
+                await self.prediction_storage.store_prediction_in_db(
                     model_type=model_type,
                     symbol=symbol,
+                    prediction=prediction_result["prediction"],
+                    confidence=prediction_result["confidence"],
+                    model_version=prediction_result["model_version"],
                     date=next_trading_day,
-                    prediction=prediction,
-                    confidence=confidence,
-                    model_version=model_version,
                 )
 
                 return format_prediction_response(
-                    prediction=prediction,
-                    confidence=confidence,
+                    prediction=prediction_result["prediction"],
+                    confidence=prediction_result["confidence"],
                     model_type=model_type,
                     symbol=symbol,
-                    model_version=model_version,
+                    model_version=prediction_result["model_version"],
                     date=next_trading_day,
                 )
+            else:
+                return prediction_result
 
-            self.logger.info(
-                "No live model available to make prediction with %s model for %s.",
-                model_type,
-                symbol,
-            )
-
-            return {
-                "status": "error",
-                "error": f"No live model available to make prediction with {model_type} "
-                + "model for {symbol}.",
-                "symbol": symbol,
-                "model_type": model_type,
-                "timestamp": datetime.now().isoformat(),
-            }
         except Exception as e:
             self.logger.error(
                 "Error running the prediction pipeline for model %s for %s: %s",
@@ -242,7 +265,6 @@ class OrchestrationService(BaseService):
         Returns:
             result: The result of the evaluation pipeline execution.
         """
-
         try:
             # Enforce upper case for the symbol
             symbol = symbol.upper()
@@ -251,17 +273,16 @@ class OrchestrationService(BaseService):
                 "Starting evaluation pipeline for %s model for %s.", model_type, symbol
             )
 
-            # Run the evaluation pipeline
+            # Run the evaluation pipeline in a background thread to avoid blocking the event loop
             result = await asyncio.to_thread(
                 run_evaluation_flow,
                 model_type,
                 symbol,
-                self.data_service,
+                self._fetch_stock_data,
                 self.deployment_service,
                 self.evaluation_service,
             )
 
-            # Log the successful completion of the pipeline
             self.logger.info(
                 "Evaluation pipeline completed successfully for %s model for %s.",
                 model_type,
@@ -289,116 +310,92 @@ class OrchestrationService(BaseService):
         self, model_type: str, symbol: str, start_date: datetime, end_date: datetime
     ):
         """
-        Run the historical prediction pipeline for a given stock symbol and model type over a
-            specified date range.
+        Run the full historical prediction pipeline for the specified model and symbol.
 
         Args:
             model_type (str): The type of model to be used (e.g., 'LSTM', 'Prophet').
-            symbol (str): The stock symbol for which the model is being evaluated.
-            start_date (datetime): The start of the historical prediction range.
-            end_date (datetime): The end of the historical prediction range.
+            symbol (str): The stock symbol for which the model is being used for prediction.
+            start_date (datetime): Start date for historical predictions.
+            end_date (datetime): End date for historical predictions.
 
         Returns:
-            dict: The result of the historical prediction pipeline execution.
+            result: The result of the historical prediction pipeline execution.
         """
         try:
             # Enforce upper case for the symbol
             symbol = symbol.upper()
 
             self.logger.info(
-                "Starting historical prediction for %s model for %s from %s to %s.",
+                "Starting historical prediction pipeline for %s model for %s.",
                 model_type,
                 symbol,
-                start_date,
-                end_date,
             )
 
-            # Get trading dates range
+            # Get the trading days between start_date and end_date
             nyse = mcal.get_calendar("NYSE")
-            schedule = nyse.schedule(start_date=start_date, end_date=end_date)
-            trading_days = schedule.index.to_pydatetime().tolist()
+            trading_days = nyse.schedule(
+                start_date=start_date, end_date=end_date
+            ).index.tolist()
 
-            # Get the iso format of the trading days
-            target_dates = [dt.date().isoformat() for dt in trading_days]
+            # Check if we have cached predictions for all trading days
+            cached_predictions = []
+            missing_dates = []
 
-            # Get the existing dates (in the db)
-            existing_dates = (
-                await self.prediction_storage.get_existing_prediction_dates(
-                    model_type=model_type, symbol=symbol
+            for date in trading_days:
+                prediction_result = (
+                    await self.prediction_storage.load_prediction_from_db(
+                        model_type=model_type, symbol=symbol, date=date
+                    )
                 )
-            )
 
-            # Check if any date in the target range is missing
-            missing_dates = [
-                dt
-                for dt, dt_str in zip(trading_days, target_dates)
-                if dt_str not in existing_dates
-            ]
+                if prediction_result is not None:
+                    cached_predictions.append(
+                        format_prediction_response(
+                            prediction=prediction_result["prediction"],
+                            confidence=prediction_result["confidence"],
+                            model_type=model_type,
+                            symbol=symbol,
+                            model_version=prediction_result["model_version"],
+                            date=date,
+                        )
+                    )
+                else:
+                    missing_dates.append(date)
 
+            # If we have missing predictions, compute them
             if missing_dates:
                 self.logger.info(
-                    "Computing predictions for %s model for %s...", model_type, symbol
+                    "Computing historical predictions for %s model for %s...",
+                    model_type,
+                    symbol,
                 )
 
-                # Makes predictions
-                predictions = await asyncio.to_thread(
+                # Run the historical prediction pipeline
+                historical_predictions = await asyncio.to_thread(
                     run_historical_predictions_flow,
                     model_type,
                     symbol,
-                    trading_days,
-                    self.data_service,
+                    missing_dates,
+                    self._fetch_stock_data,
                     self.deployment_service,
                 )
 
-                if predictions:
-
-                    # Initialize the results list
-                    results = []
-
-                    for i in range(len(predictions)):
-
-                        # Extract the prediction results
-                        prediction = predictions[i]["y_pred"][0]
-                        confidence = predictions[i]["confidence"][0]
-                        model_version = predictions[i]["model_version"]
-
-                        # Save prediction to db
-                        await self.prediction_storage.save_prediction_to_db(
+                if historical_predictions["status"] == "success":
+                    # Store the predictions in the database
+                    for prediction in historical_predictions["predictions"]:
+                        await self.prediction_storage.store_prediction_in_db(
                             model_type=model_type,
                             symbol=symbol,
-                            date=trading_days[i],
-                            prediction=prediction,
-                            confidence=confidence,
-                            model_version=model_version,
+                            prediction=prediction["prediction"],
+                            confidence=prediction["confidence"],
+                            model_version=prediction["model_version"],
+                            date=prediction["date"],
                         )
 
-                        # Add formated prediction response to the results list
-                        results.append(
-                            format_prediction_response(
-                                prediction=prediction,
-                                confidence=confidence,
-                                model_type=model_type,
-                                symbol=symbol,
-                                model_version=model_version,
-                                date=trading_days[i],
-                            )
-                        )
-
+                    # Combine cached and new predictions
+                    results = cached_predictions + historical_predictions["predictions"]
                 else:
-                    self.logger.info(
-                        "No live model available to make predictions with %s model for %s.",
-                        model_type,
-                        symbol,
-                    )
-
-                    return {
-                        "status": "error",
-                        "error": f"No live model available to make predictions with {model_type} "
-                        + "model for {symbol}.",
-                        "symbol": symbol,
-                        "model_type": model_type,
-                        "timestamp": datetime.now().isoformat(),
-                    }
+                    return historical_predictions
             else:
                 self.logger.info(
                     "Serving predictions from cache for %s model for %s.",
@@ -489,12 +486,12 @@ class OrchestrationService(BaseService):
         model_types = trainers["types"]
 
         # Retrieve the symbols to predict
-        stocks_data = await self.data_service.get_nasdaq_stocks()
+        stocks_data = await self._fetch_nasdaq_stocks()
         symbols = [item["symbol"] for item in stocks_data["data"]]
 
         run_batch_prediction(
             model_types,
             symbols,
-            self.data_service,
+            self._fetch_stock_data,
             self.deployment_service,
         )

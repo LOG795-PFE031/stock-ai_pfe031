@@ -22,7 +22,8 @@ RUN cat data_ingestion-requirements.txt core-requirements.txt > requirements.txt
 # Install build tools and wheel
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir torch>=2.0.1 && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir asyncpg
 
 # Stage 2: Runtime
 FROM python:3.12.9-slim

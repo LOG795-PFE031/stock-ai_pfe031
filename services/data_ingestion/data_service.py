@@ -155,16 +155,21 @@ class DataService(BaseService):
             This is used for sorting stocks by their movement magnitude regardless of direction.
             
             Args:
-                pct_str (str): Percentage change as a string (e.g. "5.2%", "-3.1%")
+                pct_str (str): Percentage change as a string (e.g. "5.2%", "-3.1%", "UNCH")
                 
             Returns:
-                float: Absolute value of the percentage change
+                float: Absolute value of the percentage change, or 0.0 for non-numeric values
             """
             try:
+                # Handle non-numeric values like 'UNCH'
+                if not pct_str or pct_str.strip() in ['UNCH', 'N/A', '--', '']:
+                    return 0.0
+                
                 # Remove % sign and commas, convert to float, and get absolute value
                 per_change = abs(float(pct_str.strip("%").replace(",", "")))
                 return per_change
-            except Exception:
+            except (ValueError, TypeError):
+                # Return 0.0 for any conversion errors
                 return 0.0
 
         self.logger.info("Starting NASDAQ-100 stocks data retrieval process")

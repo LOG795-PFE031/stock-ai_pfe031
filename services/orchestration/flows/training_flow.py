@@ -1,10 +1,9 @@
 from prefect import flow
 from prefect.logging import get_run_logger
-from typing import Any
+from typing import Any, Callable
 
 from core.utils import get_model_name
 from services import (
-    DataService,
     DeploymentService,
     EvaluationService,
 )
@@ -25,7 +24,7 @@ PHASE = "training"
 def run_training_flow(
     model_type: str,
     symbol: str,
-    data_service: DataService,
+    fetch_stock_data: Callable,
     deployment_service: DeploymentService,
     evaluation_service: EvaluationService,
 ) -> dict[str, Any]:
@@ -43,7 +42,7 @@ def run_training_flow(
     Args:
         model_type (str): Type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol.
-        data_service: Service used to load raw market data.
+        fetch_stock_data (Callable): Function to fetch stock data from API.
         deployment_service: Service used to perform predictions and manage models.
         evaluation_service: Service used to evaluate and compare models based on performance metrics.
 
@@ -58,7 +57,7 @@ def run_training_flow(
     logger = get_run_logger()
 
     # Load the recent stock data
-    raw_data = load_recent_stock_data.submit(data_service, symbol)
+    raw_data = load_recent_stock_data.submit(fetch_stock_data, symbol)
 
     # --- Training of the model ---
 
@@ -99,58 +98,48 @@ def run_training_flow(
             model_type=model_type,
             symbol=symbol,
             data=raw_data,
-            phase="evaluation",
+            phase=production_phase,
         )
 
         # Evaluate the production model
-        live_metrics = evaluate_model(
-            model_identifier=production_model_name,
+        live_metrics = evaluate_model.submit(
             model_type=model_type,
             symbol=symbol,
-            phase=production_phase,
-            eval_data=prod_eval_data,
+            test_data=prod_eval_data,
             deployment_service=deployment_service,
             evaluation_service=evaluation_service,
         )
 
-    # --- Evaluation of the training model
+    # --- Evaluation of the candidate model ---
 
-    # Wait for the training results
-    logger.info("Waiting for training to finish...")
-    training_results = training_results_future.result()
-
-    # Retrieve the run id
-    run_id = training_results["run_id"]
-    logger.info(f"Training completed. Run ID: {run_id}")
-
-    # Evaluate the training model
-    candidate_metrics = evaluate_model(
-        run_id,
-        model_type,
-        symbol,
-        PHASE,
-        test_data,
-        deployment_service,
-        evaluation_service,
-    )
-
-    # Deploy (or not) the training model
-    logger.info("Starting deployment check and promotion (if applicable)...")
-
-    deployment_results = run_deploy_flow(
+    # Evaluate the candidate model
+    candidate_metrics = evaluate_model.submit(
         model_type=model_type,
         symbol=symbol,
-        run_id=run_id,
-        candidate_metrics=candidate_metrics,
-        prod_model_name=production_model_name,
-        live_metrics=live_metrics,
+        test_data=test_data,
+        deployment_service=deployment_service,
         evaluation_service=evaluation_service,
+    )
+
+    # --- Deployment decision ---
+
+    # Get the training results
+    training_results = training_results_future.result()
+
+    # Get the evaluation results
+    candidate_metrics_result = candidate_metrics.result()
+
+    # Decide whether to deploy the candidate model
+    deployment_results = run_deploy_flow.submit(
+        model_type=model_type,
+        symbol=symbol,
+        candidate_metrics=candidate_metrics_result,
+        live_metrics=live_metrics.result() if live_metrics else None,
         deployment_service=deployment_service,
     )
-    logger.info(f"Deployment process completed. Result: {deployment_results}")
 
     return {
         "training_results": training_results,
-        "metrics": candidate_metrics,
-        "deployment_results": deployment_results,
+        "metrics": candidate_metrics_result,
+        "deployment_results": deployment_results.result(),
     }

@@ -10,8 +10,6 @@ from core.config import config
 # Define the URL for the stock database connection
 STOCK_DATABASE_URL = config.stocks_db.URL
 
-# Create a base class for the stock data models
-StockBase = declarative_base()
 
 def get_stock_async_session():
     """Create a session factory that will be used to create new async Session objects for the stock database"""

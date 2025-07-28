@@ -117,7 +117,7 @@ async def get_stocks_list():
     """
     try:
         # Call the data ingestion service
-        data_service_url = f"http://{config.data_service.HOST}:{config.data_service.PORT}/data/stocks"
+        data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stocks"
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(data_service_url)
@@ -158,7 +158,7 @@ async def get_current_stock_data(
             )
 
         # Call the data ingestion service
-        data_service_url = f"http://{config.data_service.HOST}:{config.data_service.PORT}/data/stock/current"
+        data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stock/current"
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(data_service_url, params={"symbol": symbol})
@@ -225,7 +225,7 @@ async def get_historical_stock_data(
             )
 
         # Call the data ingestion service
-        data_service_url = f"http://{config.data_service.HOST}:{config.data_service.PORT}/data/stock/historical"
+        data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stock/historical"
         params = {
             "symbol": symbol,
             "start_date": start_date.strftime("%Y-%m-%d"),
@@ -287,7 +287,7 @@ async def get_reccent_stock_data(
             )
 
         # Call the data ingestion service
-        data_service_url = f"http://{config.data_service.HOST}:{config.data_service.PORT}/data/stock/recent"
+        data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stock/recent"
         params = {"symbol": symbol, "days_back": days_back}
         
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -359,7 +359,7 @@ async def get_historical_stock_prices_from_end_date(
             )
 
         # Call the data ingestion service
-        data_service_url = f"http://{config.data_service.HOST}:{config.data_service.PORT}/data/stock/from-end-date"
+        data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stock/from-end-date"
         params = {
             "symbol": symbol,
             "end_date": end_date.strftime("%Y-%m-%d"),
@@ -650,7 +650,7 @@ async def cleanup_stock_data(symbol: Optional[str] = None):
     """Clean up and maintain stock data files."""
     try:
         # Call the data ingestion service
-        data_service_url = f"http://{config.data_service.HOST}:{config.data_service.PORT}/data/cleanup"
+        data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/cleanup"
         params = {"symbol": symbol} if symbol else {}
         
         async with httpx.AsyncClient(timeout=60.0) as client:

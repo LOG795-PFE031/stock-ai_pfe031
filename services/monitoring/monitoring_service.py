@@ -12,7 +12,7 @@ from core import BaseService
 from core.logging import logger
 from core.config import config
 from core.prometheus_metrics import evaluation_mae
-from services import DeploymentService, DataService
+from services import DeploymentService
 from services.orchestration import OrchestrationService
 
 
@@ -21,7 +21,6 @@ class MonitoringService(BaseService):
         self,
         deployment_service: DeploymentService,
         orchestration_service: OrchestrationService,
-        data_service: DataService,
         check_interval_seconds: int = 24 * 60 * 60,  # default: once per day
         data_interval_seconds: int = 7 * 24 * 60 * 60,  # once per week
         max_drift_samples: int = 500,
@@ -33,7 +32,6 @@ class MonitoringService(BaseService):
         self.logger = logger["monitoring"]
         self.deployment_service = deployment_service
         self.orchestration_service = orchestration_service
-        self.data_service = data_service
         self.check_interval_seconds = check_interval_seconds
         self.data_interval = data_interval_seconds
         self.max_drift_samples = max_drift_samples
@@ -139,6 +137,58 @@ class MonitoringService(BaseService):
         finally:
             self.logger.info("🏁 Daily drift check complete")
 
+    async def _fetch_stock_data(self, symbol: str, days_back: int) -> pd.DataFrame:
+        """
+        Fetch stock data from the API endpoint and convert to DataFrame.
+        
+        Args:
+            symbol: Stock symbol (e.g., 'AAPL')
+            days_back: Number of days to look back
+            
+        Returns:
+            DataFrame with stock data
+        """
+        try:
+            # API endpoint URL
+            api_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stock/recent"
+            params = {"symbol": symbol, "days_back": days_back}
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(api_url, params=params)
+                response.raise_for_status()
+                data = response.json()
+            
+            # Extract prices from the response
+            prices = data.get("prices", [])
+            if not prices:
+                raise ValueError(f"No price data found for {symbol}")
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(prices)
+            
+            # Convert date column to datetime
+            df["Date"] = pd.to_datetime(df["date"])
+            
+            # Rename columns to match expected format
+            df = df.rename(columns={
+                "date": "Date",
+                "open": "Open",
+                "high": "High", 
+                "low": "Low",
+                "close": "Close",
+                "volume": "Volume",
+                "adj_close": "Adj Close"
+            })
+            
+            # Sort by date
+            df = df.sort_values("Date")
+            
+            return df
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching stock data for {symbol}: {e}")
+            raise
+
     async def _preprocess_data(
         self, symbol: str, model_type: str, phase: str, df: pd.DataFrame
     ):
@@ -211,15 +261,13 @@ class MonitoringService(BaseService):
         try:
             # Load data windows
             days_back = config.data.LOOKBACK_PERIOD_DAYS
-            train_df, _ = await self.data_service.get_recent_data(
-                symbol, days_back=days_back
-            )
+            train_df = await self._fetch_stock_data(symbol, days_back)
+            
             # Evaluation window must cover at least the model's sequence length
             seq_len = getattr(config.model, "SEQUENCE_LENGTH", 60)
             days_needed = max(seq_len, days_back)
-            recent_df, _ = await self.data_service.get_recent_data(
-                symbol, days_back=days_needed
-            )
+            recent_df = await self._fetch_stock_data(symbol, days_needed)
+            
             # Skip if no full sequence available
             if len(recent_df) < seq_len:
                 self.logger.warning(
