@@ -14,8 +14,9 @@ import yfinance as yf
 
 
 from core.utils import get_start_date_from_trading_days, get_latest_trading_day
-from db.session import get_async_session
-from db.models.stock_price import StockPrice
+# Import the new session and model for the dedicated stock database
+from services.data_ingestion.db.session import get_stock_async_session
+from services.data_ingestion.db.models.stock_price import StockPrice
 from core.prometheus_metrics import external_requests_total
 from core import BaseService
 from core.logging import logger
@@ -43,6 +44,30 @@ class DataService(BaseService):
         try:
             # Create necessary directories
             self.news_data_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Test connection to the stock database
+            try:
+                AsyncSessionLocal = get_stock_async_session()
+                async with AsyncSessionLocal() as session:
+                    # Simple query to test database connection and create tables if needed
+                    try:
+                        stmt = select(StockPrice).limit(1)
+                        await session.execute(stmt)
+                        self.logger.info("✅ Connection to stock database verified successfully")
+                    except Exception as table_error:
+                        # Table might not exist yet, try to create it
+                        self.logger.warning(f"⚠️ Stock prices table not found, attempting to create: {table_error}")
+                        try:
+                            from services.data_ingestion.db.init_db import init_stock_db
+                            await init_stock_db()
+                            self.logger.info("✅ Database tables created successfully")
+                        except Exception as create_error:
+                            self.logger.error(f"❌ Failed to create database tables: {create_error}")
+                            raise
+            except Exception as db_error:
+                self.logger.error(f"❌ Error connecting to stock database: {str(db_error)}")
+                raise
+            
             self._initialized = True
             self.logger.info("Data service initialized successfully")
         except Exception as e:
@@ -528,7 +553,7 @@ class DataService(BaseService):
             stock_name = self.get_stock_name(symbol)
 
             # Create a new async SQLAlchemy session to interact with the database
-            AsyncSessionLocal = get_async_session()
+            AsyncSessionLocal = get_stock_async_session()
             async with AsyncSessionLocal() as session:
 
                 try:
@@ -612,7 +637,7 @@ class DataService(BaseService):
                 range.
         """
         try:
-            AsyncSessionLocal = get_async_session()
+            AsyncSessionLocal = get_stock_async_session()
             async with AsyncSessionLocal() as session:
 
                 try:
@@ -728,7 +753,7 @@ class DataService(BaseService):
 
             # Check database connectivity
             try:
-                AsyncSessionLocal = get_async_session()
+                AsyncSessionLocal = get_stock_async_session()
                 async with AsyncSessionLocal() as session:
                     # Simple query to test database connection
                     stmt = select(StockPrice).limit(1)
@@ -767,8 +792,8 @@ class DataService(BaseService):
         try:
             deleted_count = 0
 
-            # Create a new async SQLAlchemy session to interact with the database
-            AsyncSessionLocal = get_async_session()
+            # Create a new async SQLAlchemy session to interact with the dedicated stock database
+            AsyncSessionLocal = get_stock_async_session()
             async with AsyncSessionLocal() as session:
 
                 try:

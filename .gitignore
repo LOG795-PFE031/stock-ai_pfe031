@@ -80,6 +80,7 @@ prefect_data/
 stock_postgres_data/
 prefect_postgres_data/
 mlflow_postgres_data/
+services/data_ingestion/data/postgres/
 
 # Ignore Scaler data
 data/scalers

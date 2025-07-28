@@ -18,6 +18,26 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
+      
+  # Dedicated Stock Data DB
+  postgres-stock-data:
+    image: postgres:14
+    container_name: postgres-stock-data
+    ports:
+      - "5436:5432"
+    environment:
+      POSTGRES_USER: stockuser
+      POSTGRES_PASSWORD: stockpass
+      POSTGRES_DB: stockdata
+    volumes:
+      - ./services/data_ingestion/data/postgres:/var/lib/postgresql/data
+    networks:
+      - microservices_auth
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stockuser -d stockdata"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
 
   # Prefect DB
   prefect-postgres:
@@ -58,19 +78,21 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=admin
-      - POSTGRES_DB=stocks
+      # Dedicated stock database config
+      - STOCK_DB_HOST=postgres-stock-data
+      - STOCK_DB_PORT=5432
+      - STOCK_DB_USER=stockuser
+      - STOCK_DB_PASSWORD=stockpass
+      - STOCK_DB_NAME=stockdata
+      # API config
       - API_HOST=0.0.0.0
       - API_PORT=8000
     networks:
       - microservices_auth
-    restart: on-failure
     depends_on:
-      postgres:
+      postgres-stock-data:
         condition: service_healthy
+    restart: on-failure
 
   # Prefect server
   prefect-server:

@@ -2,6 +2,7 @@
 Configuration settings for the Stock AI system.
 """
 
+import os
 from pathlib import Path
 from pydantic import BaseModel
 
@@ -95,7 +96,7 @@ class TrainingServiceConfig(BaseModel):
 
 
 class PostgresDatabaseConfig(BaseModel):
-    """PostgreSQL configuration"""
+    """PostgreSQL configuration for the main database"""
 
     HOST: str = "postgres-stock-ai"
     PORT: int = 5432
@@ -105,6 +106,19 @@ class PostgresDatabaseConfig(BaseModel):
     @property
     def URL(self) -> str:
         return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/stocks"
+        
+class StocksDatabaseConfig(BaseModel):
+    """PostgreSQL configuration for the dedicated stock data database"""
+
+    HOST: str = os.getenv("STOCK_DB_HOST", "postgres-stock-data")
+    PORT: int = int(os.getenv("STOCK_DB_PORT", "5432"))
+    USER: str = os.getenv("STOCK_DB_USER", "stockuser")
+    PASSWORD: str = os.getenv("STOCK_DB_PASSWORD", "stockpass")
+    DB_NAME: str = os.getenv("STOCK_DB_NAME", "stockdata")
+
+    @property
+    def URL(self) -> str:
+        return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.DB_NAME}"
     
 class NewsServiceConfig(BaseModel):
     """News service configuration."""
@@ -125,6 +139,7 @@ class Config:
         self.training_service = TrainingServiceConfig()
         self.mlflow_server = MLFlowConfig()
         self.postgres = PostgresDatabaseConfig()
+        self.stocks_db = StocksDatabaseConfig()
         self.news_service = NewsServiceConfig()
 
         # Create necessary directories
