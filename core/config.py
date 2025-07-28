@@ -17,7 +17,7 @@ class DataConfig(BaseModel):
     MAX_NEWS_ARTICLES: int = 100
     UPDATE_INTERVAL: int = 60  # minutes
     HOST: str = "data-service"
-    PORT: int = 8001
+    PORT: int = 8000
 
 
 class PreprocessingConfig(BaseModel):
@@ -125,7 +125,7 @@ class StocksDatabaseConfig(BaseModel):
 class NewsServiceConfig(BaseModel):
     """News service configuration."""
     HOST: str = "news-service"
-    PORT: int = 8002
+    PORT: int = 8000
 
 class Config:
     """Main configuration class."""
