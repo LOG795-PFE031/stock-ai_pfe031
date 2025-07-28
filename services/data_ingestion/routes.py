@@ -440,3 +440,32 @@ async def cleanup_data(
         api_logger.error(error_detail)
         api_logger.error(f"Full error details: {repr(e)}")
         raise HTTPException(status_code=500, detail=error_detail)
+
+@router.post("/pre-populate", tags=["Data"])
+async def pre_populate_database(
+    symbols: List[str] = Query(None, description="List of stock symbols to pre-populate (optional)"),
+    days_back: int = Query(365, description="Number of days of historical data to fetch")
+):
+    """Pre-populate the database with popular stocks to improve access speed."""
+    try:
+        # Perform pre-population
+        result = await data_service.pre_populate_popular_stocks(symbols, days_back)
+        
+        return {
+            "message": f"Pre-population completed: {result['successful']} successful, {result['failed']} failed",
+            "total_symbols": result["total_symbols"],
+            "successful": result["successful"],
+            "failed": result["failed"],
+            "errors": result["errors"],
+            "meta": MetaInfo(
+                version="1.0.0",
+                message="Database pre-population operation completed",
+                documentation="/docs",
+                endpoints=["/pre-populate"],
+            ),
+        }
+    except Exception as e:
+        error_detail = f"Failed to pre-populate database: {str(e)}"
+        api_logger.error(error_detail)
+        api_logger.error(f"Full error details: {repr(e)}")
+        raise HTTPException(status_code=500, detail=error_detail)

@@ -4,7 +4,7 @@ Data service for fetching and processing stock data.
 
 import asyncio
 from datetime import datetime, timezone, time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 import pandas as pd
 import pandas_market_calendars as mcal
@@ -845,3 +845,51 @@ class DataService(BaseService):
                 "message": str(e),
                 "timestamp": datetime.now().isoformat(),
             }
+
+    async def pre_populate_popular_stocks(self, symbols: List[str] = None, days_back: int = 365) -> Dict[str, Any]:
+        """
+        Pre-populate the database with popular stocks to improve access speed.
+        
+        Args:
+            symbols: List of stock symbols to pre-populate. If None, uses default popular stocks.
+            days_back: Number of days of historical data to fetch.
+            
+        Returns:
+            Dictionary containing pre-population results
+        """
+        if symbols is None:
+            # Default popular stocks from NASDAQ-100
+            symbols = [
+                "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA", "NFLX",
+                "ADBE", "CRM", "PYPL", "INTC", "AMD", "ORCL", "CSCO", "QCOM",
+                "AVGO", "TXN", "MU", "AMAT", "ADP", "COST", "SBUX", "MDLZ",
+                "GILD", "REGN", "VRTX", "ABNB", "ZM", "SNPS", "KLAC", "LRCX"
+            ]
+        
+        results = {
+            "total_symbols": len(symbols),
+            "successful": 0,
+            "failed": 0,
+            "errors": []
+        }
+        
+        self.logger.info(f"Starting pre-population of {len(symbols)} popular stocks")
+        
+        for symbol in symbols:
+            try:
+                # Get historical data which will trigger database population
+                end_date = datetime.now(timezone.utc)
+                start_date = get_start_date_from_trading_days(end_date, days_back)
+                
+                await self._get_stock_data(symbol, start_date, end_date)
+                results["successful"] += 1
+                self.logger.info(f"✅ Pre-populated data for {symbol}")
+                
+            except Exception as e:
+                results["failed"] += 1
+                error_msg = f"Failed to pre-populate {symbol}: {str(e)}"
+                results["errors"].append(error_msg)
+                self.logger.error(error_msg)
+        
+        self.logger.info(f"Pre-population completed: {results['successful']} successful, {results['failed']} failed")
+        return results
