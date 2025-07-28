@@ -21,7 +21,6 @@ from core.prometheus_metrics import (
     http_requests_total,
     http_request_duration_seconds,
     http_errors_total,
-    prediction_confidence,
 )
 from .routes import router
 from .deployment_service import DeploymentService

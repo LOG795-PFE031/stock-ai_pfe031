@@ -25,7 +25,7 @@ from services import (
     DataService,
     EvaluationService,
     RabbitMQService,
-    # MonitoringService,
+    MonitoringService,
 )
 from services.orchestration import OrchestrationService
 from core.monitor_utils import (
@@ -44,12 +44,12 @@ orchestation_service = OrchestrationService(
     evaluation_service=evaluation_service,
 )
 rabbitmq_service = RabbitMQService()
-# monitoring_service = MonitoringService(
-#     orchestation_service,
-#     data_service,
-#     check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
-#     data_interval_seconds=7 * 24 * 60 * 60,
-# )
+monitoring_service = MonitoringService(
+    orchestation_service,
+    data_service,
+    check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
+    data_interval_seconds=7 * 24 * 60 * 60,
+)
 
 
 @asynccontextmanager
@@ -66,7 +66,7 @@ async def lifespan(app: FastAPI):
         await data_service.initialize()
         await evaluation_service.initialize()
         await orchestation_service.initialize()
-        # await monitoring_service.initialize()
+        await monitoring_service.initialize()
 
         logger["main"].info("All services initialized successfully")
         yield
@@ -81,7 +81,7 @@ async def lifespan(app: FastAPI):
             logger["main"].info("Shutting down services...")
 
             # Cleanup in reverse order of initialization
-            # await monitoring_service.cleanup()
+            await monitoring_service.cleanup()
             await orchestation_service.cleanup()
             await evaluation_service.cleanup()
             await data_service.cleanup()
