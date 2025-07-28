@@ -9,7 +9,7 @@ from pydantic import BaseModel
 class DataConfig(BaseModel):
     """Data collection and storage configuration."""
 
-    DATA_ROOT_DIR: Path = Path("data")
+    DATA_ROOT_DIR: Path = Path("services/data_ingestion/data")
     NEWS_DATA_DIR: Path = Path("data/news")
     LOOKBACK_PERIOD_DAYS: int = 365
     NEWS_HISTORY_DAYS: int = 7

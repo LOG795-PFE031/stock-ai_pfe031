@@ -110,28 +110,55 @@ class DataService(BaseService):
 
     async def get_nasdaq_stocks(self) -> dict:
         """
-        Fetch the NASDAQ 100 stocks sorted by price percentage change (descending)
+        Retrieve a list of NASDAQ-100 stocks, sorted by absolute percentage change in
+        descending order (top movers first).
+        
+        This method fetches data from the NASDAQ API, sorts stocks based on their absolute
+        percentage price change (regardless of direction), and includes company names
+        for each stock.
 
         Returns:
-            dict: A dictionary containing the count of symbols and the list of symbols
-            from the NASDAQ 100 index.
+            dict: A dictionary containing:
+                - count (int): Number of stocks in the NASDAQ-100 index
+                - data (list): List of stock dictionaries, each containing symbol, name,
+                  price, and percentage change, sorted with top movers first
         """
 
         def parse_percentage_change(pct_str):
-            """Parse the percentage change of a stock (absolute value)"""
+            """
+            Parse the percentage change string into a float and convert to absolute value.
+            This is used for sorting stocks by their movement magnitude regardless of direction.
+            
+            Args:
+                pct_str (str): Percentage change as a string (e.g. "5.2%", "-3.1%")
+                
+            Returns:
+                float: Absolute value of the percentage change
+            """
             try:
+                # Remove % sign and commas, convert to float, and get absolute value
                 per_change = abs(float(pct_str.strip("%").replace(",", "")))
                 return per_change
-            except:
+            except Exception:
                 return 0.0
 
-        self.logger.info("Starting NASDAQ 100 stocks data retrieval process")
+        self.logger.info("Starting NASDAQ-100 stocks data retrieval process")
 
         try:
-            # Fetch the data
+            # Fetch the data from NASDAQ API
             url = "https://api.nasdaq.com/api/quote/list-type/nasdaq100"
-            headers = {"User-Agent": "Mozilla/5.0"}
+            headers = {"User-Agent": "Mozilla/5.0"}  # User agent required to avoid request blocking
+            
+            # Log the API request attempt
+            self.logger.debug(f"Making request to NASDAQ API: {url}")
+            
+            # Make the request and parse the JSON response
             response = requests.get(url, headers=headers)
+            
+            # Log the success of the external request
+            external_requests_total.labels(site="nasdaq_api", result="success").inc()
+            
+            # Extract the rows containing stock data
             data = response.json()["data"]["data"]["rows"]
 
             # Sort the list by absolute percentageChange (descending)
@@ -140,14 +167,36 @@ class DataService(BaseService):
                 key=lambda x: parse_percentage_change(x.get("percentageChange", "0%")),
                 reverse=True,
             )
+
+            # Add company name for each stock using get_stock_name
+            for stock in sorted_stocks:
+                symbol = stock.get("symbol")
+                try:
+                    stock["name"] = self.get_stock_name(symbol)
+                except Exception:
+                    stock["name"] = None
+
             stocks_data = {"count": len(sorted_stocks), "data": sorted_stocks}
 
             self.logger.info("Retrieved NASDAQ 100 stocks data")
 
             # Return the stock data
             return stocks_data
+        except requests.RequestException as re:
+            # Handle specific request exceptions
+            self.logger.error("Network error when retrieving NASDAQ-100 stocks data: %s", str(re))
+            # Log the failed external request
+            external_requests_total.labels(site="nasdaq_api", result="error").inc()
+            raise
+        except (KeyError, ValueError) as parse_error:
+            # Handle JSON parsing errors
+            self.logger.error("Error parsing NASDAQ API response: %s", str(parse_error))
+            external_requests_total.labels(site="nasdaq_api", result="error").inc()
+            raise
         except Exception as e:
-            self.logger.error("Error collecting NASDAQ 100 stocks data: %s", str(e))
+            # Handle other unexpected errors
+            self.logger.error("Unexpected error collecting NASDAQ-100 stocks data: %s", str(e))
+            external_requests_total.labels(site="nasdaq_api", result="error").inc()
             raise
 
     async def get_current_price(self, symbol: str):
@@ -194,28 +243,51 @@ class DataService(BaseService):
             float: Percentage change rounded to 2 decimal places, or None if calculation fails
         """
         try:
-            # Get recent data (today and yesterday)
-            recent_data, _ = await self.get_recent_data(symbol, days_back=2)
+            # Get recent data with more days to ensure we have enough data points
+            recent_data, _ = await self.get_recent_data(symbol, days_back=10)
             
-            if recent_data.empty or len(recent_data) < 2:
-                self.logger.warning(f"Not enough data to calculate change percent for {symbol}")
+            if recent_data.empty:
+                self.logger.warning(f"No data available to calculate change percent for {symbol}")
                 return None
                 
-            # Sort by date (most recent first)
-            recent_data = recent_data.sort_values('Date', ascending=False)
+            # Log the shape of the data for debugging
+            self.logger.debug(f"Retrieved {len(recent_data)} rows for {symbol} to calculate change percent")
+            
+            # Ensure the Date column is a datetime
+            if 'Date' in recent_data.columns:
+                recent_data['Date'] = pd.to_datetime(recent_data['Date'])
+                
+                # Sort by date (most recent first)
+                recent_data = recent_data.sort_values('Date', ascending=False)
+            else:
+                # If Date is the index
+                recent_data = recent_data.sort_index(ascending=False)
+            
+            # Check if we have at least 2 data points
+            if len(recent_data) < 2:
+                self.logger.warning(f"Not enough data points ({len(recent_data)}) to calculate change percent for {symbol}")
+                return None
             
             # Get current day and previous day prices
             current_close = float(recent_data.iloc[0]['Close'])
             previous_close = float(recent_data.iloc[1]['Close'])
             
+            # Log the values being used for calculation
+            self.logger.debug(f"{symbol} change calculation: current={current_close}, previous={previous_close}")
+            
             # Calculate percentage change
             if previous_close > 0:
                 change_percent = ((current_close - previous_close) / previous_close) * 100
-                return round(change_percent, 2)
+                result = round(change_percent, 2)
+                self.logger.info(f"Calculated change percent for {symbol}: {result}%")
+                return result
+            else:
+                self.logger.warning(f"Previous close price for {symbol} is zero or negative: {previous_close}")
+                return 0.0
             
-            return None
         except Exception as e:
             self.logger.error(f"Error calculating change percent for {symbol}: {str(e)}")
+            self.logger.debug(f"Exception details: {repr(e)}")
             return None
 
     async def get_recent_data(self, symbol: str, days_back: int = None):
@@ -241,27 +313,58 @@ class DataService(BaseService):
             # If there is no number of days back, use the default config lookback period days
             if days_back is None:
                 days_back = self.config.data.LOOKBACK_PERIOD_DAYS
-
+            
+            # Ensure days_back is reasonable
+            if days_back < 2:
+                days_back = 2  # Need at least 2 days for calculating change
+                self.logger.debug(f"Adjusted days_back to {days_back} for minimum data points")
+            
+            # To ensure we get enough data points, multiply days_back by 1.5 to account for weekends/holidays
+            # where data might not be available
+            lookup_days = int(days_back * 1.5)
+            
             # Get start and end dates
-            end_date = datetime.now()
-            start_date = get_start_date_from_trading_days(end_date, days_back)
+            end_date = datetime.now(timezone.utc)
+            start_date = get_start_date_from_trading_days(end_date, lookup_days)
+            
+            self.logger.debug(f"Requesting data for {symbol} from {start_date.date()} to {end_date.date()}")
 
             # Retrieve stock data prices
             df = await self._get_stock_data(symbol, start_date, end_date)
+            
+            if df.empty:
+                self.logger.warning(f"No data retrieved for {symbol} between {start_date.date()} and {end_date.date()}")
+                return df, self.get_stock_name(symbol)
 
-            # Filter data for requested date range
-            mask = (df["Date"].dt.date >= start_date.date()) & (
-                df["Date"].dt.date <= end_date.date()
-            )
-            df = df[mask]
+            # Filter data for requested date range and ensure we're getting the right columns
+            try:
+                mask = (df["Date"].dt.date >= start_date.date()) & (
+                    df["Date"].dt.date <= end_date.date()
+                )
+                df = df[mask]
+                
+                # Ensure we have the required columns
+                required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+                for col in required_columns:
+                    if col not in df.columns:
+                        self.logger.error(f"Missing required column {col} in data for {symbol}")
+                        return pd.DataFrame(), self.get_stock_name(symbol)
+                
+                # Log the number of rows retrieved
+                self.logger.debug(f"Retrieved {len(df)} rows of data for {symbol}")
+                
+            except Exception as filter_error:
+                self.logger.error(f"Error filtering data for {symbol}: {str(filter_error)}")
+                return pd.DataFrame(), self.get_stock_name(symbol)
 
             # Get the stock_name
             stock_name = self.get_stock_name(symbol)
 
             self.logger.info(
-                "Retrieved recent stock prices for %s looking back for %d trading days",
+                "Retrieved recent stock prices for %s looking back for %d trading days (got %d data points)",
                 symbol,
                 days_back,
+                len(df)
             )
 
             return df, stock_name

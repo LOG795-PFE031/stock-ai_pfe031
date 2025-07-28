@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 from .data_service import DataService
 from .schemas import (
@@ -51,7 +51,7 @@ async def health_check():
                 "healthy" if data_health["status"] == "healthy" else "unhealthy"
             ),
             components={"data_service": data_health["status"] == "healthy"},
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
     except Exception as exception:
         api_logger.error(f"Health check failed: {str(exception)}")
@@ -61,18 +61,24 @@ async def health_check():
 
 @router.get("/stocks", response_model=List[StockInfo], tags=["Data"])
 async def get_stocks():
-    """Get list of available stocks."""
+    """Get list of available stocks from NASDAQ-100, sorted by absolute percentage change (top movers first)."""
     try:
-        # This could be enhanced to return actual available stocks from database
-        # For now, returning a sample list
-        stocks = [
-            StockInfo(symbol="AAPL", name="Apple Inc."),
-            StockInfo(symbol="MSFT", name="Microsoft Corporation"),
-            StockInfo(symbol="GOOGL", name="Alphabet Inc."),
-            StockInfo(symbol="AMZN", name="Amazon.com Inc."),
-            StockInfo(symbol="TSLA", name="Tesla Inc.")
-        ]
-        return stocks
+        response = await data_service.get_nasdaq_stocks()
+        
+        # Extract the list of stocks from the response
+        if "data" in response and isinstance(response["data"], list):
+            stocks = [
+                StockInfo(
+                    symbol=stock["symbol"], 
+                    name=stock["name"],
+                    current_price=float(stock.get("lastSalePrice", "0").replace("$", "").replace(",", "")) if stock.get("lastSalePrice") else None,
+                    change_percent=float(stock.get("percentageChange", "0%").replace("%", "").replace(",", "")) if stock.get("percentageChange") else None
+                ) 
+                for stock in response["data"]
+            ]
+            return stocks
+        else:
+            raise ValueError("Invalid response format from NASDAQ API")
     except Exception as e:
         api_logger.error(f"Failed to get stocks list: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get stocks list: {e}")
@@ -87,19 +93,45 @@ async def get_current_price(
         if not symbol.isalnum():
             raise HTTPException(status_code=400, detail=f"Invalid stock symbol: {symbol}")
         
+        api_logger.debug(f"Getting current price for {symbol}")
+        
         # Get current price data
-        current_price_df, _ = await data_service.get_current_price(symbol)
+        current_price_df, stock_name = await data_service.get_current_price(symbol)
         
         # Extract current price from DataFrame
         if not current_price_df.empty:
             current_price = float(current_price_df.iloc[0]['Close'])
+            api_logger.debug(f"Current price for {symbol}: {current_price}")
+            
             # Calculate change percent
             change_percent = await data_service.calculate_change_percent(symbol)
+            
+            # If change_percent is None, try to get it from NASDAQ data as a fallback
+            if change_percent is None:
+                api_logger.debug(f"Attempting to get change percent for {symbol} from NASDAQ data")
+                try:
+                    nasdaq_data = await data_service.get_nasdaq_stocks()
+                    if "data" in nasdaq_data and nasdaq_data["data"]:
+                        for stock in nasdaq_data["data"]:
+                            if stock.get("symbol") == symbol:
+                                pct_str = stock.get("percentageChange", "0%")
+                                change_percent = float(pct_str.replace("%", "").replace(",", ""))
+                                api_logger.info(f"Retrieved change percent for {symbol} from NASDAQ data: {change_percent}%")
+                                break
+                except Exception as e:
+                    api_logger.error(f"Failed to get change percent from NASDAQ data: {str(e)}")
         else:
+            api_logger.warning(f"No current price data found for {symbol}")
             current_price = 0.0
             change_percent = None
         
-        now_iso = datetime.utcnow().isoformat()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        
+        # Create message based on availability of change percent
+        message = "Current price retrieved successfully"
+        if current_price > 0 and change_percent is None:
+            message = "Current price retrieved, but change percent calculation failed"
+        
         return CurrentPriceResponse(
             symbol=symbol,
             current_price=current_price,
@@ -109,7 +141,7 @@ async def get_current_price(
                 start_date=now_iso,
                 end_date=now_iso,
                 version=config.api.API_VERSION,
-                message="Current price retrieved successfully",
+                message=message,
                 documentation="/docs",
                 endpoints=["/stock/current"],
             ),
