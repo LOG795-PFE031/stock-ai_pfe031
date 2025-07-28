@@ -14,7 +14,7 @@ from services import DeploymentService
     retries=3,
     retry_delay_seconds=5,
 )
-def predict(
+async def predict(
     model_identifier: str,
     X: Union[pd.DataFrame, np.ndarray, list],
     service: DeploymentService,
@@ -45,12 +45,15 @@ def predict(
         "X": X_payload,
     }
 
-    response = httpx.post(url, json=payload, timeout=None)
-    response.raise_for_status()
-    result = response.json()
+    async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+            result = response.json()
 
     predictions = result.get("predictions")
     if predictions is not None and isinstance(predictions, list):
         result["predictions"] = np.array(predictions)
 
     return result
+
+# return await service.predict(model_identifier, X)

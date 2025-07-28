@@ -15,7 +15,7 @@ from core.types import ProcessedData
     retries=3,
     retry_delay_seconds=5,
 )
-def calculate_prediction_confidence(
+async def calculate_prediction_confidence(
     model_type: str,
     symbol: str,
     y_pred,
@@ -67,11 +67,17 @@ def calculate_prediction_confidence(
     }
 
     url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/calculate_prediction_confidence"
-    response = httpx.post(url, json=payload, timeout=None)
-    response.raise_for_status()
+    # response = httpx.post(url, json=payload, timeout=None)
+    # response.raise_for_status()
 
-    return response.json().get("confidences", [])
+    # return response.json().get("confidences", [])
     
+    async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.post(url, json=payload)
+            response.raise_for_status()
+            result = response.json()
+
+    return result.get("confidences", [])    
     # return await service.calculate_prediction_confidence(
     #     model_type=model_type, symbol=symbol, prediction_input=prediction_input, y_pred=y_pred
     # )
