@@ -135,25 +135,25 @@ class OrchestrationService(BaseService):
             # Get the predicted price date
             next_trading_day = get_next_trading_day()
 
-            # result = await self.prediction_storage.load_prediction_from_db(
-            #     model_type=model_type, symbol=symbol, date=next_trading_day
-            # )
+            result = await self.prediction_storage.load_prediction_from_db(
+                model_type=model_type, symbol=symbol, date=next_trading_day
+            )
 
-            # if result is not None:
-            #     self.logger.info(
-            #         "Serving prediction from cache for %s model for %s.",
-            #         model_type,
-            #         symbol,
-            #     )
+            if result is not None:
+                self.logger.info(
+                    "Serving prediction from cache for %s model for %s.",
+                    model_type,
+                    symbol,
+                )
 
-            #     return format_prediction_response(
-            #         prediction=result["prediction"],
-            #         confidence=result["confidence"],
-            #         model_type=model_type,
-            #         symbol=symbol,
-            #         model_version=result["model_version"],
-            #         date=next_trading_day,
-            #     )
+                return format_prediction_response(
+                    prediction=result["prediction"],
+                    confidence=result["confidence"],
+                    model_type=model_type,
+                    symbol=symbol,
+                    model_version=result["model_version"],
+                    date=next_trading_day,
+                )
 
             self.logger.info(
                 "Computing the prediction for %s model for %s...", model_type, symbol
