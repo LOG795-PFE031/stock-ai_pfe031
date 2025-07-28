@@ -7,7 +7,7 @@ import httpx
 from core.config import config
 
 from services import DeploymentService
-
+from core.types import ProcessedData
 
 @task(
     name="prediction_confidence_calculation",
@@ -15,7 +15,7 @@ from services import DeploymentService
     retries=3,
     retry_delay_seconds=5,
 )
-async def calculate_prediction_confidence(
+def calculate_prediction_confidence(
     model_type: str,
     symbol: str,
     y_pred,
@@ -35,29 +35,43 @@ async def calculate_prediction_confidence(
         list[float]: Confidence scores
     """
     
-    # Serialize inputs
-    # def to_payload(x):
-    #     if isinstance(x, pd.DataFrame):
-    #         return x.values.tolist()
-    #     if isinstance(x, np.ndarray):
-    #         return x.tolist()
-    #     return x
-
-    # payload = {
-    #     "model_type": model_type,
-    #     "symbol": symbol,
-    #     "prediction_input": to_payload(prediction_input),
-    #     "y_pred": to_payload(y_pred),
-    # }
-
-    # url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/calculate_prediction_confidence"
-    # async with httpx.AsyncClient(timeout=None) as client:
-    #     resp = await client.post(url, json=payload)
-    #     resp.raise_for_status()
-    #     data = resp.json() 
-    #     return data.get("confidences", [])
+    # Build the payload
+    def to_payload(x):
+        if isinstance(x, pd.DataFrame):
+            return x.values.tolist()
+        if isinstance(x, (pd.Series, np.ndarray)):
+            return x.tolist()
+        return x
     
+    # Serialize the date
+    def serialize_date(d):
+        if d is None:
+            return None
+        if isinstance(d, str):
+            return d
+        # datetime or date
+        return d.isoformat() if hasattr(d, "isoformat") else str(d)
+
+    # Brick by bricks
+    payload = {
+        "model_type": model_type,
+        "symbol": symbol,
+        "prediction_input": {
+            "X": to_payload(prediction_input.X),
+            "y": to_payload(prediction_input.y),
+            "feature_index_map": prediction_input.feature_index_map,
+            "start_date": serialize_date(prediction_input.start_date),
+            "end_date":   serialize_date(prediction_input.end_date),
+        },
+        "y_pred": to_payload(y_pred),
+    }
+
+    url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/calculate_prediction_confidence"
+    response = httpx.post(url, json=payload, timeout=None)
+    response.raise_for_status()
+
+    return response.json().get("confidences", [])
     
-    return await service.calculate_prediction_confidence(
-        model_type=model_type, symbol=symbol, prediction_input=prediction_input, y_pred=y_pred
-    )
+    # return await service.calculate_prediction_confidence(
+    #     model_type=model_type, symbol=symbol, prediction_input=prediction_input, y_pred=y_pred
+    # )

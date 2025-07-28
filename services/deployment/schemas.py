@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -96,10 +96,12 @@ class PredictionRequest(BaseModel):
 
 
 class PredictionResponse(BaseModel):
-    predictions: List[float]
+    predictions: List[Union[int, float, Any]]
     model_version: str
 
-
+class ModelExistResponse(BaseModel):
+    exists: bool
+    model_name: str
 # class PredictionResponse(BaseModel):
 #     """Prediction response schema."""
 

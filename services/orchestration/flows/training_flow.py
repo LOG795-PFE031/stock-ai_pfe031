@@ -89,7 +89,7 @@ def run_training_flow(
     production_model_name = get_model_name(model_type=model_type, symbol=symbol)
 
     prod_model_exists = production_model_exists.submit(
-        prod_model_name=production_model_name,
+        prod_model_name=production_model_name, service=deployment_service
     ).result()
 
     if prod_model_exists:

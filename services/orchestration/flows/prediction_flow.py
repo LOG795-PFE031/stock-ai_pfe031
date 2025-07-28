@@ -140,7 +140,7 @@ def run_prediction_pipeline(
 
     # Check if it exist
     prod_model_exist = production_model_exists.submit(
-        production_model_name,
+        production_model_name, deployment_service
     ).result()
 
     if prod_model_exist:
@@ -349,7 +349,7 @@ def run_historical_predictions_flow(
 
     # Check if it exist
     prod_model_exist = production_model_exists.submit(
-        production_model_name, 
+        production_model_name, deployment_service
     ).result()
 
     if prod_model_exist:

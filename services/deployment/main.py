@@ -81,7 +81,7 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In prod, restrict this
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -94,7 +94,7 @@ async def root():
     return RedirectResponse(url="/docs")
 
 # Include routers
-app.include_router(router, prefix="/deployment")  # Add /api prefix to all routes
+app.include_router(router, prefix="/deployment") 
 
 
 # Prometheus middleware

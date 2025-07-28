@@ -117,7 +117,7 @@ class DeploymentService(BaseService):
 
     async def predict(
         self, model_identifier: str, X: Union[pd.DataFrame, np.ndarray, list]
-    ) -> dict[Any, int]:
+    ) -> dict[str, Any]:
         """
         Run prediction on input data using either a logged model or a registered production model.
 
@@ -305,7 +305,7 @@ class DeploymentService(BaseService):
             )
             raise
 
-    async def cleanup(self) -> None:
+    async def cleanup(self) -> dict[str, Any]:
         """Clean up resources."""
         try:
             self._initialized = False
