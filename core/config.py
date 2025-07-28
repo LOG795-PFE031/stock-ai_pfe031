@@ -121,9 +121,9 @@ class StocksDatabaseConfig(BaseModel):
     @property
     def URL(self) -> str:
         return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.DB_NAME}"   
+
 class NewsServiceConfig(BaseModel):
     """News service configuration."""
-
     HOST: str = "news-service"
     PORT: int = 8002
 

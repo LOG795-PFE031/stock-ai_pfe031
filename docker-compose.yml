@@ -84,9 +84,6 @@ services:
       - STOCK_DB_USER=stockuser
       - STOCK_DB_PASSWORD=stockpass
       - STOCK_DB_NAME=stockdata
-      # API config
-      - API_HOST=0.0.0.0
-      - API_PORT=8000
     networks:
       - microservices_auth
     depends_on:
