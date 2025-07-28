@@ -5,9 +5,10 @@ Database initialization script for the stock data database.
 import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from services.data_ingestion.db.session import STOCK_DATABASE_URL, StockBase
+from services.data_ingestion.db.session import STOCK_DATABASE_URL
 from services.data_ingestion.db.models import StockPrice
 from core.logging import logger
+from .models.base import Base
 
 logger = logger["data"]
 
@@ -22,7 +23,7 @@ async def init_stock_db():
         # Create all tables
         async with engine.begin() as conn:
             logger.info("📋 Creating database tables...")
-            await conn.run_sync(StockBase.metadata.create_all)
+            await conn.run_sync(Base.metadata.create_all)
         
         await engine.dispose()
         logger.info("✅ Stock database tables created successfully")

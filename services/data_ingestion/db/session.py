@@ -3,8 +3,6 @@ Sets up the SQLAlchemy engine and session for the dedicated stock data PostgreSQ
 """
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
-
 from core.config import config
 
 # Define the URL for the stock database connection

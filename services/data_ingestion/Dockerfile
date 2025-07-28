@@ -60,14 +60,7 @@ ENV PYTHONPATH=/app \
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Make the entry point script executable
-COPY services/data_ingestion/docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
-
 EXPOSE 8000
 
-# Set the entry point script that will initialize the database before starting the app
-ENTRYPOINT ["/docker-entrypoint.sh"]
-
-# Run the application
+# Run the application directly - the service will handle DB initialization
 CMD ["uvicorn", "services.data_ingestion.main:app", "--host", "0.0.0.0", "--port", "8000"]

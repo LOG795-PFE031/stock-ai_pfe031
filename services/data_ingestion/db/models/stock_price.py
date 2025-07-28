@@ -1,14 +1,10 @@
-"""
-Stock price model for the dedicated stock database.
-"""
-
-from sqlalchemy import Column, String, Integer, Numeric, Date, Index
-from services.data_ingestion.db.session import StockBase
+from sqlalchemy import Column, String, Integer, Numeric, Date
+from .base import Base
 
 
-class StockPrice(StockBase):
+class StockPrice(Base):
     """
-    SQLAlchemy model representing historical stock price data in the dedicated stock database.
+    SQLAlchemy model representing historical stock price data.
 
     This model stores daily stock price information for a specific stock symbol,
     including OHLC (Open, High, Low, Close) data, volume, dividends, and stock splits.
@@ -29,8 +25,8 @@ class StockPrice(StockBase):
 
     __tablename__ = "stock_prices"
 
-    id = Column(Integer, primary_key=True, index=True)
-    stock_symbol = Column(String(10), nullable=False, index=True)
+    id = Column(Integer, primary_key=True)
+    stock_symbol = Column(String(10), nullable=False)
     stock_name = Column(String(100))
     date = Column(Date, nullable=False)
     open = Column(Numeric(12, 4))
@@ -40,8 +36,3 @@ class StockPrice(StockBase):
     volume = Column(Integer)
     dividends = Column(Numeric(12, 4))
     stock_splits = Column(Numeric(12, 4))
-
-    # Create an index on symbol and date for faster queries
-    __table_args__ = (
-        Index('idx_symbol_date', 'stock_symbol', 'date'),
-    )
