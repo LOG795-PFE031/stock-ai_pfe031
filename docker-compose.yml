@@ -196,7 +196,6 @@ services:
       - ./services/deployment:/app/services/deployment
       - ./services/training:/app/services/training 
       - /app/__pycache__
-      - ./data/models:/app/data/models
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow-server:5000
     networks:

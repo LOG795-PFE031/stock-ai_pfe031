@@ -136,7 +136,7 @@ class DeploymentService(BaseService):
         try:
             self.logger.info("Starting prediction using model %s.", model_identifier)
 
-            # Generate input hash for caching.
+            # Generate input hash for caching
             input_hash = self._hash_input(X)
             if not input_hash:
                 self.logger.warning(
