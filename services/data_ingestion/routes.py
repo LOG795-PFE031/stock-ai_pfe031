@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from datetime import datetime, timezone
 from typing import List
+import pandas as pd
 from .data_service import DataService
 from .schemas import (
     StockDataResponse, 
@@ -132,14 +133,27 @@ async def get_current_price(
         if current_price > 0 and change_percent is None:
             message = "Current price retrieved, but change percent calculation failed"
         
+        # Prepare date strings for metadata
+        date_str = None
+        if not current_price_df.empty and 'Date' in current_price_df.columns:
+            try:
+                date_str = current_price_df.iloc[0]['Date'].strftime('%Y-%m-%d')
+            except (AttributeError, ValueError):
+                # If Date is not a datetime object, try to convert it
+                try:
+                    date_obj = pd.to_datetime(current_price_df.iloc[0]['Date'])
+                    date_str = date_obj.strftime('%Y-%m-%d')
+                except:
+                    date_str = str(current_price_df.iloc[0]['Date'])[:10]  # Take first 10 chars as fallback
+
         return CurrentPriceResponse(
             symbol=symbol,
             current_price=current_price,
             change_percent=change_percent,  
             timestamp=now_iso,
             meta=MetaInfo(
-                start_date=current_price_df.iloc[0]['Date'],
-                end_date=current_price_df.iloc[0]['Date'],
+                start_date=date_str,
+                end_date=date_str,
                 version=config.api.API_VERSION,
                 message=message,
                 documentation="/docs",
