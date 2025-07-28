@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 from datetime import datetime, timezone
 from typing import List
 import pandas as pd
+
 from .data_service import DataService
 from .schemas import (
     StockDataResponse, 
@@ -11,7 +12,9 @@ from .schemas import (
     MetaInfo, 
     HealthResponse,
     StockInfo,
-    StockPrice
+    StockPrice,
+    StocksListDataResponse,
+    StockItem
 )
 from core.config import config
 from core.utils import get_date_range
@@ -60,7 +63,7 @@ async def health_check():
             status_code=500, detail=f"Health check failed: {str(exception)}"
         ) from exception
 
-@router.get("/stocks", response_model=List[StockInfo], tags=["Data"])
+@router.get("/stocks", response_model=StocksListDataResponse, tags=["Data"])
 async def get_stocks():
     """Get list of available stocks from NASDAQ-100, sorted by absolute percentage change (top movers first)."""
     try:
@@ -68,22 +71,32 @@ async def get_stocks():
         
         # Extract the list of stocks from the response
         if "data" in response and isinstance(response["data"], list):
-            stocks = [
-                StockInfo(
-                    symbol=stock["symbol"], 
-                    name=stock["name"],
-                    current_price=float(stock.get("lastSalePrice", "0").replace("$", "").replace(",", "")) if stock.get("lastSalePrice") else None,
-                    change_percent=float(stock.get("percentageChange", "0%").replace("%", "").replace(",", "")) if stock.get("percentageChange") else None
-                ) 
-                for stock in response["data"]
-            ]
-            return stocks
+            stock_items = []
+            for stock in response["data"]:
+                # Create StockItem with available data, providing defaults for missing fields
+                stock_item = StockItem(
+                    symbol=stock.get("symbol", ""),
+                    sector=stock.get("sector", "Unknown"),  # Provide default if missing
+                    companyName=stock.get("name", stock.get("companyName", "")),  # Use name if companyName not available
+                    marketCap=stock.get("marketCap", "N/A"),  # Provide default if missing
+                    lastSalePrice=stock.get("lastSalePrice", "0.00"),
+                    netChange=stock.get("netChange", "0.00"),  # Provide default if missing
+                    percentageChange=stock.get("percentageChange", "0.00%"),
+                    deltaIndicator=stock.get("deltaIndicator", "")  # Provide default if missing
+                )
+                stock_items.append(stock_item)
+            
+            # Return the proper response format
+            return StocksListDataResponse(
+                count=len(stock_items),
+                data=stock_items
+            )
         else:
             raise ValueError("Invalid response format from NASDAQ API")
     except Exception as e:
         api_logger.error(f"Failed to get stocks list: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get stocks list: {e}")
-
+    
 @router.get("/stock/current", response_model=CurrentPriceResponse, tags=["Data"])
 async def get_current_price(
     symbol: str = Query(..., description="Stock symbol to get current price for")

@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 class HealthResponse(BaseModel):
@@ -16,6 +16,24 @@ class MetaInfo(BaseModel):
     message: Optional[str] = None
     documentation: Optional[str] = None
     endpoints: Optional[List[str]] = None
+
+class StockItem(BaseModel):
+    """Infos about a stock"""
+    symbol: str
+    sector: Optional[str] = "Unknown"
+    companyName: Optional[str] = ""
+    marketCap: Optional[str] = "N/A"
+    lastSalePrice: Optional[str] = "0.00"
+    netChange: Optional[str] = "0.00"
+    percentageChange: Optional[str] = "0.00%"
+    deltaIndicator: Optional[str] = ""
+
+class StocksListDataResponse(BaseModel):
+    """Stocks data list data response."""
+
+    count: int
+    data: List[StockItem]
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 class StockPrice(BaseModel):
     """Schema for a stock price data point."""

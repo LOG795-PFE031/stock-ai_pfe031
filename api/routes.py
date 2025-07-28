@@ -123,6 +123,8 @@ async def get_stocks_list():
             response = await client.get(data_service_url)
             response.raise_for_status()
             stocks_data = response.json()
+            api_logger.info(f"Retrieved {len(stocks_data)} stocks from data service")
+            api_logger.debug(f"Stocks data: {stocks_data}")
 
         return StocksListDataResponse(
             count=len(stocks_data),
