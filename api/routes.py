@@ -167,10 +167,17 @@ async def get_current_stock_data(
             stock_data = response.json()
 
         # The data ingestion service returns a CurrentPriceResponse, extract the data
+        # Ensure 'data' is a list of dicts as expected by StockDataResponse
+        current_price = stock_data["current_price"]
+        if isinstance(current_price, dict):
+            data_list = [current_price]
+        else:
+            # If current_price is a float, wrap it in a dict with a default key
+            data_list = [{"price": current_price}]
         return StockDataResponse(
             symbol=stock_data["symbol"],
             name=stock_data["stock_info"]["name"],
-            data=[stock_data["current_price"]],  # Wrap single price in array for consistency
+            data=data_list,
             meta=MetaInfo(
                 message=f"Current stock data retrieved successfully for {symbol}",
                 version=config.api.API_VERSION,
@@ -401,7 +408,7 @@ async def get_historical_stock_prices_from_end_date(
         ) from e
 
 
-@router.get("/news/", response_model=NewsDataResponse, tags=["Data Services"])
+@router.get("/data/news", response_model=NewsDataResponse, tags=["Data Services"])
 async def get_news_data(
     symbol: str = Query(..., description="Stock symbol to retrieve news data for"),
     start_date: Optional[str] = None,
@@ -410,26 +417,33 @@ async def get_news_data(
     """Get news data for a symbol."""
     try:
         # Import services from main to avoid circular imports
-        url = f"http://{config.news_service.HOST}:{config.news_service.PORT}/news/"
+        url = f"http://{config.news_service.HOST}:{config.news_service.PORT}/data/news"
+
+        # Build params dict, excluding None values
+        params = {"symbol": symbol}
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
 
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, params={"symbol": symbol, "start_date": start_date, "end_date": end_date})
+            response = await client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
 
         return NewsDataResponse(
-        symbol=data["symbol"],
-        articles=data["articles"],
-        total_articles=data["total_articles"],
-        sentiment_metrics=data["sentiment_metrics"],
-        meta=MetaInfo(
-            start_date=start_date.isoformat(),
-            end_date=end_date.isoformat(),
-            version=data["meta"]["version"],
-            message=data["meta"]["message"],
-            documentation=data["meta"]["documentation"],
-            endpoints=data["meta"]["endpoints"],
-        ),
+            symbol=data["symbol"],
+            articles=data["articles"],
+            total_articles=data["total_articles"],
+            sentiment_metrics=data["sentiment_metrics"],
+            meta=MetaInfo(
+                start_date=data["meta"].get("start_date"),
+                end_date=data["meta"].get("end_date"),
+                version=data["meta"]["version"],
+                message=data["meta"]["message"],
+                documentation=data["meta"]["documentation"],
+                endpoints=data["meta"]["endpoints"],
+            ),
         )
     except Exception as e:
         api_logger.error(f"Failed to get news data: {str(e)}")
