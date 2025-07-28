@@ -3,7 +3,6 @@ Database initialization script for the stock data database.
 """
 
 import asyncio
-import asyncpg
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from services.data_ingestion.db.session import STOCK_DATABASE_URL, StockBase
