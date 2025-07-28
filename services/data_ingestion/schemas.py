@@ -63,6 +63,7 @@ class StockDataResponse(BaseModel):
 class CurrentPriceResponse(BaseModel):
     """Response schema for current price data."""
     symbol: str
+    stock_info: StockInfo 
     current_price: float
     change_percent: Optional[float] = None
     timestamp: str

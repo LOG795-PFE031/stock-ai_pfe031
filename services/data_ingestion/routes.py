@@ -159,8 +159,17 @@ async def get_current_price(
                 except:
                     date_str = str(current_price_df.iloc[0]['Date'])[:10]  # Take first 10 chars as fallback
 
+        # Create stock info object to include in response
+        stock_info = StockInfo(
+            symbol=symbol,
+            name=stock_name or symbol,
+            current_price=current_price,
+            change_percent=change_percent
+        )
+
         return CurrentPriceResponse(
             symbol=symbol,
+            stock_info=stock_info,  # Include the stock info with name
             current_price=current_price,
             change_percent=change_percent,  
             timestamp=now_iso,

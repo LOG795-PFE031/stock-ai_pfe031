@@ -166,15 +166,16 @@ async def get_current_stock_data(
             response.raise_for_status()
             stock_data = response.json()
 
+        # The data ingestion service returns a CurrentPriceResponse, extract the data
         return StockDataResponse(
             symbol=stock_data["symbol"],
             name=stock_data["stock_info"]["name"],
-            data=stock_data["prices"],
+            data=[stock_data["current_price"]],  # Wrap single price in array for consistency
             meta=MetaInfo(
-                message=f"Stock data retrieved successfully for {symbol}",
+                message=f"Current stock data retrieved successfully for {symbol}",
                 version=config.api.API_VERSION,
                 documentation="https://api.example.com/docs",
-                endpoints=["/api/data/stock/{symbol}"],
+                endpoints=["/api/data/stock/current"],
             ),
             timestamp=datetime.now().isoformat(),
         )
@@ -238,15 +239,16 @@ async def get_historical_stock_data(
             response.raise_for_status()
             stock_data = response.json()
 
+        # The data ingestion service returns a StockDataResponse structure
         return StockDataResponse(
             symbol=stock_data["symbol"],
             name=stock_data["stock_info"]["name"],
             data=stock_data["prices"],
             meta=MetaInfo(
-                message=f"Stock data retrieved successfully for {symbol}",
+                message=f"Historical stock data retrieved successfully for {symbol}",
                 version=config.api.API_VERSION,
                 documentation="https://api.example.com/docs",
-                endpoints=["/api/data/stock/{symbol}"],
+                endpoints=["/api/data/stock/historical"],
             ),
             timestamp=datetime.now().isoformat(),
         )
@@ -296,15 +298,16 @@ async def get_reccent_stock_data(
             response.raise_for_status()
             stock_data = response.json()
 
+        # The data ingestion service returns a StockDataResponse structure
         return StockDataResponse(
             symbol=stock_data["symbol"],
             name=stock_data["stock_info"]["name"],
             data=stock_data["prices"],
             meta=MetaInfo(
-                message=f"Stock data retrieved successfully for {symbol}",
+                message=f"Recent stock data retrieved successfully for {symbol}",
                 version=config.api.API_VERSION,
                 documentation="https://api.example.com/docs",
-                endpoints=["/api/data/stock/{symbol}"],
+                endpoints=["/api/data/stock/recent"],
             ),
             timestamp=datetime.now().isoformat(),
         )
@@ -372,15 +375,16 @@ async def get_historical_stock_prices_from_end_date(
             response.raise_for_status()
             stock_data = response.json()
 
+        # The data ingestion service returns a StockDataResponse structure
         return StockDataResponse(
             symbol=stock_data["symbol"],
             name=stock_data["stock_info"]["name"],
             data=stock_data["prices"],
             meta=MetaInfo(
-                message=f"Stock data retrieved successfully for {symbol}",
+                message=f"Stock data from end date retrieved successfully for {symbol}",
                 version=config.api.API_VERSION,
                 documentation="https://api.example.com/docs",
-                endpoints=["/api/data/stock/{symbol}"],
+                endpoints=["/api/data/stock/from-end-date"],
             ),
             timestamp=datetime.now().isoformat(),
         )
@@ -657,9 +661,18 @@ async def cleanup_stock_data(symbol: Optional[str] = None):
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(data_service_url, params=params)
             response.raise_for_status()
-            result = response.json()
+            cleanup_result = response.json()
 
-        return result
+        # The data ingestion service returns a CleanupResponse structure
+        # Return it with updated timestamp
+        return {
+            "status": cleanup_result.get("status", "completed"),
+            "message": cleanup_result.get("message", "Data cleanup completed"),
+            "files_processed": cleanup_result.get("files_processed", 0),
+            "files_deleted": cleanup_result.get("files_deleted", 0),
+            "symbol": cleanup_result.get("symbol"),
+            "timestamp": datetime.now().isoformat(),
+        }
 
     except httpx.HTTPError as e:
         api_logger.error(f"HTTP error calling data service: {str(e)}")
