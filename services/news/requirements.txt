@@ -8,3 +8,4 @@ yfinance==0.2.65
 uvicorn[standard]
 fastapi
 prometheus_client
+hf_transfer==0.1.4
