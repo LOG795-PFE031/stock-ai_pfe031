@@ -103,14 +103,16 @@ node "Prefect Server" <<container>> {
   component "Prefect Service" as prefect_service
 }
 
-node "Prometheus Server" <<container>> {
-  component "Prometheus" as prometheusService
-  artifact "prometheus.yml"
-}
+node "Monitoring" {
+  node "Prometheus Server" <<container>> {
+    component "Prometheus" as prometheusService
+    artifact "prometheus.yml"
+  }
 
-node "Grafana Server" <<container>> {
-  component "Grafana Dashboard Service" as grafanaSvc
-  artifact "grafana.db"
+  node "Grafana Server" <<container>> {
+    component "Grafana Dashboard Service" as grafanaSvc
+    artifact "grafana.db"
+  }
 }
 
 ' ========== CONNECTIONS ==========
