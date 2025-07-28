@@ -4,10 +4,9 @@ Stock price model for the dedicated stock database.
 
 from sqlalchemy import Column, String, Integer, Numeric, Date, Index
 from services.data_ingestion.db.session import StockBase
-from .base import Base
 
 
-class StockPrice(Base):
+class StockPrice(StockBase):
     """
     SQLAlchemy model representing historical stock price data in the dedicated stock database.
 
