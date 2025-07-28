@@ -8,7 +8,6 @@ from datetime import datetime
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
-import httpx
 
 from api.schemas import (
     ModelListMlflowResponse,
@@ -70,14 +69,12 @@ async def health_check():
         # Import services from main to avoid circular imports
         from api.main import (
             deployment_service,
-            data_service,
             orchestation_service,
             evaluation_service,
         )
 
         # Check each service's health
         deployment_health = await deployment_service.health_check()
-        data_health = await data_service.health_check()
         evaluation_health = await evaluation_service.health_check()
         orchestation_health = await orchestation_service.health_check()
 
@@ -89,7 +86,6 @@ async def health_check():
                     h["status"] == "healthy"
                     for h in [
                         deployment_health,
-                        data_health,
                         evaluation_health,
                         orchestation_health,
                     ]
@@ -98,7 +94,6 @@ async def health_check():
             ),
             components={
                 "deployment_health": deployment_health["status"] == "healthy",
-                "data_service": data_health["status"] == "healthy",
                 "evaluation_health": evaluation_health["status"] == "healthy",
                 "orchestation_health": orchestation_health["status"] == "healthy",
             },
@@ -118,20 +113,27 @@ async def health_check():
 async def get_stocks_list():
     """
     Retrieve a list of NASDAQ-100 stocks, sorted by absolute percentage change in
-    descending order (top movers first)."
+    descending order (top movers first).
     """
-
     try:
-        # Import services from main to avoid circular imports
-        from api.main import data_service
-
-        symbols_data = await data_service.get_nasdaq_stocks()
+        # Call the data ingestion service
+        data_service_url = f"http://{config.data_service.HOST}:{config.data_service.PORT}/data/stocks"
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(data_service_url)
+            response.raise_for_status()
+            stocks_data = response.json()
 
         return StocksListDataResponse(
-            count=symbols_data["count"],
-            data=symbols_data["data"],
+            count=len(stocks_data),
+            data=stocks_data,
             timestamp=datetime.now().isoformat(),
         )
+    except httpx.HTTPError as e:
+        api_logger.error(f"HTTP error calling data service: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get stock list: {str(e)}"
+        ) from e
     except Exception as e:
         api_logger.error(f"Failed to get stock list: {str(e)}")
         raise HTTPException(
@@ -149,20 +151,24 @@ async def get_current_stock_data(
 ):
     """Get the current stock data for a symbol."""
     try:
-        # Import services from main to avoid circular imports
-        from api.main import data_service
-
         # Validate symbol
         if not validate_stock_symbol(symbol):
             raise HTTPException(
                 status_code=400, detail=f"Invalid stock symbol: {symbol}"
             )
 
-        data, stock_name = await data_service.get_current_price(symbol=symbol)
+        # Call the data ingestion service
+        data_service_url = f"http://{config.data_service.HOST}:{config.data_service.PORT}/data/stock/current"
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(data_service_url, params={"symbol": symbol})
+            response.raise_for_status()
+            stock_data = response.json()
+
         return StockDataResponse(
-            symbol=symbol,
-            name=stock_name,
-            data=data.to_dict(orient="records"),
+            symbol=stock_data["symbol"],
+            name=stock_data["stock_info"]["name"],
+            data=stock_data["prices"],
             meta=MetaInfo(
                 message=f"Stock data retrieved successfully for {symbol}",
                 version=config.api.API_VERSION,
@@ -172,6 +178,11 @@ async def get_current_stock_data(
             timestamp=datetime.now().isoformat(),
         )
 
+    except httpx.HTTPError as e:
+        api_logger.error(f"HTTP error calling data service: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get stock data: {str(e)}"
+        ) from e
     except Exception as e:
         api_logger.error(f"Failed to get stock data: {str(e)}")
         raise HTTPException(
@@ -195,9 +206,6 @@ async def get_historical_stock_data(
 ):
     """Get historical stock data for a symbol."""
     try:
-        # Import services from main to avoid circular imports
-        from api.main import data_service
-
         # Validate symbol
         if not validate_stock_symbol(symbol):
             raise HTTPException(
@@ -210,21 +218,29 @@ async def get_historical_stock_data(
             )
         end_date = end_date or datetime.now()
 
-        # Check if start date if before end date
+        # Check if start date is before end date
         if start_date > end_date:
             raise HTTPException(
                 status_code=400, detail="start_date must be before end_date"
             )
 
-        # Get historical data
-        data, stock_name = await data_service.get_historical_stock_prices(
-            symbol, start_date, end_date
-        )
+        # Call the data ingestion service
+        data_service_url = f"http://{config.data_service.HOST}:{config.data_service.PORT}/data/stock/historical"
+        params = {
+            "symbol": symbol,
+            "start_date": start_date.strftime("%Y-%m-%d"),
+            "end_date": end_date.strftime("%Y-%m-%d")
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(data_service_url, params=params)
+            response.raise_for_status()
+            stock_data = response.json()
 
         return StockDataResponse(
-            symbol=symbol,
-            name=stock_name,
-            data=data.to_dict(orient="records"),
+            symbol=stock_data["symbol"],
+            name=stock_data["stock_info"]["name"],
+            data=stock_data["prices"],
             meta=MetaInfo(
                 message=f"Stock data retrieved successfully for {symbol}",
                 version=config.api.API_VERSION,
@@ -234,6 +250,11 @@ async def get_historical_stock_data(
             timestamp=datetime.now().isoformat(),
         )
 
+    except httpx.HTTPError as e:
+        api_logger.error(f"HTTP error calling data service: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get stock data: {str(e)}"
+        ) from e
     except Exception as e:
         api_logger.error(f"Failed to get stock data: {str(e)}")
         raise HTTPException(
@@ -254,9 +275,6 @@ async def get_reccent_stock_data(
 ):
     """Get recent stock data for a symbol (based on a number of days back)."""
     try:
-        # Import services from main to avoid circular imports
-        from api.main import data_service
-
         # Validate symbol
         if not validate_stock_symbol(symbol):
             raise HTTPException(
@@ -268,15 +286,19 @@ async def get_reccent_stock_data(
                 status_code=400, detail="days_back is required for recent data"
             )
 
-        # Get recents N trading days stock prices
-        data, stock_name = await data_service.get_recent_data(
-            symbol=symbol, days_back=days_back
-        )
+        # Call the data ingestion service
+        data_service_url = f"http://{config.data_service.HOST}:{config.data_service.PORT}/data/stock/recent"
+        params = {"symbol": symbol, "days_back": days_back}
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(data_service_url, params=params)
+            response.raise_for_status()
+            stock_data = response.json()
 
         return StockDataResponse(
-            symbol=symbol,
-            name=stock_name,
-            data=data.to_dict(orient="records"),
+            symbol=stock_data["symbol"],
+            name=stock_data["stock_info"]["name"],
+            data=stock_data["prices"],
             meta=MetaInfo(
                 message=f"Stock data retrieved successfully for {symbol}",
                 version=config.api.API_VERSION,
@@ -286,6 +308,11 @@ async def get_reccent_stock_data(
             timestamp=datetime.now().isoformat(),
         )
 
+    except httpx.HTTPError as e:
+        api_logger.error(f"HTTP error calling data service: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get stock data: {str(e)}"
+        ) from e
     except Exception as e:
         api_logger.error(f"Failed to get stock data: {str(e)}")
         raise HTTPException(
@@ -313,9 +340,6 @@ async def get_historical_stock_prices_from_end_date(
     of days.
     """
     try:
-        # Import services from main to avoid circular imports
-        from api.main import data_service
-
         # Validate symbol
         if not validate_stock_symbol(symbol):
             raise HTTPException(
@@ -334,15 +358,23 @@ async def get_historical_stock_prices_from_end_date(
                 detail="days_back is required for get_historical_stock_prices_from_end_date",
             )
 
-        # Get recents N trading days stock prices
-        data, stock_name = await data_service.get_historical_stock_prices_from_end_date(
-            symbol=symbol, days_back=days_back, end_date=end_date
-        )
+        # Call the data ingestion service
+        data_service_url = f"http://{config.data_service.HOST}:{config.data_service.PORT}/data/stock/from-end-date"
+        params = {
+            "symbol": symbol,
+            "end_date": end_date.strftime("%Y-%m-%d"),
+            "days_back": days_back
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(data_service_url, params=params)
+            response.raise_for_status()
+            stock_data = response.json()
 
         return StockDataResponse(
-            symbol=symbol,
-            name=stock_name,
-            data=data.to_dict(orient="records"),
+            symbol=stock_data["symbol"],
+            name=stock_data["stock_info"]["name"],
+            data=stock_data["prices"],
             meta=MetaInfo(
                 message=f"Stock data retrieved successfully for {symbol}",
                 version=config.api.API_VERSION,
@@ -352,6 +384,11 @@ async def get_historical_stock_prices_from_end_date(
             timestamp=datetime.now().isoformat(),
         )
 
+    except httpx.HTTPError as e:
+        api_logger.error(f"HTTP error calling data service: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get stock data: {str(e)}"
+        ) from e
     except Exception as e:
         api_logger.error(f"Failed to get stock data: {str(e)}")
         raise HTTPException(
@@ -612,20 +649,22 @@ async def train_model(
 async def cleanup_stock_data(symbol: Optional[str] = None):
     """Clean up and maintain stock data files."""
     try:
-        # Import services from main to avoid circular imports
-        from api.main import data_service
-
-        # Clean up data
-        result = await data_service.cleanup_data(symbol)
-
-        if result["status"] == "error":
-            raise HTTPException(
-                status_code=500,
-                detail=f"Data cleanup failed: {result.get('message', 'Unknown error')}",
-            )
+        # Call the data ingestion service
+        data_service_url = f"http://{config.data_service.HOST}:{config.data_service.PORT}/data/cleanup"
+        params = {"symbol": symbol} if symbol else {}
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(data_service_url, params=params)
+            response.raise_for_status()
+            result = response.json()
 
         return result
 
+    except httpx.HTTPError as e:
+        api_logger.error(f"HTTP error calling data service: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Data cleanup failed: {str(e)}"
+        ) from e
     except Exception as e:
         api_logger.error(f"Data cleanup failed: {str(e)}")
         raise HTTPException(

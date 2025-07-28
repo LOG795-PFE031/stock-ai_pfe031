@@ -16,6 +16,8 @@ class DataConfig(BaseModel):
     NEWS_HISTORY_DAYS: int = 7
     MAX_NEWS_ARTICLES: int = 100
     UPDATE_INTERVAL: int = 60  # minutes
+    HOST: str = "data-service"
+    PORT: int = 8001
 
 
 class PreprocessingConfig(BaseModel):
@@ -118,8 +120,7 @@ class StocksDatabaseConfig(BaseModel):
 
     @property
     def URL(self) -> str:
-        return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.DB_NAME}"
-    
+        return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.DB_NAME}"   
 class NewsServiceConfig(BaseModel):
     """News service configuration."""
 
