@@ -122,6 +122,10 @@ app = FastAPI(
             "name": "Training Services",
             "description": "Endpoints for model training and status monitoring",
         },
+        {
+            "name": "News Services",
+            "description": "Endpoints for news retrieval and sentiment analysis",
+        },
     ],
 )
 

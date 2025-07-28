@@ -408,7 +408,7 @@ async def get_historical_stock_prices_from_end_date(
         ) from e
 
 
-@router.get("/data/news", response_model=NewsDataResponse, tags=["Data Services"])
+@router.get("/data/news", response_model=NewsDataResponse, tags=["News Services"])
 async def get_news_data(
     symbol: str = Query(..., description="Stock symbol to retrieve news data for"),
     start_date: Optional[str] = None,

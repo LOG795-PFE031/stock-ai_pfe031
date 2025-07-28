@@ -141,8 +141,8 @@ async def test_endpoints():
         print()
         
         # Test 6: Get news data
-        print("6️⃣ Testing GET /data/news/")
-        news_url = f"{BASE_URL}/data/news/?symbol=AAPL"
+        print("6️⃣ Testing GET /data/news")
+        news_url = f"{BASE_URL}/data/news?symbol=AAPL"
         print(f"   🔗 URL: {news_url}")
         try:
             response = await client.get(news_url)
