@@ -117,7 +117,7 @@ class NewsServiceConfig(BaseModel):
     """News service configuration."""
 
     HOST: str = "news-service"
-    PORT: int = 8002
+    PORT: int = 8000
 
 class Config:
     """Main configuration class."""

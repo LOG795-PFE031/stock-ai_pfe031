@@ -70,6 +70,9 @@ sandbox/lstm-stock-price-prediction/models/
 # Ignore models data folder
 data/models/
 
+# Ignore postgres data folder
+data/postgres_data/
+
 # Ignore Minio data
 minio_data/
 
