@@ -103,93 +103,39 @@ async def get_current_price(
 ):
     """Get current price for a specific stock."""
     try:
-        # Validate symbol
-        if not symbol.isalnum():
-            raise HTTPException(status_code=400, detail=f"Invalid stock symbol: {symbol}")
+        # Use service method that handles all business logic
+        result = await data_service.get_current_price_with_metadata(symbol)
         
-        api_logger.debug(f"Getting current price for {symbol}")
-        
-        # Get current price data
-        current_price_df, stock_name = await data_service.get_current_price(symbol)
-        
-        # Extract current price from DataFrame
-        if not current_price_df.empty:
-            current_price = float(current_price_df.iloc[0]['Close'])
-            api_logger.debug(f"Current price for {symbol}: {current_price}")
-            
-            # Calculate change percent
-            change_percent = await data_service.calculate_change_percent(symbol)
-            
-            # If change_percent is None, try to get it from NASDAQ data as a fallback
-            if change_percent is None:
-                api_logger.debug(f"Attempting to get change percent for {symbol} from NASDAQ data")
-                try:
-                    nasdaq_data = await data_service.get_nasdaq_stocks()
-                    if "data" in nasdaq_data and nasdaq_data["data"]:
-                        for stock in nasdaq_data["data"]:
-                            if stock.get("symbol") == symbol:
-                                pct_str = stock.get("percentageChange", "0%")
-                                change_percent = float(pct_str.replace("%", "").replace(",", ""))
-                                api_logger.info(f"Retrieved change percent for {symbol} from NASDAQ data: {change_percent}%")
-                                break
-                except Exception as e:
-                    api_logger.error(f"Failed to get change percent from NASDAQ data: {str(e)}")
-        else:
-            api_logger.warning(f"No current price data found for {symbol}")
-            current_price = 0.0
-            change_percent = None
-        
-        now_iso = datetime.now(timezone.utc).isoformat()
-        
-        # Create message based on availability of change percent
-        message = "Current price retrieved successfully"
-        if current_price > 0 and change_percent is None:
-            message = "Current price retrieved, but change percent calculation failed"
-        
-        # Prepare date strings for metadata
-        date_str = None
-        if not current_price_df.empty and 'Date' in current_price_df.columns:
-            try:
-                date_str = current_price_df.iloc[0]['Date'].strftime('%Y-%m-%d')
-            except (AttributeError, ValueError):
-                # If Date is not a datetime object, try to convert it
-                try:
-                    date_obj = pd.to_datetime(current_price_df.iloc[0]['Date'])
-                    date_str = date_obj.strftime('%Y-%m-%d')
-                except:
-                    date_str = str(current_price_df.iloc[0]['Date'])[:10]  # Take first 10 chars as fallback
-
-        # Create stock info object to include in response
+        # Create stock info object
         stock_info = StockInfo(
-            symbol=symbol,
-            name=stock_name or symbol,
-            current_price=current_price,
-            change_percent=change_percent
+            symbol=result["symbol"],
+            name=result["stock_name"],
+            current_price=result["current_price"],
+            change_percent=result["change_percent"]
         )
 
         return CurrentPriceResponse(
-            symbol=symbol,
-            stock_info=stock_info,  # Include the stock info with name
-            current_price=current_price,
-            change_percent=change_percent,  
-            timestamp=now_iso,
+            symbol=result["symbol"],
+            stock_info=stock_info,
+            current_price=result["current_price"],
+            change_percent=result["change_percent"],
+            timestamp=datetime.now(timezone.utc).isoformat(),
             meta=MetaInfo(
-                start_date=date_str,
-                end_date=date_str,
+                start_date=result["date_str"],
+                end_date=result["date_str"],
                 version=config.api.API_VERSION,
-                message=message,
+                message=result["message"],
                 documentation="/docs",
                 endpoints=["/stock/current"],
             ),
         )
-    except HTTPException as http_exc:
-        raise http_exc
+    except ValueError as ve:
+        # Handle validation errors
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         error_detail = f"Failed to get current price for {symbol}: {str(e)}"
         api_logger.error(error_detail)
-        api_logger.error(f"Full error details: {repr(e)}")
         raise HTTPException(status_code=500, detail=error_detail)
-
 
 @router.get("/stock/historical", response_model=StockDataResponse, tags=["Data"])
 async def get_historical_data(
@@ -199,76 +145,49 @@ async def get_historical_data(
 ):
     """Get historical stock data for a specific date range."""
     try:
-        # Validate symbol
-        if not symbol.isalnum():
-            raise HTTPException(status_code=400, detail=f"Invalid stock symbol: {symbol}")
+        # Use service method that handles all business logic
+        result = await data_service.get_historical_data_with_metadata(symbol, start_date, end_date)
         
-        # Get date range
-        start, end = get_date_range(start_date, end_date)
-        
-        # Get historical data
-        data, stock_name = await data_service.get_historical_stock_prices(symbol, start, end)
-        
-        # Get current price data
-        current_price_df, _ = await data_service.get_current_price(symbol)
-        
-        # Extract current price from DataFrame
-        if not current_price_df.empty:
-            current_price = float(current_price_df.iloc[0]['Close'])
-            # Calculate change percent
-            change_percent = await data_service.calculate_change_percent(symbol)
-        else:
-            current_price = None
-            change_percent = None
-        
-        # Convert DataFrame to list of StockPrice objects
+        # Convert price dictionaries to StockPrice objects
         prices = []
-        for _, row in data.iterrows():
-            # Handle date formatting safely
-            if hasattr(row.name, 'strftime'):
-                date_str = row.name.strftime('%Y-%m-%d')
-            elif 'Date' in row and hasattr(row['Date'], 'strftime'):
-                date_str = row['Date'].strftime('%Y-%m-%d')
-            else:
-                date_str = str(row.name)
-                
+        for price_dict in result["prices"]:
             prices.append(StockPrice(
-                date=date_str,
-                open=float(row['Open']),
-                high=float(row['High']),
-                low=float(row['Low']),
-                close=float(row['Close']),
-                volume=int(row['Volume']),
-                adj_close=float(row['Adj Close']) if 'Adj Close' in row else None
+                date=price_dict["date"],
+                open=price_dict["open"],
+                high=price_dict["high"],
+                low=price_dict["low"],
+                close=price_dict["close"],
+                volume=price_dict["volume"],
+                adj_close=price_dict["adj_close"]
             ))
         
         stock_info = StockInfo(
-            symbol=symbol,
-            name=stock_name,
-            current_price=current_price,
-            change_percent=change_percent  
+            symbol=result["symbol"],
+            name=result["stock_name"],
+            current_price=result["current_price"],
+            change_percent=result["change_percent"]
         )
         
         return StockDataResponse(
-            symbol=symbol,
+            symbol=result["symbol"],
             stock_info=stock_info,
             prices=prices,
-            total_records=len(prices),
+            total_records=result["total_records"],
             meta=MetaInfo(
-                start_date=start.isoformat(),
-                end_date=end.isoformat(),
+                start_date=result["start_date"],
+                end_date=result["end_date"],
                 version=config.api.API_VERSION,
                 message="Historical stock data retrieved successfully",
                 documentation="/docs",
                 endpoints=["/stock/historical"],
             ),
         )
-    except HTTPException as http_exc:
-        raise http_exc
+    except ValueError as ve:
+        # Handle validation errors
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         error_detail = f"Failed to get historical data for {symbol} from {start_date} to {end_date}: {str(e)}"
         api_logger.error(error_detail)
-        api_logger.error(f"Full error details: {repr(e)}")
         raise HTTPException(status_code=500, detail=error_detail)
 
 @router.get("/stock/recent", response_model=StockDataResponse, tags=["Data"])
@@ -278,62 +197,34 @@ async def get_recent_data(
 ):
     """Get recent stock data for a specific number of days back."""
     try:
-        # Validate symbol
-        if not symbol.isalnum():
-            raise HTTPException(status_code=400, detail=f"Invalid stock symbol: {symbol}")
+        # Use service method that handles all business logic
+        result = await data_service.get_recent_data_with_metadata(symbol, days_back)
         
-        # Validate days_back
-        if days_back <= 0 or days_back > 365:
-            raise HTTPException(status_code=400, detail="days_back must be between 1 and 365")
-        
-        # Get recent data
-        data, stock_name = await data_service.get_recent_data(symbol, days_back)
-        
-        # Get current price data
-        current_price_df, _ = await data_service.get_current_price(symbol)
-        
-        # Extract current price from DataFrame
-        if not current_price_df.empty:
-            current_price = float(current_price_df.iloc[0]['Close'])
-            # Calculate change percent
-            change_percent = await data_service.calculate_change_percent(symbol)
-        else:
-            current_price = None
-            change_percent = None
-        
-        # Convert DataFrame to list of StockPrice objects
+        # Convert price dictionaries to StockPrice objects
         prices = []
-        for _, row in data.iterrows():
-            # Handle date formatting safely
-            if hasattr(row.name, 'strftime'):
-                date_str = row.name.strftime('%Y-%m-%d')
-            elif 'Date' in row and hasattr(row['Date'], 'strftime'):
-                date_str = row['Date'].strftime('%Y-%m-%d')
-            else:
-                date_str = str(row.name)
-                
+        for price_dict in result["prices"]:
             prices.append(StockPrice(
-                date=date_str,
-                open=float(row['Open']),
-                high=float(row['High']),
-                low=float(row['Low']),
-                close=float(row['Close']),
-                volume=int(row['Volume']),
-                adj_close=float(row['Adj Close']) if 'Adj Close' in row else None
+                date=price_dict["date"],
+                open=price_dict["open"],
+                high=price_dict["high"],
+                low=price_dict["low"],
+                close=price_dict["close"],
+                volume=price_dict["volume"],
+                adj_close=price_dict["adj_close"]
             ))
         
         stock_info = StockInfo(
-            symbol=symbol,
-            name=stock_name,
-            current_price=current_price,
-            change_percent=change_percent  # Now using the calculated value
+            symbol=result["symbol"],
+            name=result["stock_name"],
+            current_price=result["current_price"],
+            change_percent=result["change_percent"]
         )
         
         return StockDataResponse(
-            symbol=symbol,
+            symbol=result["symbol"],
             stock_info=stock_info,
             prices=prices,
-            total_records=len(prices),
+            total_records=result["total_records"],
             meta=MetaInfo(
                 version=config.api.API_VERSION,
                 message=f"Recent stock data retrieved successfully (last {days_back} days)",
@@ -341,12 +232,12 @@ async def get_recent_data(
                 endpoints=["/stock/recent"],
             ),
         )
-    except HTTPException as http_exc:
-        raise http_exc
+    except ValueError as ve:
+        # Handle validation errors
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         error_detail = f"Failed to get recent data for {symbol} (last {days_back} days): {str(e)}"
         api_logger.error(error_detail)
-        api_logger.error(f"Full error details: {repr(e)}")
         raise HTTPException(status_code=500, detail=error_detail)
 
 @router.get("/stock/from-end-date", response_model=StockDataResponse, tags=["Data"])
@@ -357,98 +248,49 @@ async def get_data_from_end_date(
 ):
     """Get stock data from a specific end date going back a number of days."""
     try:
-        # Validate symbol
-        if not symbol.isalnum():
-            raise HTTPException(status_code=400, detail=f"Invalid stock symbol: {symbol}")
+        # Use service method that handles all business logic
+        result = await data_service.get_data_from_end_date_with_metadata(symbol, end_date, days_back)
         
-        # Validate days_back
-        if days_back <= 0 or days_back > 365:
-            raise HTTPException(status_code=400, detail="days_back must be between 1 and 365")
-        
-        # Parse end date
-        try:
-            end = datetime.strptime(end_date, "%Y-%m-%d")
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD")
-        
-        # Get data from end date
-        data, stock_name = await data_service.get_historical_stock_prices_from_end_date(symbol, end, days_back)
-        
-        # Get current price data
-        current_price_df, _ = await data_service.get_current_price(symbol)
-        
-        # Extract current price from DataFrame
-        if not current_price_df.empty:
-            current_price = float(current_price_df.iloc[0]['Close'])
-            # Calculate change percent
-            change_percent = await data_service.calculate_change_percent(symbol)
-        else:
-            current_price = None
-            change_percent = None
-        
-        # Get the oldest date from the data
-        start_date = None
-        if not data.empty:
-            # Sort data by Date if not already sorted
-            if 'Date' in data.columns:
-                data = data.sort_values('Date')
-                start_date = data.iloc[0]['Date']
-            else:
-                # Assuming the index is the date
-                data = data.sort_index()
-                start_date = data.index[0]
-        
-        # Format start_date for the response
-        start_date_iso = start_date.isoformat() if hasattr(start_date, 'isoformat') else str(start_date)
-        
-        # Convert DataFrame to list of StockPrice objects
+        # Convert price dictionaries to StockPrice objects
         prices = []
-        for _, row in data.iterrows():
-            # Handle date formatting safely
-            if hasattr(row.name, 'strftime'):
-                date_str = row.name.strftime('%Y-%m-%d')
-            elif 'Date' in row and hasattr(row['Date'], 'strftime'):
-                date_str = row['Date'].strftime('%Y-%m-%d')
-            else:
-                date_str = str(row.name)
-                
+        for price_dict in result["prices"]:
             prices.append(StockPrice(
-                date=date_str,
-                open=float(row['Open']),
-                high=float(row['High']),
-                low=float(row['Low']),
-                close=float(row['Close']),
-                volume=int(row['Volume']),
-                adj_close=float(row['Adj Close']) if 'Adj Close' in row else None
+                date=price_dict["date"],
+                open=price_dict["open"],
+                high=price_dict["high"],
+                low=price_dict["low"],
+                close=price_dict["close"],
+                volume=price_dict["volume"],
+                adj_close=price_dict["adj_close"]
             ))
         
         stock_info = StockInfo(
-            symbol=symbol,
-            name=stock_name,
-            current_price=current_price,
-            change_percent=change_percent
+            symbol=result["symbol"],
+            name=result["stock_name"],
+            current_price=result["current_price"],
+            change_percent=result["change_percent"]
         )
         
         return StockDataResponse(
-            symbol=symbol,
+            symbol=result["symbol"],
             stock_info=stock_info,
             prices=prices,
-            total_records=len(prices),
+            total_records=result["total_records"],
             meta=MetaInfo(
-                start_date=start_date_iso,
-                end_date=end.isoformat(),
+                start_date=result["start_date"],
+                end_date=result["end_date"],
                 version=config.api.API_VERSION,
                 message=f"Stock data retrieved successfully from {end_date} going back {days_back} days",
                 documentation="/docs",
                 endpoints=["/stock/from-end-date"],
             ),
         )
-    except HTTPException as http_exc:
-        raise http_exc
+    except ValueError as ve:
+        # Handle validation errors
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         error_detail = f"Failed to get data from end date for {symbol} from {end_date} going back {days_back} days: {str(e)}"
         api_logger.error(error_detail)
-        api_logger.error(f"Full error details: {repr(e)}")
         raise HTTPException(status_code=500, detail=error_detail)
 
 @router.post("/cleanup", response_model=CleanupResponse, tags=["Data"])
@@ -474,7 +316,6 @@ async def cleanup_data(
     except Exception as e:
         error_detail = f"Failed to cleanup data for symbol {symbol if symbol else 'all'}: {str(e)}"
         api_logger.error(error_detail)
-        api_logger.error(f"Full error details: {repr(e)}")
         raise HTTPException(status_code=500, detail=error_detail)
 
 @router.post("/pre-populate", tags=["Data"])
@@ -503,7 +344,6 @@ async def pre_populate_database(
     except Exception as e:
         error_detail = f"Failed to pre-populate database: {str(e)}"
         api_logger.error(error_detail)
-        api_logger.error(f"Full error details: {repr(e)}")
         raise HTTPException(status_code=500, detail=error_detail)
 
 @router.get("/verify-yahoo", tags=["Data"])
@@ -514,8 +354,7 @@ async def verify_yahoo_finance_data(
     """Verify if data is available in Yahoo Finance for a given symbol."""
     try:
         # Validate symbol
-        if not symbol.isalnum():
-            raise HTTPException(status_code=400, detail=f"Invalid stock symbol: {symbol}")
+        data_service.validate_symbol(symbol)
         
         api_logger.debug(f"Verifying Yahoo Finance data for {symbol}")
         
@@ -524,8 +363,9 @@ async def verify_yahoo_finance_data(
         
         return result
         
-    except HTTPException as http_exc:
-        raise http_exc
+    except ValueError as ve:
+        # Handle validation errors
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         error_detail = f"Failed to verify Yahoo Finance data for {symbol}: {str(e)}"
         api_logger.error(error_detail)

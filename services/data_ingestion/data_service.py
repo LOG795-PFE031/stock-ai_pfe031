@@ -1064,3 +1064,313 @@ class DataService(BaseService):
         
         self.logger.info(f"Pre-population completed: {results['successful']} successful, {results['failed']} failed")
         return results
+
+    def validate_symbol(self, symbol: str) -> None:
+        """
+        Validate stock symbol format.
+        
+        Args:
+            symbol: Stock symbol to validate
+            
+        Raises:
+            ValueError: If symbol is invalid
+        """
+        if not symbol or not symbol.isalnum():
+            raise ValueError(f"Invalid stock symbol: {symbol}")
+
+    def validate_days_back(self, days_back: int) -> None:
+        """
+        Validate days_back parameter.
+        
+        Args:
+            days_back: Number of days to validate
+            
+        Raises:
+            ValueError: If days_back is invalid
+        """
+        if days_back <= 0 or days_back > 365:
+            raise ValueError("days_back must be between 1 and 365")
+
+    def validate_date_format(self, date_str: str) -> datetime:
+        """
+        Validate and parse date string.
+        
+        Args:
+            date_str: Date string in YYYY-MM-DD format
+            
+        Returns:
+            Parsed datetime object
+            
+        Raises:
+            ValueError: If date format is invalid
+        """
+        try:
+            return datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("Invalid date format. Use YYYY-MM-DD")
+
+    async def get_current_price_with_metadata(self, symbol: str) -> Dict[str, Any]:
+        """
+        Get current price with all metadata and fallback logic.
+        
+        Args:
+            symbol: Stock symbol
+            
+        Returns:
+            Dictionary containing current price data and metadata
+        """
+        try:
+            self.validate_symbol(symbol)
+            
+            # Get current price data
+            current_price_df, stock_name = await self.get_current_price(symbol)
+            
+            # Extract current price from DataFrame
+            if not current_price_df.empty:
+                current_price = float(current_price_df.iloc[0]['Close'])
+                
+                # Calculate change percent
+                change_percent = await self.calculate_change_percent(symbol)
+                
+                # Fallback to NASDAQ data if change_percent calculation failed
+                if change_percent is None:
+                    self.logger.debug(f"Attempting to get change percent for {symbol} from NASDAQ data")
+                    try:
+                        nasdaq_data = await self.get_nasdaq_stocks()
+                        if "data" in nasdaq_data and nasdaq_data["data"]:
+                            for stock in nasdaq_data["data"]:
+                                if stock.get("symbol") == symbol:
+                                    pct_str = stock.get("percentageChange", "0%")
+                                    change_percent = float(pct_str.replace("%", "").replace(",", ""))
+                                    self.logger.info(f"Retrieved change percent for {symbol} from NASDAQ data: {change_percent}%")
+                                    break
+                    except Exception as e:
+                        self.logger.error(f"Failed to get change percent from NASDAQ data: {str(e)}")
+            else:
+                self.logger.warning(f"No current price data found for {symbol}")
+                current_price = 0.0
+                change_percent = None
+            
+            # Prepare date string for metadata
+            date_str = None
+            if not current_price_df.empty and 'Date' in current_price_df.columns:
+                try:
+                    date_str = current_price_df.iloc[0]['Date'].strftime('%Y-%m-%d')
+                except (AttributeError, ValueError):
+                    try:
+                        date_obj = pd.to_datetime(current_price_df.iloc[0]['Date'])
+                        date_str = date_obj.strftime('%Y-%m-%d')
+                    except:
+                        date_str = str(current_price_df.iloc[0]['Date'])[:10]
+            
+            # Create message based on availability of change percent
+            message = "Current price retrieved successfully"
+            if current_price > 0 and change_percent is None:
+                message = "Current price retrieved, but change percent calculation failed"
+            
+            return {
+                "symbol": symbol,
+                "stock_name": stock_name or symbol,
+                "current_price": current_price,
+                "change_percent": change_percent,
+                "date_str": date_str,
+                "message": message
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting current price with metadata for {symbol}: {str(e)}")
+            raise
+
+    async def get_historical_data_with_metadata(self, symbol: str, start_date: str, end_date: str) -> Dict[str, Any]:
+        """
+        Get historical data with all metadata and transformations.
+        
+        Args:
+            symbol: Stock symbol
+            start_date: Start date string (YYYY-MM-DD)
+            end_date: End date string (YYYY-MM-DD)
+            
+        Returns:
+            Dictionary containing historical data and metadata
+        """
+        try:
+            self.validate_symbol(symbol)
+            
+            # Parse dates
+            start = self.validate_date_format(start_date)
+            end = self.validate_date_format(end_date)
+            
+            # Get historical data
+            data, stock_name = await self.get_historical_stock_prices(symbol, start, end)
+            
+            # Get current price data
+            current_price_df, _ = await self.get_current_price(symbol)
+            
+            # Extract current price from DataFrame
+            if not current_price_df.empty:
+                current_price = float(current_price_df.iloc[0]['Close'])
+                change_percent = await self.calculate_change_percent(symbol)
+            else:
+                current_price = None
+                change_percent = None
+            
+            # Transform DataFrame to list of price objects
+            prices = self._transform_dataframe_to_prices(data)
+            
+            return {
+                "symbol": symbol,
+                "stock_name": stock_name,
+                "current_price": current_price,
+                "change_percent": change_percent,
+                "prices": prices,
+                "total_records": len(prices),
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting historical data with metadata for {symbol}: {str(e)}")
+            raise
+
+    async def get_recent_data_with_metadata(self, symbol: str, days_back: int) -> Dict[str, Any]:
+        """
+        Get recent data with all metadata and transformations.
+        
+        Args:
+            symbol: Stock symbol
+            days_back: Number of days back
+            
+        Returns:
+            Dictionary containing recent data and metadata
+        """
+        try:
+            self.validate_symbol(symbol)
+            self.validate_days_back(days_back)
+            
+            # Get recent data
+            data, stock_name = await self.get_recent_data(symbol, days_back)
+            
+            # Get current price data
+            current_price_df, _ = await self.get_current_price(symbol)
+            
+            # Extract current price from DataFrame
+            if not current_price_df.empty:
+                current_price = float(current_price_df.iloc[0]['Close'])
+                change_percent = await self.calculate_change_percent(symbol)
+            else:
+                current_price = None
+                change_percent = None
+            
+            # Transform DataFrame to list of price objects
+            prices = self._transform_dataframe_to_prices(data)
+            
+            return {
+                "symbol": symbol,
+                "stock_name": stock_name,
+                "current_price": current_price,
+                "change_percent": change_percent,
+                "prices": prices,
+                "total_records": len(prices),
+                "days_back": days_back
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting recent data with metadata for {symbol}: {str(e)}")
+            raise
+
+    async def get_data_from_end_date_with_metadata(self, symbol: str, end_date: str, days_back: int) -> Dict[str, Any]:
+        """
+        Get data from end date with all metadata and transformations.
+        
+        Args:
+            symbol: Stock symbol
+            end_date: End date string (YYYY-MM-DD)
+            days_back: Number of days back
+            
+        Returns:
+            Dictionary containing data and metadata
+        """
+        try:
+            self.validate_symbol(symbol)
+            self.validate_days_back(days_back)
+            
+            # Parse end date
+            end = self.validate_date_format(end_date)
+            
+            # Get data from end date
+            data, stock_name = await self.get_historical_stock_prices_from_end_date(symbol, end, days_back)
+            
+            # Get current price data
+            current_price_df, _ = await self.get_current_price(symbol)
+            
+            # Extract current price from DataFrame
+            if not current_price_df.empty:
+                current_price = float(current_price_df.iloc[0]['Close'])
+                change_percent = await self.calculate_change_percent(symbol)
+            else:
+                current_price = None
+                change_percent = None
+            
+            # Get the oldest date from the data
+            start_date = None
+            if not data.empty:
+                if 'Date' in data.columns:
+                    data = data.sort_values('Date')
+                    start_date = data.iloc[0]['Date']
+                else:
+                    data = data.sort_index()
+                    start_date = data.index[0]
+            
+            # Format start_date for the response
+            start_date_iso = start_date.isoformat() if hasattr(start_date, 'isoformat') else str(start_date)
+            
+            # Transform DataFrame to list of price objects
+            prices = self._transform_dataframe_to_prices(data)
+            
+            return {
+                "symbol": symbol,
+                "stock_name": stock_name,
+                "current_price": current_price,
+                "change_percent": change_percent,
+                "prices": prices,
+                "total_records": len(prices),
+                "start_date": start_date_iso,
+                "end_date": end.isoformat(),
+                "days_back": days_back
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting data from end date with metadata for {symbol}: {str(e)}")
+            raise
+
+    def _transform_dataframe_to_prices(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
+        """
+        Transform DataFrame to list of price dictionaries.
+        
+        Args:
+            df: DataFrame containing stock price data
+            
+        Returns:
+            List of price dictionaries
+        """
+        prices = []
+        for _, row in df.iterrows():
+            # Handle date formatting safely
+            if hasattr(row.name, 'strftime'):
+                date_str = row.name.strftime('%Y-%m-%d')
+            elif 'Date' in row and hasattr(row['Date'], 'strftime'):
+                date_str = row['Date'].strftime('%Y-%m-%d')
+            else:
+                date_str = str(row.name)
+                
+            prices.append({
+                "date": date_str,
+                "open": float(row['Open']),
+                "high": float(row['High']),
+                "low": float(row['Low']),
+                "close": float(row['Close']),
+                "volume": int(row['Volume']),
+                "adj_close": float(row['Adj Close']) if 'Adj Close' in row else None
+            })
+        
+        return prices
