@@ -277,10 +277,10 @@ async def get_historical_stock_data(
     response_model=StockDataResponse,
     tags=["Data Services"],
 )
-async def get_reccent_stock_data(
+async def get_recent_stock_data(
     symbol: str = Query(..., description="Stock symbol to retrieve data for"),
-    days_back: Optional[int] = Query(
-        None, description="Number of days to look back", ge=1, le=10_000
+    days_back: int = Query(
+        config.LOOKBACK_DAYS, description="Number of days to look back (default: 30)", ge=1, le=10_000
     ),
 ):
     """Get recent stock data for a symbol (based on a number of days back)."""
@@ -289,11 +289,6 @@ async def get_reccent_stock_data(
         if not validate_stock_symbol(symbol):
             raise HTTPException(
                 status_code=400, detail=f"Invalid stock symbol: {symbol}"
-            )
-
-        if not days_back:
-            raise HTTPException(
-                status_code=400, detail="days_back is required for recent data"
             )
 
         # Call the data ingestion service
