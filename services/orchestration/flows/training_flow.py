@@ -6,7 +6,6 @@ from core.utils import get_model_name
 from services import (
     DataService,
     DeploymentService,
-    EvaluationService,
 )
 from ..tasks.data import load_recent_stock_data, preprocess_data
 from ..tasks.training import train
@@ -27,7 +26,6 @@ def run_training_flow(
     symbol: str,
     data_service: DataService,
     deployment_service: DeploymentService,
-    evaluation_service: EvaluationService,
 ) -> dict[str, Any]:
     """
     Orchestrates the training, evaluation, and potential deployment of a training model
@@ -110,7 +108,6 @@ def run_training_flow(
             phase=production_phase,
             eval_data=prod_eval_data,
             deployment_service=deployment_service,
-            evaluation_service=evaluation_service,
         )
 
     # --- Evaluation of the training model
@@ -131,7 +128,6 @@ def run_training_flow(
         PHASE,
         test_data,
         deployment_service,
-        evaluation_service,
     )
 
     # Deploy (or not) the training model
@@ -144,7 +140,6 @@ def run_training_flow(
         candidate_metrics=candidate_metrics,
         prod_model_name=production_model_name,
         live_metrics=live_metrics,
-        evaluation_service=evaluation_service,
         deployment_service=deployment_service,
     )
     logger.info(f"Deployment process completed. Result: {deployment_results}")

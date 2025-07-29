@@ -94,6 +94,13 @@ class TrainingServiceConfig(BaseModel):
     PORT: int = 8000
 
 
+class EvaluationServiceConfig(BaseModel):
+    """Evaluation service configuration."""
+
+    HOST: str = "evaluation-service"  # Use the Docker container's hostname
+    PORT: int = 8000
+    
+
 class PostgresDatabaseConfig(BaseModel):
     """PostgreSQL configuration"""
 
@@ -123,6 +130,7 @@ class Config:
         self.rabbitmq = RabbitMQConfig()
         self.data_processing_service = DataProcessingServiceConfig()
         self.training_service = TrainingServiceConfig()
+        self.evaluation_service = EvaluationServiceConfig()
         self.mlflow_server = MLFlowConfig()
         self.postgres = PostgresDatabaseConfig()
         self.news_service = NewsServiceConfig()

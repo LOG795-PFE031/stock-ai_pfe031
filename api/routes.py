@@ -607,7 +607,7 @@ async def train_model(
         api_logger.error(f"Training failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}") from e
 
-
+        
 @router.post("/data/cleanup", response_model=Dict[str, Any], tags=["Data Services"])
 async def cleanup_stock_data(symbol: Optional[str] = None):
     """Clean up and maintain stock data files."""

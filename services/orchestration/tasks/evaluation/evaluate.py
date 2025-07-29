@@ -1,7 +1,8 @@
 from prefect import task
 
-from services import EvaluationService
-
+import httpx
+from core.config import config
+import numpy as np
 
 @task(
     name="model_evaluation",
@@ -10,7 +11,10 @@ from services import EvaluationService
     retry_delay_seconds=5,
 )
 async def evaluate(
-    true_target, pred_target, model_type: str, symbol: str, service: EvaluationService
+    true_target, 
+    pred_target, 
+    model_type: str, 
+    symbol: str, 
 ) -> dict[str, float]:
     """
     Evaluate model predictions using ground truth values.
@@ -25,4 +29,23 @@ async def evaluate(
     Returns:
         dict[str,float]: Dictionary of evaluation metrics (e.g., rmse, r2, etc).
     """
-    return await service.evaluate(y_true=true_target, y_pred=pred_target, model_type=model_type, symbol=symbol)
+    url = f"http://{config.evaluation_service.HOST}:{config.evaluation_service.PORT}/evaluation/models/{model_type}/{symbol}/evaluate"
+    
+    def _to_serializable(o):
+        if isinstance(o, np.ndarray):
+            return o.tolist()
+        if isinstance(o, (np.generic,)):
+            return o.item()
+        if isinstance(o, list):
+            return [_to_serializable(i) for i in o]
+        return o
+    
+    payload = {
+        "true_target": _to_serializable(true_target),
+        "pred_target": _to_serializable(pred_target),
+    }
+
+    async with httpx.AsyncClient(timeout=None) as client:
+        resp = await client.post(url, json=payload)
+        resp.raise_for_status()
+        return resp.json()

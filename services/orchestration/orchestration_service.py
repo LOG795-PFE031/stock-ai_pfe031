@@ -36,12 +36,10 @@ class OrchestrationService(BaseService):
         self,
         data_service: DataService,
         deployment_service: DeploymentService,
-        evaluation_service: EvaluationService,
     ):
         super().__init__()
         self.data_service = data_service
         self.deployment_service = deployment_service
-        self.evaluation_service = evaluation_service
         self.logger = logger["orchestration"]
         self.prediction_storage = PredictionStorage(self.logger)
 
@@ -84,7 +82,6 @@ class OrchestrationService(BaseService):
                 symbol,
                 self.data_service,
                 self.deployment_service,
-                self.evaluation_service,
             )
 
             self.logger.info(
@@ -258,7 +255,6 @@ class OrchestrationService(BaseService):
                 symbol,
                 self.data_service,
                 self.deployment_service,
-                self.evaluation_service,
             )
 
             # Log the successful completion of the pipeline
