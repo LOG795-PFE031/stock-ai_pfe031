@@ -333,9 +333,9 @@ async def get_recent_stock_data(
 )
 async def get_historical_stock_prices_from_end_date(
     symbol: str = Query(..., description="Stock symbol to retrieve data for"),
-    end_date: datetime = Query(None, description="End date to retrieve the data from"),
+    end_date: datetime = Query(..., description="End date to retrieve the data from"),
     days_back: int = Query(
-        None,
+        ...,
         description="Number of days to look back from the end date",
         ge=1,
         le=10_000,
