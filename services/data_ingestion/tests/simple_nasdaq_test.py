@@ -25,14 +25,10 @@ async def simple_test():
     try:
         # Initialize service
         data_service = DataService()
-        await data_service.initialize()
         
         # Get the data
         result = await data_service.get_nasdaq_stocks()
-        
-        # Show the raw response
-        print("📊 RAW RESPONSE:")
-        print(json.dumps(result, indent=2, default=str))
+      
         
         # Show summary
         print("\n📈 SUMMARY:")
