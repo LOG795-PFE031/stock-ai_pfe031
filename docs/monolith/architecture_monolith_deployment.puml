@@ -35,6 +35,12 @@ skinparam component<<New Service>> {
   Shadowing true
 }
 
+skinparam node<<UI Container>> {
+  BackgroundColor purple
+  Shadowing true
+}
+
+
 skinparam Arrow {
   Color DARKBLUE
   Thickness 2
@@ -44,8 +50,8 @@ legend left
   <b><size:50>Legend</size></b>
   <size:25><color:CONTAINER_COLOR>■</color> Docker Container
   <size:25><color:LIGHTBLUE>■</color> Domain
-  <size:25><color:ORANGE>■</color> New Service
-  <size:25><color:GREEN>➝</color> HTTP Request
+  <size:25><color:ORANGE>■</color> New Service/Database
+  <size:25><color:purple>■</color> UI-only Container (e.g. dashboards, visual interfaces)
 endlegend
 
 ' ========== CLIENT ==========
@@ -100,11 +106,11 @@ node "Stock-ai Application" as app <<container>> {
 
 ' ========== EXTERNAL TOOLS ==========
 
-node "MLflow UI Server" <<container>> {
-  component "MLflow UI Service" as mlflowService <<New Service>>
+node "MLflow UI Container Server" <<UI Container>> {
+  component "MLflow UI Container Service" as mlflowService <<New Service>>
 }
 
-node "Prefect Server" <<container>> {
+node "Prefect Server" <<UI Container>> {
   component "Prefect Service" as prefect_service <<New Service>>
 }
 
@@ -114,7 +120,7 @@ node "Monitoring" {
     artifact "prometheus.yml"
   }
 
-  node "Grafana Server" <<container>> {
+  node "Grafana Server" <<UI Container>> {
     component "Grafana Dashboard Service" as grafanaSvc <<New Service>>
     artifact "grafana.db"
   }
