@@ -23,7 +23,7 @@ async def load_recent_stock_data(symbol: str) -> pd.DataFrame:
     data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stock/recent"
     params = {
         "symbol": symbol,
-        "days_back": 1
+        "days_back": config.data.LOOKBACK_PERIOD_DAYS
     }
 
     async with httpx.AsyncClient() as client:
@@ -36,10 +36,18 @@ async def load_recent_stock_data(symbol: str) -> pd.DataFrame:
         if not isinstance(data, pd.DataFrame):
             raise ValueError("Response data is not a valid DataFrame")
         
-        data['Date'] = pd.to_datetime(data['date'])
-        data['symbol'] = json_response['symbol']
-        data['name'] = json_response['name']
-        data['Date'] = data['Date'].dt.strftime('%Y-%m-%d')
+        data = data.rename(columns={
+        'open': 'Open',
+        'high': 'High', 
+        'low': 'Low',
+        'close': 'Close',
+        'volume': 'Volume',
+        'adj_close': 'Adj Close',
+        'date': 'Date'
+        })
+
+        data['Date'] = pd.to_datetime(data['Date']).dt.strftime('%Y-%m-%d')
+
     return pd.DataFrame(data)
 
 
@@ -82,7 +90,6 @@ async def load_historical_stock_prices_from_end_date(symbol: str, end_date: date
             raise ValueError("Response data is not a valid DataFrame")
 
         data['Date'] = pd.to_datetime(data['date'])
-        data['symbol'] = json_response['symbol']
-        data['name'] = json_response['name']
+
         data['Date'] = data['Date'].dt.strftime('%Y-%m-%d')
     return pd.DataFrame(data)
