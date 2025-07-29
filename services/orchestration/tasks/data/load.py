@@ -31,7 +31,7 @@ async def load_recent_stock_data(symbol: str) -> pd.DataFrame:
         response.raise_for_status()
         json_response = response.json()
         
-        data = pd.DataFrame(json_response['data'])
+        data = pd.DataFrame(json_response['prices'])
         
         if not isinstance(data, pd.DataFrame):
             raise ValueError("Response data is not a valid DataFrame")
@@ -84,12 +84,21 @@ async def load_historical_stock_prices_from_end_date(symbol: str, end_date: date
         response.raise_for_status()
         json_response = response.json()
 
-        data = pd.DataFrame(json_response['data'])
+        data = pd.DataFrame(json_response['prices'])
+
+        data = data.rename(columns={
+        'open': 'Open',
+        'high': 'High', 
+        'low': 'Low',
+        'close': 'Close',
+        'volume': 'Volume',
+        'adj_close': 'Adj Close',
+        'date': 'Date'
+        })
 
         if not isinstance(data, pd.DataFrame):
             raise ValueError("Response data is not a valid DataFrame")
 
-        data['Date'] = pd.to_datetime(data['date'])
+        data['Date'] = pd.to_datetime(data['Date']).dt.strftime('%Y-%m-%d')
 
-        data['Date'] = data['Date'].dt.strftime('%Y-%m-%d')
     return pd.DataFrame(data)
