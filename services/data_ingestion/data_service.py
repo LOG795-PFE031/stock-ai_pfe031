@@ -177,13 +177,21 @@ class DataService(BaseService):
         try:
             # Fetch the data from NASDAQ API
             url = "https://api.nasdaq.com/api/quote/list-type/nasdaq100"
-            headers = {"User-Agent": "Mozilla/5.0"}  # User agent required to avoid request blocking
+            headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/92.0.4515.107 Safari/537.36"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "application/json, text/plain, */*"
+            }
             
             # Log the API request attempt
             self.logger.debug(f"Making request to NASDAQ API: {url}")
             
             # Make the request and parse the JSON response
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers,timeout=10)
             
             # Log the success of the external request
             external_requests_total.labels(site="nasdaq_api", result="success").inc()
@@ -198,7 +206,6 @@ class DataService(BaseService):
                 reverse=True,
             )
 
-            # Add company name for each stock using get_stock_name
             for stock in sorted_stocks:
                 symbol = stock.get("symbol")
                 try:
