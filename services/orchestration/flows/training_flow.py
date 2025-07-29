@@ -1,6 +1,6 @@
 from prefect import flow
 from prefect.logging import get_run_logger
-from typing import Any, Callable
+from typing import Any
 
 from core.utils import get_model_name
 from services import (
@@ -24,7 +24,6 @@ PHASE = "training"
 def run_training_flow(
     model_type: str,
     symbol: str,
-    fetch_stock_data: Callable,
     deployment_service: DeploymentService,
     evaluation_service: EvaluationService,
 ) -> dict[str, Any]:
@@ -33,7 +32,7 @@ def run_training_flow(
     for a specific stock symbol and model type.
 
     The pipeline performs the following steps:
-    1. Loads the latest stock data.
+    1. Loads the latest stock data from the API.
     2. Preprocesses the data for training and evaluation.
     3. Trains a new model and evaluates both the new (candidate) and current production model.
     4. Compares performance metrics.
@@ -42,7 +41,6 @@ def run_training_flow(
     Args:
         model_type (str): Type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol.
-        fetch_stock_data (Callable): Function to fetch stock data from API.
         deployment_service: Service used to perform predictions and manage models.
         evaluation_service: Service used to evaluate and compare models based on performance metrics.
 
@@ -57,7 +55,7 @@ def run_training_flow(
     logger = get_run_logger()
 
     # Load the recent stock data
-    raw_data = load_recent_stock_data.submit(fetch_stock_data, symbol)
+    raw_data = load_recent_stock_data.submit(symbol)
 
     # --- Training of the model ---
 
@@ -98,48 +96,58 @@ def run_training_flow(
             model_type=model_type,
             symbol=symbol,
             data=raw_data,
-            phase=production_phase,
+            phase="evaluation",
         )
 
         # Evaluate the production model
-        live_metrics = evaluate_model.submit(
+        live_metrics = evaluate_model(
+            model_identifier=production_model_name,
             model_type=model_type,
             symbol=symbol,
-            test_data=prod_eval_data,
+            phase=production_phase,
+            eval_data=prod_eval_data,
             deployment_service=deployment_service,
             evaluation_service=evaluation_service,
         )
 
-    # --- Evaluation of the candidate model ---
+    # --- Evaluation of the training model
 
-    # Evaluate the candidate model
-    candidate_metrics = evaluate_model.submit(
-        model_type=model_type,
-        symbol=symbol,
-        test_data=test_data,
-        deployment_service=deployment_service,
-        evaluation_service=evaluation_service,
-    )
-
-    # --- Deployment decision ---
-
-    # Get the training results
+    # Wait for the training results
+    logger.info("Waiting for training to finish...")
     training_results = training_results_future.result()
 
-    # Get the evaluation results
-    candidate_metrics_result = candidate_metrics.result()
+    # Retrieve the run id
+    run_id = training_results["run_id"]
+    logger.info(f"Training completed. Run ID: {run_id}")
 
-    # Decide whether to deploy the candidate model
-    deployment_results = run_deploy_flow.submit(
+    # Evaluate the training model
+    candidate_metrics = evaluate_model(
+        run_id,
+        model_type,
+        symbol,
+        PHASE,
+        test_data,
+        deployment_service,
+        evaluation_service,
+    )
+
+    # Deploy (or not) the training model
+    logger.info("Starting deployment check and promotion (if applicable)...")
+
+    deployment_results = run_deploy_flow(
         model_type=model_type,
         symbol=symbol,
-        candidate_metrics=candidate_metrics_result,
-        live_metrics=live_metrics.result() if live_metrics else None,
+        run_id=run_id,
+        candidate_metrics=candidate_metrics,
+        prod_model_name=production_model_name,
+        live_metrics=live_metrics,
+        evaluation_service=evaluation_service,
         deployment_service=deployment_service,
     )
+    logger.info(f"Deployment process completed. Result: {deployment_results}")
 
     return {
         "training_results": training_results,
-        "metrics": candidate_metrics_result,
-        "deployment_results": deployment_results.result(),
+        "metrics": candidate_metrics,
+        "deployment_results": deployment_results,
     }

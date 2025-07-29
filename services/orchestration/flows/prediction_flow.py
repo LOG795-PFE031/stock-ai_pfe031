@@ -1,7 +1,7 @@
 from prefect import flow, task
 from prefect.futures import wait
 from itertools import product
-from typing import Any, Callable
+from typing import Any
 from datetime import datetime, timedelta
 
 from ..tasks.prediction import predict, calculate_prediction_confidence
@@ -109,71 +109,68 @@ def run_inference_flow(
 def run_prediction_pipeline(
     model_type: str,
     symbol: str,
-    fetch_stock_data: Callable,
     deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
-    Run the full prediction pipeline for a given model and symbol.
+    Executes the prediction pipeline for a given model type and stock symbol.
 
     This task performs the following steps:
-      1. Loads recent stock data for the symbol.
-      2. Preprocesses the data for prediction.
-      3. Runs inference using the latest production model.
-      4. Returns the prediction results.
+    1. Checks if a production model exists for the given model type and symbol.
+    2. Loads recent stock data using the data service.
+    3. Preprocesses the raw data to prepare it for prediction.
+    4. Runs the inference flow to generate predictions and confidence scores.
 
     Args:
-        model_type (str): Type of model (e.g., "lstm", "prophet").
-        symbol (str): Stock ticker symbol.
-        fetch_stock_data (Callable): Function to fetch stock data from API.
-        deployment_service: Service used for predicting and managing models.
+        model_type (str): The type of model (e.g., "lstm", "prophet").
+        symbol (str): Stock ticker symbol
+        deployment_service: Service responsible for model deployment and prediction.
 
     Returns:
         dict: A dictionary containing the prediction results:
-            - prediction (Any): The predicted value.
-            - confidence (float or None): Optional prediction confidence score.
-            - model_version (int): Version number of the model that made the prediction.
+            - "y_pred": The predicted value(s)
+            - "confidence": The confidence score(s) of the prediction(s)
+            - "model_version": Version number of the model that made the prediction.
+        Returns None if no production model is available.
     """
-    # Load the recent stock data
-    raw_data = load_recent_stock_data.submit(fetch_stock_data, symbol)
 
-    # Preprocess the raw data
-    preprocessed_data = preprocess_data.submit(
-        model_type=model_type,
-        symbol=symbol,
-        data=raw_data,
-        phase=PHASE,
-    )
+    # Generate the production model name
+    production_model_name = get_model_name(model_type, symbol)
 
-    # Get the production model name
-    production_model_name = get_model_name(model_type=model_type, symbol=symbol)
-
-    # Check if the production model exists
-    prod_model_exists = production_model_exists.submit(
-        prod_model_name=production_model_name, service=deployment_service
+    # Check if it exist
+    prod_model_exist = production_model_exists.submit(
+        production_model_name, deployment_service
     ).result()
 
-    if not prod_model_exists:
+    if prod_model_exist:
+        # Load the recent stock data
+        raw_data = load_recent_stock_data.submit(symbol=symbol)
+
+        # Preprocess the raw data
+        prediction_input = preprocess_data.submit(
+            model_type=model_type,
+            symbol=symbol,
+            data=raw_data,
+            phase=PHASE,
+        )
+
+        # Make prediction (prediction and confidence included)
+        prediction_result = run_inference_flow(
+            model_identifier=production_model_name,
+            model_type=model_type,
+            symbol=symbol,
+            phase=PHASE,
+            prediction_input=prediction_input,
+            deployment_service=deployment_service,
+        )
+
         return {
-            "status": "error",
-            "error": f"No production model available for {model_type}_{symbol}",
+            "y_pred": prediction_result["prediction"].y,
+            "confidence": prediction_result["confidence"],
+            "model_version": prediction_result["model_version"],
         }
 
-    # Run the inference pipeline
-    inference_result = run_inference_flow.submit(
-        model_identifier=production_model_name,
-        model_type=model_type,
-        symbol=symbol,
-        phase=PHASE,
-        prediction_input=preprocessed_data,
-        deployment_service=deployment_service,
-    )
-
-    return {
-        "status": "success",
-        "prediction": inference_result.result()["prediction"],
-        "confidence": inference_result.result()["confidence"],
-        "model_version": inference_result.result()["model_version"],
-    }
+    # No live model available
+    return None
 
 
 @flow(
@@ -183,27 +180,31 @@ def run_prediction_pipeline(
 def run_prediction_flow(
     model_type: str,
     symbol: str,
-    fetch_stock_data: Callable,
     deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
-    Run the full prediction pipeline for a given model and symbol.
+    Run the prediction pipeline. It is basically a flow wrapper of the task in function
+    `run_prediction_pipeline` (to make it a flow)
 
     Args:
-        model_type (str): Type of model (e.g., "lstm", "prophet").
-        symbol (str): Stock ticker symbol.
-        fetch_stock_data (Callable): Function to fetch stock data from API.
-        deployment_service: Service used for predicting and managing models.
+        model_type (str): The type of model (e.g., "lstm", "prophet").
+        symbol (str): Stock ticker symbol
+        deployment_service: Service responsible for model deployment and prediction.
 
     Returns:
-        dict: A dictionary containing the prediction results.
+        dict: A dictionary containing the prediction results:
+            - "y_pred": The predicted value(s)
+            - "confidence": The confidence score(s) of the prediction(s)
+            - "model_version": Version number of the model that made the prediction.
+        Returns None if no production model is available.
     """
-    return run_prediction_pipeline.submit(
+    prediction_result = run_prediction_pipeline.submit(
         model_type=model_type,
         symbol=symbol,
-        fetch_stock_data=fetch_stock_data,
         deployment_service=deployment_service,
     ).result()
+
+    return prediction_result
 
 
 @flow(
@@ -213,45 +214,33 @@ def run_prediction_flow(
 def run_batch_prediction(
     model_types: list[str],
     symbols: list[str],
-    fetch_stock_data: Callable,
     deployment_service: DeploymentService,
 ):
     """
-    Run batch predictions for multiple model types and symbols.
+    Executes batch predictions for all combinations of given model types and stock symbols.
 
     Args:
-        model_types (list[str]): List of model types to use for predictions.
-        symbols (list[str]): List of stock symbols to predict for.
-        fetch_stock_data (Callable): Function to fetch stock data from API.
-        deployment_service: Service used for predicting and managing models.
+        model_types (list[str]): A list of model types to use (e.g., ["lstm", "xgboost"]).
+        symbols (list[str]): A list of stock symbols to generate predictions for.
+        deployment_service: Service responsible for model deployment and prediction.
     """
-    # Create all combinations of model types and symbols
-    combinations = list(product(model_types, symbols))
 
-    # Submit all prediction tasks
-    futures = [
-        run_prediction_pipeline.submit(
-            model_type=model_type,
-            symbol=symbol,
-            fetch_stock_data=fetch_stock_data,
-            deployment_service=deployment_service,
-        )
-        for model_type, symbol in combinations
-    ]
+    # Generate (model_type, symbol) pairs
+    model_symbol_pairs = list(product(model_types, symbols))
 
-    # Wait for all tasks to complete
-    wait(futures)
+    # Unpack the pairs into two lists for mapping
+    model_type_list = [pair[0] for pair in model_symbol_pairs]
+    symbol_list = [pair[1] for pair in model_symbol_pairs]
 
-    # Collect results
-    results = []
-    for future in futures:
-        try:
-            result = future.result()
-            results.append(result)
-        except Exception as e:
-            results.append({"status": "error", "error": str(e)})
+    # Run predictions using mapping
+    predictions = run_prediction_pipeline.map(
+        model_type=model_type_list,
+        symbol=symbol_list,
+        deployment_service=deployment_service,
+    )
 
-    return results
+    # Wait for all predictions to complete
+    wait(predictions)
 
 
 @task(
@@ -262,65 +251,56 @@ def historical_prediction(
     model_type: str,
     symbol: str,
     end_date: datetime,
-    fetch_stock_data: Callable,
     deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
-    Run a prediction pipeline for a given symbol and date.
+    Run a historical prediction for a given stock symbol and date.
 
     Args:
-        model_type (str): Type of model (e.g., "lstm", "prophet").
-        symbol (str): Stock ticker symbol.
-        end_date (datetime): End date for the historical data.
-        fetch_stock_data (Callable): Function to fetch stock data from API.
-        deployment_service: Service used for predicting and managing models.
+        model_type (str): The type of model (e.g., "lstm", "prophet").
+        symbol (str): Stock ticker sym
+        end_date (datetime): The day before the day to predict
+        deployment_service (DeploymentService): Deployment service
 
     Returns:
-        dict: A dictionary containing the prediction results.
+        dict: A dictionary containing the prediction results:
+            - processed_y_pred (Any): Postprocessed prediction object.
+            - confidence (float or None): Optional prediction confidence score.
+            - model_version (int): Version number of the model that made the prediction.
     """
-    # Load historical stock data
+
+    # Load the raw historical data
     raw_data = load_historical_stock_prices_from_end_date.submit(
-        fetch_stock_data, symbol, end_date, 60  # 60 days back
+        symbol=symbol,
+        end_date=end_date,
+        days_back=config.preprocessing.SEQUENCE_LENGTH,
     )
 
     # Preprocess the raw data
-    preprocessed_data = preprocess_data.submit(
+    prediction_input = preprocess_data.submit(
         model_type=model_type,
         symbol=symbol,
         data=raw_data,
         phase=PHASE,
     )
 
-    # Get the production model name
-    production_model_name = get_model_name(model_type=model_type, symbol=symbol)
+    # Generate the production model name
+    production_model_name = get_model_name(model_type, symbol)
 
-    # Check if the production model exists
-    prod_model_exists = production_model_exists.submit(
-        prod_model_name=production_model_name, service=deployment_service
-    ).result()
-
-    if not prod_model_exists:
-        return {
-            "status": "error",
-            "error": f"No production model available for {model_type}_{symbol}",
-        }
-
-    # Run the inference pipeline
-    inference_result = run_inference_flow.submit(
+    # Make prediction (prediction and confidence included)
+    prediction_result = run_inference_flow(
         model_identifier=production_model_name,
         model_type=model_type,
         symbol=symbol,
         phase=PHASE,
-        prediction_input=preprocessed_data,
+        prediction_input=prediction_input,
         deployment_service=deployment_service,
     )
 
     return {
-        "status": "success",
-        "prediction": inference_result.result()["prediction"],
-        "confidence": inference_result.result()["confidence"],
-        "model_version": inference_result.result()["model_version"],
-        "date": end_date,
+        "y_pred": prediction_result["prediction"].y,
+        "confidence": prediction_result["confidence"],
+        "model_version": prediction_result["model_version"],
     }
 
 
@@ -332,47 +312,47 @@ def run_historical_predictions_flow(
     model_type: str,
     symbol: str,
     trading_days: list[datetime],
-    fetch_stock_data: Callable,
     deployment_service: DeploymentService,
 ):
     """
-    Run predictions for a range of trading days.
+    Run historical predictions for a given symbol and date range using a production model.
 
     Args:
-        model_type (str): Type of model (e.g., "lstm", "prophet").
-        symbol (str): Stock ticker symbol.
-        trading_days (list[datetime]): List of trading days to predict for.
-        fetch_stock_data (Callable): Function to fetch stock data from API.
-        deployment_service: Service used for predicting and managing models.
+        model_type (str): The type of model (e.g., "lstm", "prophet").
+        symbol (str): Stock ticker symbol
+        trading_days (list[datetime]): The trading days we want to predict
+        deployment_service (DeploymentService): Deployment service.
 
     Returns:
-        dict: A dictionary containing the prediction results for all dates.
+        list|None: List of prediction results corresponding to those dates.
+            Returns None if no production model is available.
     """
-    # Submit all historical prediction tasks
-    futures = [
-        historical_prediction.submit(
+
+    # Shift all the dates by minus 1 (because we want all the sequence before the date to not see in the future)
+    dates = [d - timedelta(days=1) for d in trading_days]
+
+    # Generate the production model name
+    production_model_name = get_model_name(model_type, symbol)
+
+    # Check if it exist
+    prod_model_exist = production_model_exists.submit(
+        production_model_name, deployment_service
+    ).result()
+
+    if prod_model_exist:
+
+        # Make predictions
+        prediction_futures = historical_prediction.map(
             model_type=model_type,
             symbol=symbol,
-            end_date=date,
-            fetch_stock_data=fetch_stock_data,
-            deployment_service=deployment_service,
+            end_date=dates,
+             deployment_service=deployment_service,
         )
-        for date in trading_days
-    ]
 
-    # Wait for all tasks to complete
-    wait(futures)
+        # Wait for predictions and collect results
+        prediction_results = [future.result() for future in prediction_futures]
 
-    # Collect results
-    results = []
-    for future in futures:
-        try:
-            result = future.result()
-            results.append(result)
-        except Exception as e:
-            results.append({"status": "error", "error": str(e)})
+        return prediction_results
 
-    return {
-        "status": "success",
-        "predictions": results,
-    }
+    # There is no available production model
+    return None
