@@ -280,7 +280,7 @@ async def get_historical_stock_data(
 async def get_recent_stock_data(
     symbol: str = Query(..., description="Stock symbol to retrieve data for"),
     days_back: int = Query(
-        config.LOOKBACK_DAYS, description="Number of days to look back (default: 30)", ge=1, le=10_000
+        config.data.LOOKBACK_PERIOD_DAYS, description="Number of days to look back (default: 365)", ge=1, le=10_000
     ),
 ):
     """Get recent stock data for a symbol (based on a number of days back)."""
