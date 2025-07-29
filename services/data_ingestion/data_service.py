@@ -375,19 +375,15 @@ class DataService(BaseService):
                 days_back = self.config.data.LOOKBACK_PERIOD_DAYS
             
             # Ensure days_back is reasonable
-            if days_back < 2:
-                days_back = 2  # Need at least 2 days for calculating change
+            if days_back < 1:
+                days_back = 1
                 self.logger.debug(f"Adjusted days_back to {days_back} for minimum data points")
             
-            # To ensure we get enough data points, multiply days_back by 1.5 to account for weekends/holidays
-            # where data might not be available
-            lookup_days = int(days_back * 1.5)
-            
-            # Get start and end dates
+            # Get the exact number of trading days requested
             end_date = datetime.now(timezone.utc)
-            start_date = get_start_date_from_trading_days(end_date, lookup_days)
+            start_date = get_start_date_from_trading_days(end_date, days_back)
             
-            self.logger.debug(f"Requesting data for {symbol} from {start_date.date()} to {end_date.date()}")
+            self.logger.debug(f"Requesting exactly {days_back} trading days for {symbol} from {start_date.date()} to {end_date.date()}")
 
             # Retrieve stock data prices
             df = await self._get_stock_data(symbol, start_date, end_date)
@@ -408,26 +404,22 @@ class DataService(BaseService):
                     self.logger.error(f"Date column not found in DataFrame for {symbol}")
                     return pd.DataFrame(), self.get_stock_name(symbol)
 
-            # Filter data for requested date range and ensure we're getting the right columns
-            try:
-                mask = (df["Date"].dt.date >= start_date.date()) & (
-                    df["Date"].dt.date <= end_date.date()
-                )
-                df = df[mask]
-                
-                # Ensure we have the required columns
-                required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-                for col in required_columns:
-                    if col not in df.columns:
-                        self.logger.error(f"Missing required column {col} in data for {symbol}")
-                        return pd.DataFrame(), self.get_stock_name(symbol)
-                
-                # Log the number of rows retrieved
-                self.logger.debug(f"Retrieved {len(df)} rows of data for {symbol}")
-                
-            except Exception as filter_error:
-                self.logger.error(f"Error filtering data for {symbol}: {str(filter_error)}")
-                return pd.DataFrame(), self.get_stock_name(symbol)
+            # Sort by date (most recent first) and limit to exactly the requested number of days
+            df = df.sort_values('Date', ascending=False)
+            df = df.head(days_back)  # Get only the exact number of days requested
+            
+            # Ensure we have the required columns
+            required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+            for col in required_columns:
+                if col not in df.columns:
+                    self.logger.error(f"Missing required column {col} in data for {symbol}")
+                    return pd.DataFrame(), self.get_stock_name(symbol)
+            
+            # Sort back to chronological order (oldest first)
+            df = df.sort_values('Date', ascending=True)
+            
+            # Log the number of rows retrieved
+            self.logger.debug(f"Retrieved exactly {len(df)} rows of data for {symbol} (requested {days_back})")
 
             # Get the stock_name
             stock_name = self.get_stock_name(symbol)
