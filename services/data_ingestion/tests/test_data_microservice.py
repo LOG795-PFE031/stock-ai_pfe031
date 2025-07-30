@@ -39,7 +39,9 @@ def test_data_service():
     try:
         response = requests.get(f"{base_url}/data/stocks")
         print(f"Status: {response.status_code}")
-        print(f"Response: {json.dumps(response.json(), indent=2)}")
+        data = response.json()
+        print(f"Total stocks: {len(data)}")
+        print(f"First 5 stocks: {json.dumps(data[:5], indent=2)}")
     except Exception as e:
         print(f"Error: {e}")
     
