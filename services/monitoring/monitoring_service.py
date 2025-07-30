@@ -14,6 +14,7 @@ from core.config import config
 from core.prometheus_metrics import evaluation_mae
 from services import DeploymentService
 from services.orchestration import OrchestrationService
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 
 class MonitoringService(BaseService):
@@ -137,6 +138,10 @@ class MonitoringService(BaseService):
         finally:
             self.logger.info("🏁 Daily drift check complete")
 
+    @retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10)
+    )
     async def _fetch_stock_data(self, symbol: str, days_back: int) -> pd.DataFrame:
         """
         Fetch stock data from the API endpoint and convert to DataFrame.
