@@ -1,4 +1,5 @@
 import asyncio
+import time
 from collections import deque
 import contextlib
 from typing import Dict, Tuple
@@ -14,7 +15,8 @@ from core.config import config
 from core.prometheus_metrics import evaluation_mae
 from services import DeploymentService
 from services.orchestration import OrchestrationService
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from httpx import ReadTimeout, ConnectTimeout
 
 
 class MonitoringService(BaseService):
@@ -66,22 +68,24 @@ class MonitoringService(BaseService):
         self.logger.info("MonitoringService cleaned up successfully.")
 
     async def _performance_loop(self) -> None:
-        """Run daily performance drift checks."""
-        try:
-            while self._initialized:
+        """Performance monitoring loop with monitoring config interval."""
+        while True:
+            try:
                 await self._run_performance_check()
-                await asyncio.sleep(self.check_interval_seconds)
-        except asyncio.CancelledError:
-            pass
+                await asyncio.sleep(config.monitoring.PERFORMANCE_CHECK_INTERVAL)
+            except Exception as e:
+                self.logger.error(f"Error in performance loop: {e}")
+                await asyncio.sleep(60)  # Wait 1 minute before retrying
 
     async def _data_loop(self) -> None:
-        """Run weekly data drift checks."""
-        try:
-            while self._initialized:
+        """Data drift monitoring loop with monitoring config interval."""
+        while True:
+            try:
                 await self._run_data_drift_check()
-                await asyncio.sleep(self.data_interval)
-        except asyncio.CancelledError:
-            pass
+                await asyncio.sleep(config.monitoring.DATA_DRIFT_CHECK_INTERVAL)
+            except Exception as e:
+                self.logger.error(f"Error in data drift loop: {e}")
+                await asyncio.sleep(60)  # Wait 1 minute before retrying
 
     async def _run_performance_check(self) -> None:
         """
@@ -139,8 +143,13 @@ class MonitoringService(BaseService):
             self.logger.info("🏁 Daily drift check complete")
 
     @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=4, max=10)
+        stop=stop_after_attempt(config.monitoring.MAX_RETRIES),
+        wait=wait_exponential(
+            multiplier=1, 
+            min=config.monitoring.MIN_RETRY_DELAY, 
+            max=config.monitoring.MAX_RETRY_DELAY
+        ),
+        retry=retry_if_exception_type((ReadTimeout, ConnectTimeout, Exception))
     )
     async def _fetch_stock_data(self, symbol: str, days_back: int) -> pd.DataFrame:
         """
@@ -153,12 +162,22 @@ class MonitoringService(BaseService):
         Returns:
             DataFrame with stock data
         """
+        start_time = time.time()
         try:
             # API endpoint URL
             api_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stock/recent"
             params = {"symbol": symbol, "days_back": days_back}
             
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            # Use monitoring config timeout settings
+            timeout = httpx.Timeout(
+                connect=config.monitoring.CONNECT_TIMEOUT,
+                read=config.monitoring.DATA_FETCH_TIMEOUT,
+                write=config.monitoring.CONNECT_TIMEOUT,
+                pool=config.monitoring.CONNECT_TIMEOUT
+            )
+            
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                self.logger.info(f"Fetching stock data for {symbol} (looking back {days_back} days)")
                 response = await client.get(api_url, params=params)
                 response.raise_for_status()
                 data = response.json()
@@ -171,12 +190,19 @@ class MonitoringService(BaseService):
             # Convert to DataFrame
             df = pd.DataFrame(prices)
             
-            # Convert date column to datetime
-            df["Date"] = pd.to_datetime(df["date"])
+            # Log the original columns for debugging
+            self.logger.debug(f"Original columns for {symbol}: {list(df.columns)}")
             
-            # Rename columns to match expected format
+            # Check for duplicate columns and handle them
+            if 'Date' in df.columns and 'date' in df.columns:
+                # If both exist, drop the lowercase one
+                df = df.drop(columns=['date'])
+            elif 'date' in df.columns:
+                # Rename lowercase to uppercase
+                df = df.rename(columns={'date': 'Date'})
+
+            # Rename other columns
             df = df.rename(columns={
-                "date": "Date",
                 "open": "Open",
                 "high": "High", 
                 "low": "Low",
@@ -184,57 +210,95 @@ class MonitoringService(BaseService):
                 "volume": "Volume",
                 "adj_close": "Adj Close"
             })
+
+            # Convert date column to datetime
+            if "Date" in df.columns:
+                df["Date"] = pd.to_datetime(df["Date"])
+            else:
+                raise ValueError(f"No 'Date' column found for {symbol}. Available columns: {list(df.columns)}")
             
             # Sort by date
             df = df.sort_values("Date")
             
+            elapsed = time.time() - start_time
+            self.logger.info(f"Successfully fetched {len(df)} rows for {symbol} in {elapsed:.2f} seconds")
+            
             return df
             
+        except ReadTimeout as e:
+            elapsed = time.time() - start_time
+            self.logger.error(f"ReadTimeout for {symbol} after {elapsed:.2f} seconds: {e}")
+            raise
+        except ConnectTimeout as e:
+            elapsed = time.time() - start_time
+            self.logger.error(f"ConnectTimeout for {symbol} after {elapsed:.2f} seconds: {e}")
+            raise
         except Exception as e:
-            self.logger.error(f"Error fetching stock data for {symbol}: {e}")
+            elapsed = time.time() - start_time
+            self.logger.error(f"Error fetching stock data for {symbol} after {elapsed:.2f} seconds: {e}")
             raise
 
     async def _preprocess_data(
         self, symbol: str, model_type: str, phase: str, df: pd.DataFrame
     ):
-        # Convert the dates into strings (JSON serializable)
-        df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
+        """
+        Preprocess data with monitoring config timeout settings.
+        """
+        start_time = time.time()
+        try:
+            # Convert the dates into strings (JSON serializable)
+            df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
 
-        # URL to the endpoint to preprocess the data
-        url = f"http://{config.data_processing_service.HOST}:{config.data_processing_service.PORT}/processing/preprocess"
+            # URL to the endpoint to preprocess the data
+            url = f"http://{config.data_processing_service.HOST}:{config.data_processing_service.PORT}/processing/preprocess"
 
-        # Define the payload
-        payload = {
-            "data": df.where(pd.notnull(df), None).to_dict(orient="records"),
-        }
+            # Define the payload
+            payload = {
+                "data": df.where(pd.notnull(df), None).to_dict(orient="records"),
+            }
 
-        # Define the query parameters
-        params = {"symbol": symbol, "model_type": model_type, "phase": phase}
+            # Define the query parameters
+            params = {"symbol": symbol, "model_type": model_type, "phase": phase}
 
-        async with httpx.AsyncClient(timeout=None) as client:
-            # Send POST request to FastAPI endpoint
-            response = await client.post(url, params=params, json=payload)
-
-            # Check if the response is successful
-            response.raise_for_status()
-
-            # Retrieve the data from the json response
-            data = response.json()["data"]
-            preprocessed_features = (
-                data["train"]["X"] if phase == "training" else data["X"]
+            # Use monitoring config timeout settings
+            timeout = httpx.Timeout(
+                connect=config.monitoring.CONNECT_TIMEOUT,
+                read=config.monitoring.PREPROCESSING_TIMEOUT,
+                write=config.monitoring.CONNECT_TIMEOUT,
+                pool=config.monitoring.CONNECT_TIMEOUT
             )
 
-            if isinstance(preprocessed_features, Dict):
-                preprocessed_features = pd.DataFrame(preprocessed_features)
-            else:
-                preprocessed_features = np.array(preprocessed_features)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                # Send POST request to FastAPI endpoint
+                response = await client.post(url, params=params, json=payload)
 
-            return preprocessed_features
+                # Check if the response is successful
+                response.raise_for_status()
+
+                # Retrieve the data from the json response
+                data = response.json()["data"]
+                preprocessed_features = (
+                    data["train"]["X"] if phase == "training" else data["X"]
+                )
+
+                if isinstance(preprocessed_features, Dict):
+                    preprocessed_features = pd.DataFrame(preprocessed_features)
+                else:
+                    preprocessed_features = np.array(preprocessed_features)
+
+                elapsed = time.time() - start_time
+                self.logger.info(f"Preprocessed data for {symbol} ({phase}) in {elapsed:.2f} seconds")
+
+                return preprocessed_features
+
+        except Exception as e:
+            elapsed = time.time() - start_time
+            self.logger.error(f"Error preprocessing data for {symbol} after {elapsed:.2f} seconds: {e}")
+            raise
 
     async def _run_data_drift_check(self) -> None:
         """
-        For each live model, fetch recent and historical data,
-        run KS-test on 'Close' distributions weekly, retrain on drift.
+        Run data drift check with monitoring config intervals.
         """
         self.logger.info("Starting weekly data drift check")
         try:
@@ -252,25 +316,31 @@ class MonitoringService(BaseService):
 
                 await self._check_data_drift(model_type, symbol)
         except Exception as e:
-            self.logger.error(f"Error in weekly data drift check: {e}", exc_info=True)
+            self.logger.error(f"Error in data drift check: {e}", exc_info=True)
         finally:
             self.logger.info("✅ Weekly data drift check complete")
 
     async def _check_data_drift(self, model_type: str, symbol: str) -> None:
         """
-        Fetch training and recent data, preprocess&filter both, then run KS-test on the 2 distributions.
-        Maintain a rolling history of KS stats to compute a dynamic threshold = mean + zscore * std.
-        Retrain only if the current KS stat exceeds dynamic threshold.
+        Check data drift with monitoring config settings.
         """
-        self.logger.debug(f"Starting data drift for {model_type}_{symbol}")
+        self.logger.debug(f"Starting data drift check for {model_type}_{symbol}")
+        start_time = time.time()
+        
         try:
-            # Load data windows
+            # Load data windows with monitoring config timeouts
             days_back = config.data.LOOKBACK_PERIOD_DAYS
+            
+            # Fetch training data
+            self.logger.info(f"Fetching training data for {symbol}")
             train_df = await self._fetch_stock_data(symbol, days_back)
             
             # Evaluation window must cover at least the model's sequence length
             seq_len = getattr(config.model, "SEQUENCE_LENGTH", 60)
             days_needed = max(seq_len, days_back)
+            
+            # Fetch recent data
+            self.logger.info(f"Fetching recent data for {symbol}")
             recent_df = await self._fetch_stock_data(symbol, days_needed)
             
             # Skip if no full sequence available
@@ -280,13 +350,13 @@ class MonitoringService(BaseService):
                 )
                 return
 
-            # Preprocess
-            # Perform training-phase preprocessing to get baseline features
+            # Preprocess with monitoring config settings
+            self.logger.info(f"Preprocessing training data for {symbol}")
             train_proc = await self._preprocess_data(
                 symbol, model_type, "training", train_df
             )
 
-            # Perform evaluation-phase preprocessing to get current features
+            self.logger.info(f"Preprocessing recent data for {symbol}")
             recent_proc = await self._preprocess_data(
                 symbol, model_type, "evaluation", recent_df
             )
@@ -348,7 +418,13 @@ class MonitoringService(BaseService):
                 )
             else:
                 self.logger.debug(f"No drift for {model_type}_{symbol}")
+            
+            elapsed = time.time() - start_time
+            self.logger.info(f"Completed data drift check for {model_type}_{symbol} in {elapsed:.2f} seconds")
+            
         except Exception as e:
+            elapsed = time.time() - start_time
             self.logger.error(
-                f"Error in data drift for {model_type}_{symbol}: {e}", exc_info=True
+                f"Error in data drift for {model_type}_{symbol} after {elapsed:.2f} seconds: {e}", 
+                exc_info=True
             )
