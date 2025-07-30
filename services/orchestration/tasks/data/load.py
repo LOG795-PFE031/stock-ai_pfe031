@@ -7,8 +7,8 @@ from core.config import config
 @task(
     name="load_recent_stock_data",
     description="Load recent stock data for a given symbol using the provided data service.",
-    retries=3,
-    retry_delay_seconds=5,
+    retries=3,  # Increase from 3 to 5
+    retry_delay_seconds=10,  # Increase from 5 to 10 seconds
 )
 async def load_recent_stock_data(symbol: str) -> pd.DataFrame:
     """
@@ -26,7 +26,15 @@ async def load_recent_stock_data(symbol: str) -> pd.DataFrame:
         "days_back": config.data.LOOKBACK_PERIOD_DAYS
     }
 
-    async with httpx.AsyncClient() as client:
+    # Add appropriate timeout for data service operations
+    timeout = httpx.Timeout(
+        connect=10.0,    # 10 seconds to establish connection
+        read=60.0,       # 60 seconds to read response (most important)
+        write=10.0,      # 10 seconds to write request
+        pool=10.0        # 10 seconds to get connection from pool
+    )
+    
+    async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.get(data_service_url, params=params)
         response.raise_for_status()
         json_response = response.json()
@@ -57,7 +65,7 @@ async def load_recent_stock_data(symbol: str) -> pd.DataFrame:
     description="Load historical stock data for a given symbol using an end date and a "
     + "specified number of days back, with the provided API endpoint.",
     retries=3,
-    retry_delay_seconds=5,
+    retry_delay_seconds=10,
 )
 async def load_historical_stock_prices_from_end_date(symbol: str, end_date: datetime, days_back: int) -> pd.DataFrame:
     """
