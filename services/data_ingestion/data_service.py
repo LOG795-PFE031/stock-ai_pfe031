@@ -5,6 +5,7 @@ Data service for fetching and processing stock data.
 import asyncio
 from datetime import datetime, timezone, time
 from typing import Dict, Any, Optional, List
+import time as py_time
 
 import pandas as pd
 import pandas_market_calendars as mcal
@@ -581,7 +582,6 @@ class DataService(BaseService):
         except Exception as e:
             self.logger.error("Error getting stock data for %s: %s", symbol, str(e))
             raise
-
     async def _collect_stock_data(
         self,
         symbol: str,
@@ -599,6 +599,7 @@ class DataService(BaseService):
         Returns:
             DataFrame containing stock data
         """
+        start_time = py_time.time()
         try:
             # Set default date range if not provided
             if not end_date:
@@ -620,6 +621,11 @@ class DataService(BaseService):
 
             # Retrieve the data using asyncio.to_thread
             df = await asyncio.to_thread(stock.history, start=start_date, end=end_date)
+            # Log timing for Yahoo Finance request
+            yahoo_start = py_time.time()
+            df = await asyncio.to_thread(stock.history, start=start_date, end=end_date)
+            yahoo_time = py_time.time() - yahoo_start
+            self.logger.info(f"Yahoo Finance request for {symbol} took {yahoo_time:.2f} seconds")
 
             # Check if we got any data
             if df.empty:
@@ -699,8 +705,9 @@ class DataService(BaseService):
                         "Error while interacting with the database: %s", str(db_error)
                     )
                     raise
-
             self.logger.info("Collected stock data for %s", symbol)
+            total_time = py_time.time() - start_time
+            self.logger.info(f"Total data collection for {symbol} took {total_time:.2f} seconds")
             return df
 
         except Exception as e:
@@ -1109,9 +1116,152 @@ class DataService(BaseService):
         except ValueError:
             raise ValueError("Invalid date format. Use YYYY-MM-DD")
 
+    def _validate_price_data(self, data_row) -> bool:
+        """
+        Validate that price data is accurate and reasonable.
+        
+        Args:
+            data_row: DataFrame row containing price data
+            
+        Returns:
+            bool: True if data is valid, False otherwise
+        """
+        try:
+            # Check if all required fields are present and numeric
+            required_fields = ['Open', 'High', 'Low', 'Close', 'Volume']
+            for field in required_fields:
+                if field not in data_row or pd.isna(data_row[field]):
+                    return False
+                if not isinstance(data_row[field], (int, float)) or data_row[field] <= 0:
+                    return False
+            
+            # Validate price relationships
+            open_price = float(data_row['Open'])
+            high_price = float(data_row['High'])
+            low_price = float(data_row['Low'])
+            close_price = float(data_row['Close'])
+            volume = int(data_row['Volume'])
+            
+            # Basic sanity checks
+            if (high_price < low_price or 
+                high_price < open_price or 
+                high_price < close_price or
+                low_price > open_price or 
+                low_price > close_price):
+                return False
+            
+            # Check for reasonable price ranges (stocks shouldn't be $0 or $1M+)
+            if close_price < 0.01 or close_price > 1000000:
+                return False
+            
+            # Check for reasonable volume (should be positive)
+            if volume <= 0:
+                return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error validating price data: {str(e)}")
+            return False
+
+    def _validate_dataframe_quality(self, df: pd.DataFrame) -> bool:
+        """
+        Validate the overall quality of a DataFrame.
+        
+        Args:
+            df: DataFrame containing stock data
+            
+        Returns:
+            bool: True if data quality is good, False otherwise
+        """
+        try:
+            if df.empty:
+                return False
+            
+            # Check required columns
+            required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+            for col in required_columns:
+                if col not in df.columns:
+                    return False
+            
+            # Check for non-null data
+            if df[required_columns].isnull().any().any():
+                return False
+            
+            # Check for reasonable number of rows (at least 2 for change calculation)
+            if len(df) < 2:
+                return False
+            
+            # Check for reasonable date range (not too old or future dates)
+            if 'Date' in df.columns:
+                df['Date'] = pd.to_datetime(df['Date'])
+                min_date = df['Date'].min()
+                max_date = df['Date'].max()
+                current_date = pd.Timestamp.now()
+                
+                # Data shouldn't be more than 10 years old or in the future
+                if min_date < (current_date - pd.Timedelta(days=3650)) or max_date > current_date:
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error validating DataFrame quality: {str(e)}")
+            return False
+
+    def _calculate_change_percent_from_dataframe(self, df: pd.DataFrame) -> Optional[float]:
+        """
+        Calculate percentage change from existing DataFrame data.
+        
+        Args:
+            df (pd.DataFrame): DataFrame containing stock data with 'Close' column
+            
+        Returns:
+            Optional[float]: Percentage change rounded to 2 decimal places, or None if calculation fails
+        """
+        try:
+            if df.empty or len(df) < 2:
+                self.logger.warning("Not enough data points to calculate change percent")
+                return None
+            
+            # Ensure Date column is datetime and sort by date (most recent first)
+            if 'Date' in df.columns:
+                df['Date'] = pd.to_datetime(df['Date'])
+                df_sorted = df.sort_values('Date', ascending=False)
+            else:
+                # If Date is the index, convert it to a column
+                df = df.reset_index()
+                if 'Date' in df.columns:
+                    df['Date'] = pd.to_datetime(df['Date'])
+                    df_sorted = df.sort_values('Date', ascending=False)
+                else:
+                    self.logger.error("Date column not found in DataFrame")
+                    return None
+            
+            # Get current day and previous day prices
+            current_close = float(df_sorted.iloc[0]['Close'])
+            previous_close = float(df_sorted.iloc[1]['Close'])
+            
+            # Log the values being used for calculation
+            self.logger.debug(f"Change calculation: current={current_close}, previous={previous_close}")
+            
+            # Calculate percentage change
+            if previous_close > 0:
+                change_percent = ((current_close - previous_close) / previous_close) * 100
+                result = round(change_percent, 2)
+                self.logger.info(f"Calculated change percent: {result}%")
+                return result
+            else:
+                self.logger.warning(f"Previous close price is zero or negative: {previous_close}")
+                return 0.0
+                
+        except Exception as e:
+            self.logger.error(f"Error calculating change percent from DataFrame: {str(e)}")
+            return None
+
     async def get_current_price_with_metadata(self, symbol: str) -> Dict[str, Any]:
         """
-        Get current price with all metadata and fallback logic.
+        Get current price with all metadata and optimized change percent calculation.
         
         Args:
             symbol: Stock symbol
@@ -1122,60 +1272,52 @@ class DataService(BaseService):
         try:
             self.validate_symbol(symbol)
             
-            # Get current price data
-            current_price_df, stock_name = await self.get_current_price(symbol)
+            # Force fresh data collection from Yahoo Finance for accuracy
+            end_date = datetime.now(timezone.utc)
+            start_date = get_start_date_from_trading_days(end_date, 5)  # Get last 5 trading days
             
-            # Extract current price from DataFrame
-            if not current_price_df.empty:
-                current_price = float(current_price_df.iloc[0]['Close'])
-                
-                # Calculate change percent
-                change_percent = await self.calculate_change_percent(symbol)
-                
-                # Fallback to NASDAQ data if change_percent calculation failed
-                if change_percent is None:
-                    self.logger.debug(f"Attempting to get change percent for {symbol} from NASDAQ data")
-                    try:
-                        nasdaq_data = await self.get_nasdaq_stocks()
-                        if "data" in nasdaq_data and nasdaq_data["data"]:
-                            for stock in nasdaq_data["data"]:
-                                if stock.get("symbol") == symbol:
-                                    pct_str = stock.get("percentageChange", "0%")
-                                    change_percent = float(pct_str.replace("%", "").replace(",", ""))
-                                    self.logger.info(f"Retrieved change percent for {symbol} from NASDAQ data: {change_percent}%")
-                                    break
-                    except Exception as e:
-                        self.logger.error(f"Failed to get change percent from NASDAQ data: {str(e)}")
+            # Get fresh data directly from Yahoo Finance
+            df = await self._collect_stock_data(symbol, start_date, end_date)
+            
+            if df.empty:
+                self.logger.error(f"No data available for {symbol}")
+                result = {
+                    "symbol": symbol,
+                    "stock_name": symbol,
+                    "current_price": 0.0,
+                    "change_percent": None,
+                    "date_str": None,
+                    "message": "No data available for this symbol"
+                }
             else:
-                self.logger.warning(f"No current price data found for {symbol}")
-                current_price = 0.0
-                change_percent = None
+                # Get the most recent data point
+                df_sorted = df.sort_values('Date', ascending=False)
+                latest_data = df_sorted.iloc[0]
+                
+                current_price = float(latest_data['Close'])
+                stock_name = self.get_stock_name(symbol)
+                
+                # Calculate change percent from the same DataFrame (no additional API calls!)
+                change_percent = self._calculate_change_percent_from_dataframe(df_sorted)
+                
+                # Prepare date string
+                date_str = latest_data['Date'].strftime('%Y-%m-%d') if hasattr(latest_data['Date'], 'strftime') else str(latest_data['Date'])[:10]
+                
+                # Create message
+                message = "Current price retrieved successfully from fresh data"
+                if change_percent is None:
+                    message = "Current price retrieved, but change percent calculation failed"
+                
+                result = {
+                    "symbol": symbol,
+                    "stock_name": stock_name or symbol,
+                    "current_price": current_price,
+                    "change_percent": change_percent,
+                    "date_str": date_str,
+                    "message": message
+                }
             
-            # Prepare date string for metadata
-            date_str = None
-            if not current_price_df.empty and 'Date' in current_price_df.columns:
-                try:
-                    date_str = current_price_df.iloc[0]['Date'].strftime('%Y-%m-%d')
-                except (AttributeError, ValueError):
-                    try:
-                        date_obj = pd.to_datetime(current_price_df.iloc[0]['Date'])
-                        date_str = date_obj.strftime('%Y-%m-%d')
-                    except:
-                        date_str = str(current_price_df.iloc[0]['Date'])[:10]
-            
-            # Create message based on availability of change percent
-            message = "Current price retrieved successfully"
-            if current_price > 0 and change_percent is None:
-                message = "Current price retrieved, but change percent calculation failed"
-            
-            return {
-                "symbol": symbol,
-                "stock_name": stock_name or symbol,
-                "current_price": current_price,
-                "change_percent": change_percent,
-                "date_str": date_str,
-                "message": message
-            }
+            return result
             
         except Exception as e:
             self.logger.error(f"Error getting current price with metadata for {symbol}: {str(e)}")
@@ -1183,7 +1325,7 @@ class DataService(BaseService):
 
     async def get_historical_data_with_metadata(self, symbol: str, start_date: str, end_date: str) -> Dict[str, Any]:
         """
-        Get historical data with all metadata and transformations.
+        Get historical data with optimized change percent calculation.
         
         Args:
             symbol: Stock symbol
@@ -1203,16 +1345,16 @@ class DataService(BaseService):
             # Get historical data
             data, stock_name = await self.get_historical_stock_prices(symbol, start, end)
             
-            # Get current price data
-            current_price_df, _ = await self.get_current_price(symbol)
+            # Calculate change percent from the same data (no additional API calls!)
+            change_percent = self._calculate_change_percent_from_dataframe(data)
             
-            # Extract current price from DataFrame
-            if not current_price_df.empty:
-                current_price = float(current_price_df.iloc[0]['Close'])
-                change_percent = await self.calculate_change_percent(symbol)
-            else:
-                current_price = None
-                change_percent = None
+            # Get current price from the most recent data point
+            current_price = None
+            if not data.empty:
+                data_sorted = data.sort_values('Date', ascending=False)
+                latest_data = data_sorted.iloc[0]
+                if self._validate_price_data(latest_data):
+                    current_price = float(latest_data['Close'])
             
             # Transform DataFrame to list of price objects
             prices = self._transform_dataframe_to_prices(data)
@@ -1234,7 +1376,7 @@ class DataService(BaseService):
 
     async def get_recent_data_with_metadata(self, symbol: str, days_back: int) -> Dict[str, Any]:
         """
-        Get recent data with all metadata and transformations.
+        Get recent data with optimized change percent calculation.
         
         Args:
             symbol: Stock symbol
@@ -1247,32 +1389,53 @@ class DataService(BaseService):
             self.validate_symbol(symbol)
             self.validate_days_back(days_back)
             
-            # Get recent data
-            data, stock_name = await self.get_recent_data(symbol, days_back)
+            # Force fresh data collection to ensure accuracy
+            end_date = datetime.now(timezone.utc)
+            start_date = get_start_date_from_trading_days(end_date, days_back)
             
-            # Get current price data
-            current_price_df, _ = await self.get_current_price(symbol)
+            # Get fresh data directly from Yahoo Finance
+            df = await self._collect_stock_data(symbol, start_date, end_date)
             
-            # Extract current price from DataFrame
-            if not current_price_df.empty:
-                current_price = float(current_price_df.iloc[0]['Close'])
-                change_percent = await self.calculate_change_percent(symbol)
+            if df.empty:
+                self.logger.error(f"No data available for {symbol}")
+                result = {
+                    "symbol": symbol,
+                    "stock_name": symbol,
+                    "current_price": 0.0,
+                    "change_percent": None,
+                    "prices": [],
+                    "total_records": 0,
+                    "days_back": days_back
+                }
             else:
-                current_price = None
-                change_percent = None
+                # Get stock name
+                stock_name = self.get_stock_name(symbol)
+                
+                # Get current price from the most recent data
+                df_sorted = df.sort_values('Date', ascending=False)
+                if not df_sorted.empty:
+                    latest_data = df_sorted.iloc[0]
+                    current_price = float(latest_data['Close'])
+                    # Calculate change percent from the same DataFrame (no additional API calls!)
+                    change_percent = self._calculate_change_percent_from_dataframe(df_sorted)
+                else:
+                    current_price = 0.0
+                    change_percent = None
+                
+                # Transform DataFrame to list of price objects
+                prices = self._transform_dataframe_to_prices(df)
+                
+                result = {
+                    "symbol": symbol,
+                    "stock_name": stock_name,
+                    "current_price": current_price,
+                    "change_percent": change_percent,
+                    "prices": prices,
+                    "total_records": len(prices),
+                    "days_back": days_back
+                }
             
-            # Transform DataFrame to list of price objects
-            prices = self._transform_dataframe_to_prices(data)
-            
-            return {
-                "symbol": symbol,
-                "stock_name": stock_name,
-                "current_price": current_price,
-                "change_percent": change_percent,
-                "prices": prices,
-                "total_records": len(prices),
-                "days_back": days_back
-            }
+            return result
             
         except Exception as e:
             self.logger.error(f"Error getting recent data with metadata for {symbol}: {str(e)}")
@@ -1280,12 +1443,12 @@ class DataService(BaseService):
 
     async def get_data_from_end_date_with_metadata(self, symbol: str, end_date: str, days_back: int) -> Dict[str, Any]:
         """
-        Get data from end date with all metadata and transformations.
+        Get data from end date with optimized change percent calculation.
         
         Args:
             symbol: Stock symbol
             end_date: End date string (YYYY-MM-DD)
-            days_back: Number of days back
+            days_back: Number of days back from end date
             
         Returns:
             Dictionary containing data and metadata
@@ -1297,32 +1460,18 @@ class DataService(BaseService):
             # Parse end date
             end = self.validate_date_format(end_date)
             
-            # Get data from end date
+            # Get data from end date - UNPACK the tuple!
             data, stock_name = await self.get_historical_stock_prices_from_end_date(symbol, end, days_back)
             
-            # Get current price data
-            current_price_df, _ = await self.get_current_price(symbol)
+            # Calculate change percent from the same data (no additional API calls!)
+            change_percent = self._calculate_change_percent_from_dataframe(data)
             
-            # Extract current price from DataFrame
-            if not current_price_df.empty:
-                current_price = float(current_price_df.iloc[0]['Close'])
-                change_percent = await self.calculate_change_percent(symbol)
-            else:
-                current_price = None
-                change_percent = None
-            
-            # Get the oldest date from the data
-            start_date = None
+            # Get current price from the most recent data point
+            current_price = None
             if not data.empty:
-                if 'Date' in data.columns:
-                    data = data.sort_values('Date')
-                    start_date = data.iloc[0]['Date']
-                else:
-                    data = data.sort_index()
-                    start_date = data.index[0]
-            
-            # Format start_date for the response
-            start_date_iso = start_date.isoformat() if hasattr(start_date, 'isoformat') else str(start_date)
+                data_sorted = data.sort_values('Date', ascending=False)
+                latest_data = data_sorted.iloc[0]
+                current_price = float(latest_data['Close'])
             
             # Transform DataFrame to list of price objects
             prices = self._transform_dataframe_to_prices(data)
@@ -1334,7 +1483,6 @@ class DataService(BaseService):
                 "change_percent": change_percent,
                 "prices": prices,
                 "total_records": len(prices),
-                "start_date": start_date_iso,
                 "end_date": end.isoformat(),
                 "days_back": days_back
             }
