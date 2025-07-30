@@ -127,6 +127,23 @@ class NewsServiceConfig(BaseModel):
     HOST: str = "news-service"
     PORT: int = 8000
 
+class MonitoringConfig(BaseModel):
+    """Monitoring service configuration."""
+    
+    # Timeout settings
+    DATA_FETCH_TIMEOUT: int = 180  # 3 minutes
+    PREPROCESSING_TIMEOUT: int = 120  # 2 minutes
+    CONNECT_TIMEOUT: int = 15  # 15 seconds
+    
+    # Retry settings
+    MAX_RETRIES: int = 5
+    MIN_RETRY_DELAY: int = 5
+    MAX_RETRY_DELAY: int = 30
+    
+    # Monitoring intervals
+    PERFORMANCE_CHECK_INTERVAL: int = 24 * 60 * 60  # 24 hours
+    DATA_DRIFT_CHECK_INTERVAL: int = 7 * 24 * 60 * 60  # 7 days
+
 class Config:
     """Main configuration class."""
 
@@ -142,6 +159,7 @@ class Config:
         self.postgres = PostgresDatabaseConfig()
         self.stocks_db = StocksDatabaseConfig()
         self.news_service = NewsServiceConfig()
+        self.monitoring = MonitoringConfig()
 
         # Create necessary directories
         self._create_directories()
