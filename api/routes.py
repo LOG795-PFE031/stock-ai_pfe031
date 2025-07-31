@@ -458,22 +458,20 @@ async def get_news_data(
 
 # Model management endpoints
 @router.get(
-    "/models", 
-    response_model=ModelListMlflowResponse,
-    tags=["Model Management"]
+    "/models", response_model=ModelListMlflowResponse, tags=["Model Management"]
 )
 async def get_models():
     """List all available ML models."""
     try:
-        url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models"  
+        url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models"
 
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             response.raise_for_status()
             models_response = response.json()
-            
+
             return ModelListMlflowResponse(**models_response)
-    
+
     except Exception as e:
         api_logger.error(f"Failed to get models: {str(e)}")
         raise HTTPException(
@@ -489,43 +487,19 @@ async def get_models():
 async def get_model_metadata(model_name: str):
     """Get metadata for a specific model."""
     try:
-        url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models/{model_name}"  
+        url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models/{model_name}"
 
         async with httpx.AsyncClient() as client:
             r = await client.get(url)
             r.raise_for_status()
             metadata = r.json()
-            
+
             print(f"Model metadata for {model_name}: {metadata}")
             return metadata
     except Exception as e:
         api_logger.error(f"Failed to get model metadata: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get model metadata: {str(e)}"
-        ) from e
-
-
-# Can be removed
-@router.get(
-    "/models/{model_name}/exists",
-    tags=["Deployment"],
-)
-async def production_model_exists(model_name: str):
-    """
-    Check whether a production model with the given name exists.
-    """
-    try:
-        url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models/{model_name}/exists" 
-    
-        async with httpx.AsyncClient(timeout=None) as client:
-            r = await client.get(url)
-            r.raise_for_status()
-            return r.json()
-
-    except Exception as e:
-        api_logger.error(f"Get production model failed: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Get production model failed: {str(e)}"
         ) from e
 
 
@@ -694,7 +668,7 @@ async def train_model(
         api_logger.error(f"Training failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}") from e
 
-        
+
 @router.post("/data/cleanup", response_model=Dict[str, Any], tags=["Data Services"])
 async def cleanup_stock_data(symbol: Optional[str] = None):
     """Clean up and maintain stock data files."""
