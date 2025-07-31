@@ -118,7 +118,7 @@ async def get_stocks_list():
     try:
         # Call the data ingestion service
         data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stocks"
-        
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(data_service_url)
             response.raise_for_status()
@@ -159,9 +159,11 @@ async def get_current_stock_data(
             )
 
         # Call the data ingestion service
-        data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stock/current"
-        
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        data_service_url = (
+            f"http://{config.data.HOST}:{config.data.PORT}/data/stock/current"
+        )
+
+        async with httpx.AsyncClient(timeout=None) as client:
             response = await client.get(data_service_url, params={"symbol": symbol})
             response.raise_for_status()
             stock_data = response.json()
@@ -234,13 +236,15 @@ async def get_historical_stock_data(
             )
 
         # Call the data ingestion service
-        data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stock/historical"
+        data_service_url = (
+            f"http://{config.data.HOST}:{config.data.PORT}/data/stock/historical"
+        )
         params = {
             "symbol": symbol,
             "start_date": start_date.strftime("%Y-%m-%d"),
-            "end_date": end_date.strftime("%Y-%m-%d")
+            "end_date": end_date.strftime("%Y-%m-%d"),
         }
-        
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(data_service_url, params=params)
             response.raise_for_status()
@@ -280,7 +284,10 @@ async def get_historical_stock_data(
 async def get_recent_stock_data(
     symbol: str = Query(..., description="Stock symbol to retrieve data for"),
     days_back: int = Query(
-        config.data.LOOKBACK_PERIOD_DAYS, description="Number of days to look back (default: 365)", ge=1, le=10_000
+        config.data.LOOKBACK_PERIOD_DAYS,
+        description="Number of days to look back (default: 365)",
+        ge=1,
+        le=10_000,
     ),
 ):
     """Get recent stock data for a symbol (based on a number of days back)."""
@@ -292,9 +299,11 @@ async def get_recent_stock_data(
             )
 
         # Call the data ingestion service
-        data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stock/recent"
+        data_service_url = (
+            f"http://{config.data.HOST}:{config.data.PORT}/data/stock/recent"
+        )
         params = {"symbol": symbol, "days_back": days_back}
-        
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(data_service_url, params=params)
             response.raise_for_status()
@@ -365,13 +374,15 @@ async def get_historical_stock_prices_from_end_date(
             )
 
         # Call the data ingestion service
-        data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stock/from-end-date"
+        data_service_url = (
+            f"http://{config.data.HOST}:{config.data.PORT}/data/stock/from-end-date"
+        )
         params = {
             "symbol": symbol,
             "end_date": end_date.strftime("%Y-%m-%d"),
-            "days_back": days_back
+            "days_back": days_back,
         }
-        
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(data_service_url, params=params)
             response.raise_for_status()
@@ -666,7 +677,7 @@ async def cleanup_stock_data(symbol: Optional[str] = None):
         # Call the data ingestion service
         data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/cleanup"
         params = {"symbol": symbol} if symbol else {}
-        
+
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(data_service_url, params=params)
             response.raise_for_status()
