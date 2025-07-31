@@ -3,8 +3,6 @@ from prefect import task
 import httpx
 from core.config import config
 
-from services import EvaluationService
-
 
 @task(
     name="is_ready_for_deployment",
@@ -12,9 +10,7 @@ from services import EvaluationService
     retries=2,
     retry_delay_seconds=5,
 )
-async def is_ready_for_deployment(
-    candidate_metrics, live_metrics, service: EvaluationService
-) -> bool:
+async def is_ready_for_deployment(candidate_metrics, live_metrics) -> bool:
     """
     Determine if the candidate model is ready for deployment by comparing evaluation metrics.
 
@@ -27,7 +23,7 @@ async def is_ready_for_deployment(
         bool: True if the candidate model is ready for deployment, False otherwise.
     """
     url = f"http://{config.evaluation_service.HOST}:{config.evaluation_service.PORT}/evaluation/ready_for_deployment"
-    
+
     payload = {
         "candidate_metrics": candidate_metrics,
         "live_metrics": live_metrics,
@@ -37,5 +33,5 @@ async def is_ready_for_deployment(
         resp = await client.post(url, json=payload)
         resp.raise_for_status()
         return resp.json()["ready_for_deployment"]
-    
+
     # return await service.is_ready_for_deployment(candidate_metrics, live_metrics)
