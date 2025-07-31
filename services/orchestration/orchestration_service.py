@@ -14,7 +14,6 @@ from core import BaseService
 from services.deployment import DeploymentService
 
 from services.evaluation import EvaluationService
-from services.data_ingestion import DataService
 from .prediction_storage import PredictionStorage
 from .flows import (
     run_evaluation_flow,
@@ -34,12 +33,10 @@ class OrchestrationService(BaseService):
 
     def __init__(
         self,
-        data_service: DataService,
         deployment_service: DeploymentService,
         evaluation_service: EvaluationService,
     ):
         super().__init__()
-        self.data_service = data_service
         self.deployment_service = deployment_service
         self.evaluation_service = evaluation_service
         self.logger = logger["orchestration"]
@@ -82,7 +79,6 @@ class OrchestrationService(BaseService):
                 run_training_flow,
                 model_type,
                 symbol,
-                self.data_service,
                 self.deployment_service,
                 self.evaluation_service,
             )
@@ -125,7 +121,6 @@ class OrchestrationService(BaseService):
             result: The result of the prediction pipeline execution.
         """
         try:
-            # Enforce upper case for the symbol
             symbol = symbol.upper()
 
             self.logger.info(
@@ -164,7 +159,6 @@ class OrchestrationService(BaseService):
                 run_prediction_flow,
                 model_type,
                 symbol,
-                self.data_service,
                 self.deployment_service,
             )
 
@@ -256,7 +250,6 @@ class OrchestrationService(BaseService):
                 run_evaluation_flow,
                 model_type,
                 symbol,
-                self.data_service,
                 self.deployment_service,
                 self.evaluation_service,
             )
@@ -346,7 +339,6 @@ class OrchestrationService(BaseService):
                     model_type,
                     symbol,
                     trading_days,
-                    self.data_service,
                     self.deployment_service,
                 )
 
@@ -489,12 +481,17 @@ class OrchestrationService(BaseService):
         model_types = trainers["types"]
 
         # Retrieve the symbols to predict
-        stocks_data = await self.data_service.get_nasdaq_stocks()
+        data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stocks"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(data_service_url)
+            response.raise_for_status()
+            stocks_data = response.json()
+        
         symbols = [item["symbol"] for item in stocks_data["data"]]
 
         run_batch_prediction(
             model_types,
             symbols,
-            self.data_service,
             self.deployment_service,
         )

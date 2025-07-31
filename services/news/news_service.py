@@ -24,18 +24,19 @@ from core.prometheus_metrics import (
 
 logger = logger["news"]
 
-
 class NewsService(BaseService):
     """Service for news analysis and sentiment."""
 
-    _instance = None
-    _initialized = False
-    _sentiment_analyzer = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(NewsService, cls).__new__(cls)
-        return cls._instance
+    def __init__(self):
+        self.sentiment_analyzer = None
+        self.model_version = "0.1.0"
+        self.news_data = {}
+        self.sentiment_cache = {}
+        self.logger = logger
+        self.device = None
+        self.model = None
+        self.tokenizer = None
+        self._initialized = False
 
     def ensure_textblob_corpora(self):
         try:
@@ -46,69 +47,6 @@ class NewsService(BaseService):
             return True
         except LookupError:
             return False
-
-    def __init__(self):
-        if self._initialized:
-            return
-
-        self.sentiment_analyzer = None
-        self.model_version = "0.1.0"
-        self.news_data = {}
-        self.sentiment_cache = {}
-        self.logger = logger
-
-        logger.info("Initializing NewsService...")
-
-        # Download required NLTK data for TextBlob
-        try:
-            import nltk
-            nltk.download("punkt")
-            nltk.download("averaged_perceptron_tagger")
-            nltk.download("wordnet")
-            logger.info("NLTK data downloaded successfully")
-        except Exception as e:
-            logger.warning(f"Failed to download NLTK data: {str(e)}")
-
-        # Download TextBlob corpora
-        if not self.ensure_textblob_corpora():
-            try:
-                import subprocess
-                subprocess.run(["python", "-m", "textblob.download_corpora"], check=True)
-                logger.info("TextBlob corpora downloaded successfully")
-            except Exception as e:
-                logger.warning(f"Failed to download TextBlob corpora: {str(e)}")
-        else:
-            logger.info("TextBlob corpora already present")
-
-        # Initialize FinBERT model
-        try:
-            if torch.cuda.is_available():
-                self.device = torch.device("cuda")
-                logger.info("CUDA available, using GPU")
-            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-                self.device = torch.device("mps")
-                logger.info("MPS available, using Apple Silicon GPU")
-            else:
-                self.device = torch.device("cpu")
-                logger.info("No GPU available, using CPU")
-
-            logger.info("Loading FinBERT model...")
-            self.model = BertForSequenceClassification.from_pretrained(
-                "yiyanghkust/finbert-tone", num_labels=3
-            )
-            self.tokenizer = BertTokenizer.from_pretrained("yiyanghkust/finbert-tone")
-            self.model.to(self.device)
-
-            logger.info("FinBERT model loaded successfully")
-            self._sentiment_analyzer = self._analyze_with_finbert
-        except Exception as e:
-            logger.warning(
-                f"Failed to initialize FinBERT, falling back to TextBlob: {str(e)}"
-            )
-            self._sentiment_analyzer = self._analyze_with_textblob
-
-        self._initialized = True
-        logger.info("NewsService initialized successfully")
 
     @retry(
         stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10)
@@ -132,50 +70,66 @@ class NewsService(BaseService):
             raise
 
     async def initialize(self) -> None:
+        if self._initialized:
+            self.logger.info("NewsService is already initialized")
+            return
+
+        spinner = create_spinner("Initializing sentiment analyzer...")
+        spinner.start()
         try:
-            spinner = create_spinner("Initializing sentiment analyzer...")
-            spinner.start()
+            # Download required NLTK data for TextBlob
+            import nltk
+            nltk.download("punkt")
+            nltk.download("averaged_perceptron_tagger")
+            nltk.download("wordnet")
+            self.logger.info("NLTK data downloaded successfully")
+
+            # Download TextBlob corpora if missing
+            if not self.ensure_textblob_corpora():
+                import subprocess
+                subprocess.run(["python", "-m", "textblob.download_corpora"], check=True)
+                self.logger.info("TextBlob corpora downloaded successfully")
+            else:
+                self.logger.info("TextBlob corpora already present")
+
+            # Try to load FinBERT model
             try:
+                if torch.cuda.is_available():
+                    self.device = torch.device("cuda")
+                    self.logger.info("CUDA available, using GPU")
+                elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                    self.device = torch.device("mps")
+                    self.logger.info("MPS available, using Apple Silicon GPU")
+                else:
+                    self.device = torch.device("cpu")
+                    self.logger.info("No GPU available, using CPU")
+
                 model_path = await self._download_model()
-                self.sentiment_analyzer = pipeline(
-                    "sentiment-analysis",
-                    model=model_path,
-                    device=0 if torch.cuda.is_available() else -1,
+                self.model = BertForSequenceClassification.from_pretrained(
+                    model_path, num_labels=3
                 )
-                spinner.stop()
-                time.sleep(0.5)
-                print_status(
-                    "Success",
-                    "News service initialized successfully",
-                    "success",
-                    clear_previous=True,
-                )
-                self.logger.info("News service initialized successfully")
+                self.tokenizer = BertTokenizer.from_pretrained(model_path)
+                self.model.to(self.device)
+                self.logger.info("FinBERT model loaded successfully")
+                self.sentiment_analyzer = self._analyze_with_finbert
             except Exception as e:
-                spinner.stop()
                 self.logger.warning(
-                    f"Failed to download model, proceeding with TextBlob fallback: {str(e)}"
+                    f"Failed to initialize FinBERT, falling back to TextBlob: {str(e)}"
                 )
-                print_status(
-                    "Warning",
-                    "Using TextBlob fallback for sentiment analysis",
-                    "warning",
-                    clear_previous=True,
-                )
-                def textblob_analyzer(text):
-                    blob = TextBlob(text)
-                    polarity = blob.sentiment.polarity
-                    subjectivity = blob.sentiment.subjectivity
-                    if polarity > 0.03:
-                        label = "POSITIVE"
-                    elif polarity < -0.03:
-                        label = "NEGATIVE"
-                    else:
-                        label = "NEUTRAL"
-                    confidence = (abs(polarity) + (1 - subjectivity)) / 2
-                    return [{"label": label, "score": confidence}]
-                self.sentiment_analyzer = textblob_analyzer
+                self.sentiment_analyzer = self._analyze_with_textblob
+
+            spinner.stop()
+            time.sleep(0.5)
+            print_status(
+                "Success",
+                "News service initialized successfully",
+                "success",
+                clear_previous=True,
+            )
+            self.logger.info("News service initialized successfully")
+            self._initialized = True
         except Exception as e:
+            spinner.stop()
             self.logger.error(f"Failed to initialize news service: {str(e)}")
             print_error(e)
             raise
@@ -189,10 +143,45 @@ class NewsService(BaseService):
             self.logger.error(f"Error during news service cleanup: {str(e)}")
             print_error(e)
 
+    async def health_check(self) -> Dict[str, Any]:
+        """Check service health and analyzer status."""
+        health_data = {
+            "status": "healthy" if self._initialized else "unhealthy",
+            "initialized": self._initialized,
+            "sentiment_analyzer_available": self.sentiment_analyzer is not None,
+            "model_type": "finbert" if self.model is not None else "textblob",
+            "device": str(self.device) if self.device else None,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        # Test the analyzer if available
+        if self.sentiment_analyzer is not None:
+            try:
+                test_result = self.sentiment_analyzer("This is a positive test message.")
+                health_data["test_analysis"] = test_result[0] if test_result else None
+                health_data["analyzer_working"] = True
+            except Exception as e:
+                health_data["analyzer_working"] = False
+                health_data["analyzer_error"] = str(e)
+        
+        return health_data
+
     async def get_news_data(
         self, symbol: str, start_date: datetime, end_date: datetime
     ) -> Dict[str, Any]:
         try:
+            # Ensure service is initialized
+            if not self._initialized:
+                self.logger.warning("Service not initialized, initializing now...")
+                await self.initialize()
+            
+            # Check if sentiment analyzer is available
+            if self.sentiment_analyzer is None:
+                self.logger.error("Sentiment analyzer is not available!")
+                # Try to reinitialize
+                self.sentiment_analyzer = self._analyze_with_textblob
+                self.logger.info("Set fallback TextBlob analyzer")
+            
             self.logger.info(f"Starting news data retrieval for {symbol}")
             articles = await self._get_news_articles(symbol, start_date, end_date)
             self.logger.info(f"Retrieved {len(articles)} articles for {symbol}")
@@ -217,14 +206,42 @@ class NewsService(BaseService):
                 try:
                     sentiment = None
                     confidence = None
+                    
                     if self.sentiment_analyzer is not None:
                         try:
-                            text = article["title"] + " " + article["content"]
-                            sentiment_result = self.sentiment_analyzer(text)[0]
-                            sentiment = sentiment_result["label"]
-                            confidence = sentiment_result["score"]
+                            # Use title if content is empty/missing
+                            title = article.get("title", "")
+                            content = article.get("content", "")
+                            
+                            # Combine title and content, fallback to just title if content is empty
+                            if content and content.strip():
+                                text = f"{title} {content}"
+                            else:
+                                text = title
+                            
+                            # Skip if no text to analyze
+                            if not text or not text.strip():
+                                self.logger.warning(f"No text to analyze for article: {title[:50]}...")
+                                continue
+                            
+                            self.logger.debug(f"Analyzing text: '{text[:100]}...' (length: {len(text)})")
+                            
+                            sentiment_result = self.sentiment_analyzer(text)
+                            if sentiment_result and len(sentiment_result) > 0:
+                                sentiment = sentiment_result[0]["label"]
+                                confidence = sentiment_result[0]["score"]
+                                self.logger.debug(f"Analysis result: {sentiment} (confidence: {confidence:.3f})")
+                            else:
+                                self.logger.warning(f"Empty sentiment result for: {title[:50]}...")
+                                
                         except Exception as e:
-                            self.logger.warning(f"Sentiment analysis failed: {str(e)}")
+                            self.logger.error(f"Sentiment analysis failed for '{title[:50]}...': {str(e)}")
+                            # Try to get more details about the error
+                            import traceback
+                            self.logger.debug(f"Full traceback: {traceback.format_exc()}")
+                    else:
+                        self.logger.error("Sentiment analyzer is None!")
+                    
                     processed_article = {
                         "title": article["title"],
                         "url": article["url"],
@@ -234,8 +251,11 @@ class NewsService(BaseService):
                         "confidence": confidence,
                     }
                     processed_articles.append(processed_article)
+                    
                 except Exception as e:
                     self.logger.error(f"Error processing article: {str(e)}")
+                    import traceback
+                    self.logger.debug(f"Full traceback: {traceback.format_exc()}")
                     continue
             sentiment_analysis_duration = time.perf_counter() - start_time
             sentiment_analysis_time_seconds.labels(
@@ -346,25 +366,24 @@ class NewsService(BaseService):
                 "neutral": 0.0,
                 "average_confidence": 0.0,
             }
+        
         total = len(sentiment_results)
-        positive = sum(
-            result.get("confidence")
-            for result in sentiment_results
+        
+        # Count articles by sentiment type
+        positive_count = sum(
+            1 for result in sentiment_results
             if result.get("sentiment") == "POSITIVE"
-            and result.get("confidence") is not None
         )
-        negative = sum(
-            result.get("confidence")
-            for result in sentiment_results
+        negative_count = sum(
+            1 for result in sentiment_results
             if result.get("sentiment") == "NEGATIVE"
-            and result.get("confidence") is not None
         )
-        neutral = sum(
-            result.get("confidence")
-            for result in sentiment_results
+        neutral_count = sum(
+            1 for result in sentiment_results
             if result.get("sentiment") == "NEUTRAL"
-            and result.get("confidence") is not None
         )
+        
+        # Calculate average confidence from valid confidence scores
         valid_confidences = [
             r["confidence"]
             for r in sentiment_results
@@ -375,10 +394,13 @@ class NewsService(BaseService):
             if valid_confidences
             else 0.0
         )
+        
+        self.logger.debug(f"Metrics calculation: pos={positive_count}, neg={negative_count}, neu={neutral_count}, total={total}, avg_conf={avg_confidence:.3f}")
+        
         return {
-            "positive": positive / total if total > 0 else 0.0,
-            "negative": negative / total if total > 0 else 0.0,
-            "neutral": neutral / total if total > 0 else 0.0,
+            "positive": positive_count / total if total > 0 else 0.0,
+            "negative": negative_count / total if total > 0 else 0.0,
+            "neutral": neutral_count / total if total > 0 else 0.0,
             "average_confidence": avg_confidence,
         }
 
@@ -408,32 +430,39 @@ class NewsService(BaseService):
                 }
             ]
         except Exception as e:
-            logger.error(f"FinBERT analysis failed: {e}")
+            self.logger.error(f"FinBERT analysis failed: {e}")
             return self._analyze_with_textblob(text)
 
     def _analyze_with_textblob(self, text: str) -> List[Dict]:
         try:
+            if not text or not text.strip():
+                self.logger.warning("Empty text provided to TextBlob analyzer")
+                return [{"label": "NEUTRAL", "score": 0.5}]
+            
+            self.logger.debug(f"TextBlob analyzing: '{text[:50]}...'")
             blob = TextBlob(text)
             polarity = blob.sentiment.polarity
             subjectivity = blob.sentiment.subjectivity
+            
+            self.logger.debug(f"TextBlob raw results: polarity={polarity:.3f}, subjectivity={subjectivity:.3f}")
+            
             if polarity > 0.1:
-                sentiment = "positive"
+                sentiment = "POSITIVE"
             elif polarity < -0.1:
-                sentiment = "negative"
+                sentiment = "NEGATIVE"
             else:
-                sentiment = "neutral"
-            confidence = (abs(polarity) + (1 - subjectivity)) / 2
-            return [
-                {
-                    "label": sentiment.upper(),
-                    "score": confidence,
-                }
-            ]
+                sentiment = "NEUTRAL"
+            
+            # Improved confidence calculation
+            confidence = min(abs(polarity) + (1 - subjectivity) / 2, 1.0)
+            confidence = max(confidence, 0.1)  # Minimum confidence of 0.1
+            
+            result = [{"label": sentiment, "score": confidence}]
+            self.logger.debug(f"TextBlob final result: {result}")
+            return result
+            
         except Exception as e:
-            logger.error(f"TextBlob analysis failed: {e}")
-            return [
-                {
-                    "label": "NEUTRAL",
-                    "score": 1.0,
-                }
-            ]
+            self.logger.error(f"TextBlob analysis failed: {e}")
+            import traceback
+            self.logger.debug(f"TextBlob traceback: {traceback.format_exc()}")
+            return [{"label": "NEUTRAL", "score": 0.5}]

@@ -8,7 +8,6 @@ from ..tasks.evaluation import evaluate, log_metrics_to_mlflow
 from core.utils import get_model_name
 from core.types import ProcessedData
 from services import (
-    DataService,
     DeploymentService,
     EvaluationService,
 )
@@ -21,7 +20,6 @@ from services import (
 def run_evaluation_flow(
     model_type: str,
     symbol: str,
-    data_service: DataService,
     deployment_service: DeploymentService,
     evaluation_service: EvaluationService,
 ) -> Optional[dict[str, float]]:
@@ -39,7 +37,6 @@ def run_evaluation_flow(
     Parameters:
         model_type (str): The type of model (e.g. 'lstm', 'prophet').
         symbol (str): Stock ticker symbol.
-        data_service (DataService): Service responsible for fetching raw stock data.
         deployment_service (DeploymentService): Service to interact with deployed models.
         evaluation_service (EvaluationService): Service for computing model evaluation metrics.
 
@@ -57,8 +54,7 @@ def run_evaluation_flow(
     if prod_model_exist:
 
         # Load the recent stock data
-        raw_data = load_recent_stock_data.submit(
-            service=data_service, symbol=symbol
+        raw_data = load_recent_stock_data.submit(symbol=symbol
         ).result()
 
         # Preprocess the raw data

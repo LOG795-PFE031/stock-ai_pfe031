@@ -2,6 +2,7 @@
 Configuration settings for the Stock AI system.
 """
 
+import os
 from pathlib import Path
 from pydantic import BaseModel
 
@@ -15,6 +16,8 @@ class DataConfig(BaseModel):
     NEWS_HISTORY_DAYS: int = 7
     MAX_NEWS_ARTICLES: int = 100
     UPDATE_INTERVAL: int = 60  # minutes
+    HOST: str = "data-service"
+    PORT: int = 8000
 
 
 class PreprocessingConfig(BaseModel):
@@ -95,7 +98,7 @@ class TrainingServiceConfig(BaseModel):
 
 
 class PostgresDatabaseConfig(BaseModel):
-    """PostgreSQL configuration"""
+    """PostgreSQL configuration for the main database"""
 
     HOST: str = "postgres-stock-ai"
     PORT: int = 5432
@@ -105,12 +108,46 @@ class PostgresDatabaseConfig(BaseModel):
     @property
     def URL(self) -> str:
         return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/stocks"
-    
+
+
+class StocksDatabaseConfig(BaseModel):
+    """PostgreSQL configuration for the dedicated stock data database"""
+
+    HOST: str = os.getenv("STOCK_DB_HOST", "postgres-stock-data")
+    PORT: int = int(os.getenv("STOCK_DB_PORT", "5432"))
+    USER: str = os.getenv("STOCK_DB_USER", "stockuser")
+    PASSWORD: str = os.getenv("STOCK_DB_PASSWORD", "stockpass")
+    DB_NAME: str = os.getenv("STOCK_DB_NAME", "stockdata")
+
+    @property
+    def URL(self) -> str:
+        return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.DB_NAME}"
+
+
 class NewsServiceConfig(BaseModel):
     """News service configuration."""
 
     HOST: str = "news-service"
-    PORT: int = 8002
+    PORT: int = 8000
+
+
+class MonitoringConfig(BaseModel):
+    """Monitoring service configuration."""
+
+    # Timeout settings
+    DATA_FETCH_TIMEOUT: int = 180  # 3 minutes
+    PREPROCESSING_TIMEOUT: int = 120  # 2 minutes
+    CONNECT_TIMEOUT: int = 15  # 15 seconds
+
+    # Retry settings
+    MAX_RETRIES: int = 5
+    MIN_RETRY_DELAY: int = 5
+    MAX_RETRY_DELAY: int = 30
+
+    # Monitoring intervals
+    PERFORMANCE_CHECK_INTERVAL: int = 24 * 60 * 60  # 24 hours
+    DATA_DRIFT_CHECK_INTERVAL: int = 7 * 24 * 60 * 60  # 7 days
+
 
 class Config:
     """Main configuration class."""
@@ -125,7 +162,9 @@ class Config:
         self.training_service = TrainingServiceConfig()
         self.mlflow_server = MLFlowConfig()
         self.postgres = PostgresDatabaseConfig()
+        self.stocks_db = StocksDatabaseConfig()
         self.news_service = NewsServiceConfig()
+        self.monitoring = MonitoringConfig()
 
         # Create necessary directories
         self._create_directories()

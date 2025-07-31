@@ -5,6 +5,9 @@ textblob==0.19.0
 torch==2.7.1
 transformers==4.53.1
 yfinance==0.2.65
-uvicorn[standard]
-fastapi
+# FastAPI and web framework
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+starlette==0.47.2
 prometheus_client
+hf_transfer==0.1.4

@@ -106,11 +106,21 @@ class StocksListDataResponse(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
+class NewsArticle(BaseModel):
+    """Schema for a news article."""
+    title: str
+    url: Optional[str] = None
+    published_date: Optional[str] = None
+    source: Optional[str] = None
+    sentiment: Optional[str] = None
+    confidence: Optional[float] = None
+
+
 class NewsDataResponse(BaseModel):
     """News data response."""
 
     symbol: str
-    articles: List[Dict[str, Any]]
+    articles: List[NewsArticle]
     total_articles: int
     sentiment_metrics: Dict[str, float]
     meta: MetaInfo
