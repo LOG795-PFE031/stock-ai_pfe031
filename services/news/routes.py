@@ -51,7 +51,7 @@ async def health_check():
         ) from exception
     
 
-@router.get("/news/", response_model=NewsDataResponse, tags=["News"])
+@router.get("/news", response_model=NewsDataResponse, tags=["News"])
 async def get_news_data(
     symbol: str = Query(..., description="Stock symbol to retrieve news data for"),
     start_date: str = Query(None, description="Start date (YYYY-MM-DD)"),

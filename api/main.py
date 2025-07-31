@@ -22,7 +22,6 @@ from api.routes import router
 from core.logging import logger
 from db.init_db import create_database
 from services import (
-    DataService,
     DeploymentService,
     RabbitMQService,
     MonitoringService,
@@ -37,17 +36,14 @@ from core.monitor_utils import (
 os.makedirs("data/news", exist_ok=True)
 
 # Create service instances in dependency order
-data_service = DataService()
 deployment_service = DeploymentService()
 orchestation_service = OrchestrationService(
-    data_service=data_service,
     deployment_service=deployment_service,
 )
 rabbitmq_service = RabbitMQService()
 monitoring_service = MonitoringService(
     deployment_service,
     orchestation_service,
-    data_service,
     check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
     data_interval_seconds=7 * 24 * 60 * 60,
 )
@@ -64,7 +60,6 @@ async def lifespan(app: FastAPI):
         create_database()
 
         # Initialize services in order of dependencies
-        await data_service.initialize()
         await deployment_service.initialize()
         await orchestation_service.initialize()
         await monitoring_service.initialize()
@@ -85,7 +80,6 @@ async def lifespan(app: FastAPI):
             await monitoring_service.cleanup()
             await orchestation_service.cleanup()
             await deployment_service.cleanup()
-            await data_service.cleanup()
             rabbitmq_service.close()  # Close RabbitMQ connection
 
             logger["main"].info("All services cleaned up successfully")
@@ -122,6 +116,10 @@ app = FastAPI(
         {
             "name": "Training Services",
             "description": "Endpoints for model training and status monitoring",
+        },
+        {
+            "name": "News Services",
+            "description": "Endpoints for news retrieval and sentiment analysis",
         },
     ],
 )

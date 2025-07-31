@@ -67,25 +67,14 @@ sandbox/lstm-stock-price-prediction/models/
 **.csv
 **.gz
 
-# Ignore models data folder
-data/models/
-
-# Ignore postgres data folder
-data/postgres_data/
-
-# Ignore Minio data
-minio_data/
-
-# Ignore Prefect files
-prefect_data/
+# Ignore all data
+/data
 
 # Ignore PosgreSQL data
 stock_postgres_data/
 prefect_postgres_data/
 mlflow_postgres_data/
-
-# Ignore Scaler data
-data/scalers
+services/data_ingestion/data/postgres/
 
 # Ignore Grafana DB and plugins
 grafana/grafana.db

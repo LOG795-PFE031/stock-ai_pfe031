@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 import asyncio
 import time
 from .routes import router
-from .news_service import NewsService
+from .data_service import DataService
 from core.progress import create_spinner, print_status, print_error
 from core.logging import logger
 from core.monitor_utils import (
@@ -19,19 +19,19 @@ from core.prometheus_metrics import (
     http_request_duration_seconds,
     http_errors_total,
 )
-logger = logger["news"]
+logger = logger["data"]
 
 # Service instance
-news_service = NewsService()
+data_service = DataService()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        spinner = create_spinner("Initializing NewsService...")
+        spinner = create_spinner("Initializing DataService...")
         spinner.start()
-        await news_service.initialize()
+        await data_service.initialize()
         spinner.stop()
-        print_status("Success", "NewsService initialized successfully", "success")
+        print_status("Success", "DataService initialized successfully", "success")
         yield
     except Exception as e:
         spinner.stop()
@@ -40,18 +40,18 @@ async def lifespan(app: FastAPI):
         raise
     finally:
         try:
-            await news_service.cleanup()
-            logger.info("NewsService cleaned up successfully")
+            await data_service.cleanup()
+            logger.info("DataService cleaned up successfully")
         except Exception as e:
             logger.error(f"Error during shutdown: {e}")
 
 app = FastAPI(
-    title="News Service API",
-    description="Microservice for financial news retrieval and sentiment analysis.",
+    title="Data Service API",
+    description="Microservice for financial data retrieval, storage and management.",
     version="1.0.0",
     lifespan=lifespan,
     openapi_tags=[
-        {"name": "News", "description": "Endpoints for retrieving news and sentiment analysis"},
+        {"name": "Data", "description": "Endpoints for retrieving stock data and prices"},
         {"name": "System", "description": "System health and status endpoints"},
     ],
 )
@@ -106,11 +106,10 @@ async def prometheus_middleware(request: Request, call_next):
 
     return response
 
-
 # Health check endpoint
 @app.get("/health", tags=["System"])
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
 
-app.include_router(router, prefix="/data")
+app.include_router(router, prefix="/data")  # Add /data prefix to all routes 

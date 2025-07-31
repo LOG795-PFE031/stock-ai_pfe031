@@ -4,7 +4,6 @@ from typing import Any
 
 from core.utils import get_model_name
 from services import (
-    DataService,
     DeploymentService,
 )
 from ..tasks.data import load_recent_stock_data, preprocess_data
@@ -24,7 +23,6 @@ PHASE = "training"
 def run_training_flow(
     model_type: str,
     symbol: str,
-    data_service: DataService,
     deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
@@ -32,7 +30,7 @@ def run_training_flow(
     for a specific stock symbol and model type.
 
     The pipeline performs the following steps:
-    1. Loads the latest stock data.
+    1. Loads the latest stock data from the API.
     2. Preprocesses the data for training and evaluation.
     3. Trains a new model and evaluates both the new (candidate) and current production model.
     4. Compares performance metrics.
@@ -41,7 +39,6 @@ def run_training_flow(
     Args:
         model_type (str): Type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol.
-        data_service: Service used to load raw market data.
         deployment_service: Service used to perform predictions and manage models.
         evaluation_service: Service used to evaluate and compare models based on performance metrics.
 
@@ -56,7 +53,7 @@ def run_training_flow(
     logger = get_run_logger()
 
     # Load the recent stock data
-    raw_data = load_recent_stock_data.submit(data_service, symbol)
+    raw_data = load_recent_stock_data.submit(symbol)
 
     # --- Training of the model ---
 

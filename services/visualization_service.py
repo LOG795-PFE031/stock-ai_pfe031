@@ -8,18 +8,18 @@ from plotly.subplots import make_subplots
 import plotly.express as px
 import pandas as pd
 from datetime import datetime
+import httpx
 
 from core import BaseService
-from services import DataService
+from core.config import config
 from core.logging import logger
 
 
 class VisualizationService(BaseService):
     """Service for generating interactive stock visualizations."""
 
-    def __init__(self, data_service: DataService):
+    def __init__(self):
         super().__init__()
-        self.data_service = data_service
         self.logger = logger["visualization"]
 
     def initialize(self):
@@ -27,6 +27,33 @@ class VisualizationService(BaseService):
 
     def cleanup(self):
         return super().cleanup()
+
+    async def _fetch_stock_data(self, symbol: str, days_back: int = None):
+        """
+        Fetch stock data from the API endpoint.
+        
+        Args:
+            symbol: Stock symbol (e.g., 'AAPL')
+            days_back: Number of days to look back (optional)
+            
+        Returns:
+            Dictionary containing stock data
+        """
+        try:
+            # API endpoint URL
+            api_url = f"http://{config.api.HOST}:{config.api.PORT}/data/stock/recent"
+            params = {"symbol": symbol}
+            if days_back:
+                params["days_back"] = days_back
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(api_url, params=params)
+                response.raise_for_status()
+                return response.json()
+                
+        except Exception as e:
+            self.logger.error(f"Error fetching stock data for {symbol}: {e}")
+            raise
 
     async def get_stock_chart(
         self,
@@ -46,9 +73,32 @@ class VisualizationService(BaseService):
         """
         try:
             # Get historical data
-            df, symbol_name = await self.data_service.get_recent_data(
-                symbol, days_back=days
-            )
+            data = await self._fetch_stock_data(symbol, days_back=days)
+            
+            # Extract prices from the response
+            prices = data.get("prices", [])
+            if not prices:
+                raise ValueError(f"No price data found for {symbol}")
+            
+            # Convert to DataFrame
+            df = pd.DataFrame(prices)
+            
+            # Convert date column to datetime
+            df["Date"] = pd.to_datetime(df["date"])
+            
+            # Rename columns to match expected format
+            df = df.rename(columns={
+                "date": "Date",
+                "open": "Open",
+                "high": "High", 
+                "low": "Low",
+                "close": "Close",
+                "volume": "Volume",
+                "adj_close": "Adj Close"
+            })
+            
+            # Sort by date
+            df = df.sort_values("Date")
 
             fig = go.Figure(
                 data=[
@@ -64,7 +114,7 @@ class VisualizationService(BaseService):
 
             # Update layout
             fig.update_layout(
-                title=f"{symbol_name} ({symbol}) Stock Price",
+                title=f"{data.get('stock_info', {}).get('name', symbol)} ({symbol}) Stock Price",
                 yaxis_title="Price",
                 xaxis_rangeslider_visible=False,
                 height=800,
