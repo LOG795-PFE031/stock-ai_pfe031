@@ -234,9 +234,6 @@ services:
     container_name: evaluation-service
     ports:
       - "8006:8000"
-    volumes:
-      - ./services/evaluation:/app/services/evaluation
-      - /app/__pycache__
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow-server:5000
     networks:
@@ -254,8 +251,6 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - .:/app                 
-      - /app/__pycache__ 
       - ./data:/app/data
     environment:
       - RABBITMQ_HOST=rabbitmq
