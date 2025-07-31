@@ -13,7 +13,6 @@ from ..tasks.data import (
 )
 from ..tasks.deployment import production_model_exists
 from core.utils import get_model_name
-from services import DataService
 from core.types import ProcessedData
 from core.config import config
 
@@ -105,7 +104,6 @@ def run_inference_flow(
 def run_prediction_pipeline(
     model_type: str,
     symbol: str,
-    data_service: DataService,
 ) -> dict[str, Any]:
     """
     Executes the prediction pipeline for a given model type and stock symbol.
@@ -119,7 +117,6 @@ def run_prediction_pipeline(
     Args:
         model_type (str): The type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol
-        data_service: Service responsible for loading data.
 
     Returns:
         dict: A dictionary containing the prediction results:
@@ -139,7 +136,7 @@ def run_prediction_pipeline(
 
     if prod_model_exist:
         # Load the recent stock data
-        raw_data = load_recent_stock_data.submit(service=data_service, symbol=symbol)
+        raw_data = load_recent_stock_data.submit(symbol=symbol)
 
         # Preprocess the raw data
         prediction_input = preprocess_data.submit(
@@ -175,7 +172,6 @@ def run_prediction_pipeline(
 def run_prediction_flow(
     model_type: str,
     symbol: str,
-    data_service: DataService,
 ) -> dict[str, Any]:
     """
     Run the prediction pipeline. It is basically a flow wrapper of the task in function
@@ -184,7 +180,6 @@ def run_prediction_flow(
     Args:
         model_type (str): The type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol
-        data_service: Service responsible for loading data.
 
     Returns:
         dict: A dictionary containing the prediction results:
@@ -196,7 +191,6 @@ def run_prediction_flow(
     prediction_result = run_prediction_pipeline.submit(
         model_type=model_type,
         symbol=symbol,
-        data_service=data_service,
     ).result()
 
     return prediction_result
@@ -209,7 +203,6 @@ def run_prediction_flow(
 def run_batch_prediction(
     model_types: list[str],
     symbols: list[str],
-    data_service: DataService,
 ):
     """
     Executes batch predictions for all combinations of given model types and stock symbols.
@@ -217,7 +210,6 @@ def run_batch_prediction(
     Args:
         model_types (list[str]): A list of model types to use (e.g., ["lstm", "xgboost"]).
         symbols (list[str]): A list of stock symbols to generate predictions for.
-        data_service: Service responsible for loading data.
     """
 
     # Generate (model_type, symbol) pairs
@@ -231,7 +223,6 @@ def run_batch_prediction(
     predictions = run_prediction_pipeline.map(
         model_type=model_type_list,
         symbol=symbol_list,
-        data_service=data_service,
     )
 
     # Wait for all predictions to complete
@@ -246,7 +237,6 @@ def historical_prediction(
     model_type: str,
     symbol: str,
     end_date: datetime,
-    data_service: DataService,
 ) -> dict[str, Any]:
     """
     Run a historical prediction for a given stock symbol and date.
@@ -255,7 +245,6 @@ def historical_prediction(
         model_type (str): The type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker sym
         end_date (datetime): The day before the day to predict
-        data_service (DataService): Service to retrieve stock data.
 
     Returns:
         dict: A dictionary containing the prediction results:
@@ -266,7 +255,6 @@ def historical_prediction(
 
     # Load the raw historical data
     raw_data = load_historical_stock_prices_from_end_date.submit(
-        service=data_service,
         symbol=symbol,
         end_date=end_date,
         days_back=config.preprocessing.SEQUENCE_LENGTH,
@@ -307,7 +295,6 @@ def run_historical_predictions_flow(
     model_type: str,
     symbol: str,
     trading_days: list[datetime],
-    data_service: DataService,
 ):
     """
     Run historical predictions for a given symbol and date range using a production model.
@@ -316,7 +303,6 @@ def run_historical_predictions_flow(
         model_type (str): The type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol
         trading_days (list[datetime]): The trading days we want to predict
-        data_service (DataService): Service to retrieve stock data.
 
     Returns:
         list|None: List of prediction results corresponding to those dates.
@@ -341,7 +327,6 @@ def run_historical_predictions_flow(
             model_type=model_type,
             symbol=symbol,
             end_date=dates,
-            data_service=data_service,
         )
 
         # Wait for predictions and collect results

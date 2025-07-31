@@ -1,8 +1,15 @@
+# FastAPI and web framework
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+starlette==0.47.2
+
+# Data processing
 pandas==2.3.1
 pandas_market_calendars==5.1.1
 Requests==2.32.4
 SQLAlchemy==2.0.25
-yfinance==0.2.65
+yfinance==0.2.61
 
 # Database
 psycopg2-binary==2.9.10
+asyncpg==0.29.0

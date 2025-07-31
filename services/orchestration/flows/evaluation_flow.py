@@ -8,8 +8,6 @@ from ..tasks.evaluation import evaluate, log_metrics_to_mlflow
 from core.utils import get_model_name
 from core.types import ProcessedData
 from services import (
-    DataService,
-    EvaluationService,
 )
 
 
@@ -20,8 +18,6 @@ from services import (
 def run_evaluation_flow(
     model_type: str,
     symbol: str,
-    data_service: DataService,
-    evaluation_service: EvaluationService,
 ) -> Optional[dict[str, float]]:
     """
     Run evaluation on the current production model using recent stock data.
@@ -37,8 +33,6 @@ def run_evaluation_flow(
     Parameters:
         model_type (str): The type of model (e.g. 'lstm', 'prophet').
         symbol (str): Stock ticker symbol.
-        data_service (DataService): Service responsible for fetching raw stock data.
-        evaluation_service (EvaluationService): Service for computing model evaluation metrics.
 
     Returns:
         Optional[Dict[str, Any]]: Evaluation metrics if the production model exists, otherwise None.
@@ -54,8 +48,7 @@ def run_evaluation_flow(
     if prod_model_exist:
 
         # Load the recent stock data
-        raw_data = load_recent_stock_data.submit(
-            service=data_service, symbol=symbol
+        raw_data = load_recent_stock_data.submit(symbol=symbol
         ).result()
 
         # Preprocess the raw data
@@ -73,7 +66,6 @@ def run_evaluation_flow(
             symbol=symbol,
             phase="prediction",
             eval_data=eval_data,
-            evaluation_service=evaluation_service,
         )
 
         return metrics
@@ -92,7 +84,6 @@ def run_evaluate_and_log_flow(
     symbol: str,
     true_target: ProcessedData,
     pred_target: ProcessedData,
-    evaluation_service: EvaluationService,
 ) -> dict[str, float]:
     """
     Evaluates the performance of a model predictions and logs the resulting metrics to MLflow.
@@ -106,7 +97,6 @@ def run_evaluate_and_log_flow(
                 logged model (training model) or name of a registered model (live model)).
         true_target (ProcessedData) : The true target values.
         pred_target (ProcessedData): The predicted target values.
-        evaluation_service (EvaluationService): Service responsible for metric evaluation.
 
     Returns:
         dict[str,float]: Dictionary of evaluation metrics (e.g., rmse, r2, etc).
@@ -118,7 +108,6 @@ def run_evaluate_and_log_flow(
         pred_target=pred_target.y,
         model_type=model_type,
         symbol=symbol,
-        service=evaluation_service,
     )
 
     # Wait for it to finish and get result
@@ -144,7 +133,6 @@ def evaluate_model(
     symbol: str,
     phase: str,
     eval_data: ProcessedData,
-    evaluation_service: EvaluationService,
 ) -> dict[str, float]:
     """
     Evaluates a model's predictions against true values and logs the resulting evaluation metrics.
@@ -162,7 +150,6 @@ def evaluate_model(
         symbol (str): Stock ticker symbol.
         phase (str): The phase (e.g., "training", "evaluation", or "prediction").
         eval_data (ProcessedData): Preprocessed input data (for evaluation).
-        evaluation_service (EvaluationService): Service responsible for computing performance metrics.
 
     Returns:
         dict[str,float]: Dictionary of evaluation metrics (e.g., rmse, r2, etc).
@@ -192,6 +179,5 @@ def evaluate_model(
         symbol=symbol,
         true_target=true_target,
         pred_target=pred_target,
-        evaluation_service=evaluation_service,
     )
     return metrics

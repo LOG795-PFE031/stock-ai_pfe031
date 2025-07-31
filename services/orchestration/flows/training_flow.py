@@ -4,8 +4,6 @@ from typing import Any
 
 from core.utils import get_model_name
 from services import (
-    DataService,
-    EvaluationService,
 )
 from ..tasks.data import load_recent_stock_data, preprocess_data
 from ..tasks.training import train
@@ -24,15 +22,13 @@ PHASE = "training"
 def run_training_flow(
     model_type: str,
     symbol: str,
-    data_service: DataService,
-    evaluation_service: EvaluationService,
 ) -> dict[str, Any]:
     """
     Orchestrates the training, evaluation, and potential deployment of a training model
     for a specific stock symbol and model type.
 
     The pipeline performs the following steps:
-    1. Loads the latest stock data.
+    1. Loads the latest stock data from the API.
     2. Preprocesses the data for training and evaluation.
     3. Trains a new model and evaluates both the new (candidate) and current production model.
     4. Compares performance metrics.
@@ -41,8 +37,6 @@ def run_training_flow(
     Args:
         model_type (str): Type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol.
-        data_service: Service used to load raw market data.
-        evaluation_service: Service used to evaluate and compare models based on performance metrics.
 
     Returns:
         dict: Dictionary containing:
@@ -55,7 +49,7 @@ def run_training_flow(
     logger = get_run_logger()
 
     # Load the recent stock data
-    raw_data = load_recent_stock_data.submit(data_service, symbol)
+    raw_data = load_recent_stock_data.submit(symbol)
 
     # --- Training of the model ---
 
@@ -106,7 +100,6 @@ def run_training_flow(
             symbol=symbol,
             phase=production_phase,
             eval_data=prod_eval_data,
-            evaluation_service=evaluation_service,
         )
 
     # --- Evaluation of the training model
@@ -126,7 +119,6 @@ def run_training_flow(
         symbol,
         PHASE,
         test_data,
-        evaluation_service,
     )
 
     # Deploy (or not) the training model
@@ -139,7 +131,6 @@ def run_training_flow(
         candidate_metrics=candidate_metrics,
         prod_model_name=production_model_name,
         live_metrics=live_metrics,
-        evaluation_service=evaluation_service,
     )
     logger.info(f"Deployment process completed. Result: {deployment_results}")
 

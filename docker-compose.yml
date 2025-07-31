@@ -19,6 +19,26 @@ services:
       timeout: 10s
       retries: 5
 
+  # Dedicated Stock Data DB
+  postgres-stock-data:
+    image: postgres:14
+    container_name: postgres-stock-data
+    ports:
+      - "5436:5432"
+    environment:
+      POSTGRES_USER: stockuser
+      POSTGRES_PASSWORD: stockpass
+      POSTGRES_DB: stockdata
+    volumes:
+      - ./data/data_ingestion/postgres:/var/lib/postgresql/data
+    networks:
+      - microservices_auth
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stockuser -d stockdata"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
   # Prefect DB
   prefect-postgres:
     image: postgres:14
@@ -48,6 +68,29 @@ services:
       - "8002:8000"
     networks:
       - microservices_auth
+    restart: on-failure
+
+  data-service:
+    build:
+      context: .
+      dockerfile: services/data_ingestion/Dockerfile
+    container_name: data-service
+    ports:
+      - "8001:8000"
+    environment:
+      # Dedicated stock database config
+      - STOCK_DB_HOST=postgres-stock-data
+      - STOCK_DB_PORT=5432
+      - STOCK_DB_USER=stockuser
+      - STOCK_DB_PASSWORD=stockpass
+      - STOCK_DB_NAME=stockdata
+    volumes:
+      - ./data/data_ingestion/data:/app/data
+    networks:
+      - microservices_auth
+    depends_on:
+      postgres-stock-data:
+        condition: service_healthy
     restart: on-failure
 
   # Prefect server
@@ -205,6 +248,22 @@ services:
       mlflow-server:
         condition: service_healthy
 
+  evaluation-service:
+    build:
+      context: .
+      dockerfile: services/evaluation/Dockerfile
+    container_name: evaluation-service
+    ports:
+      - "8006:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+    networks:
+      - microservices_auth
+    restart: on-failure
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+
   stock-ai:
     build:
       context: .
@@ -213,8 +272,6 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - .:/app                 
-      - /app/__pycache__  
       - ./data:/app/data
     environment:
       - RABBITMQ_HOST=rabbitmq

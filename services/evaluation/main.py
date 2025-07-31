@@ -1,77 +1,101 @@
+"""
+Main application module for Stock AI.
+"""
+
+import asyncio
+import time
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from starlette.requests import Request
-from contextlib import asynccontextmanager
-import asyncio
-import time
-from .routes import router
-from .news_service import NewsService
-from core.progress import create_spinner, print_status, print_error
+
 from core.logging import logger
 from core.monitor_utils import (
     monitor_cpu_usage,
     monitor_memory_usage,
 )
+
 from core.prometheus_metrics import (
     http_requests_total,
     http_request_duration_seconds,
     http_errors_total,
 )
-logger = logger["news"]
+from .routes import router
+from .evaluation_service import EvaluationService
 
-# Service instance
-news_service = NewsService()
+# Create the evaluation service instance
+evaluation_service = EvaluationService()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Application lifespan events."""
+    # Startup
     try:
-        spinner = create_spinner("Initializing NewsService...")
-        spinner.start()
-        await news_service.initialize()
-        spinner.stop()
-        print_status("Success", "NewsService initialized successfully", "success")
+        logger["evaluation"].info("Starting up the evaluation service...")
+
+        await evaluation_service.initialize()
+
+        logger["main"].info("Evaluation service initialized successfully")
         yield
-    except Exception as e:
-        spinner.stop()
-        print_error(e)
-        logger.error(f"Error during startup: {e}")
+
+    except Exception as exception:
+        logger["main"].error(f"Error during evaluation service startup: {str(exception)}")
         raise
+
     finally:
+        # Shutdown
         try:
-            await news_service.cleanup()
-            logger.info("NewsService cleaned up successfully")
-        except Exception as e:
-            logger.error(f"Error during shutdown: {e}")
+            logger["main"].info("Shutting down the evaluation service...")
+
+            # Cleanup the services
+            await evaluation_service.cleanup()
+
+            logger["main"].info("The evaluation service was cleaned up successfully")
+
+        except Exception as exception:
+            logger["main"].error(
+                f"Error during the evaluation service shutdown: {str(exception)}"
+            )
+            
 
 app = FastAPI(
-    title="News Service API",
-    description="Microservice for financial news retrieval and sentiment analysis.",
+    title="Evaluation Service API",
+    description="""
+    API for serving/deploying ML models and predictions.
+    """,
     version="1.0.0",
     lifespan=lifespan,
     openapi_tags=[
-        {"name": "News", "description": "Endpoints for retrieving news and sentiment analysis"},
         {"name": "System", "description": "System health and status endpoints"},
+        {
+            "name": "Evaluation Services",
+            "description": "Endpoints to list models and get predictions",
+        },
     ],
 )
 
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Add root route handler
 @app.get("/", tags=["System"])
 async def root():
+    """Redirect root to API documentation."""
     return RedirectResponse(url="/docs")
 
-@app.get("/metrics")
-def metrics():
-    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+# Include routers
+app.include_router(router, prefix="/evaluation") 
 
+
+# Prometheus middleware
 @app.middleware("http")
 async def prometheus_middleware(request: Request, call_next):
     method = request.method
@@ -107,10 +131,15 @@ async def prometheus_middleware(request: Request, call_next):
     return response
 
 
+# Prometheus metrics
+@app.get("/metrics")
+def metrics():
+    """Prometheus metrics exposer"""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 # Health check endpoint
 @app.get("/health", tags=["System"])
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
-
-app.include_router(router, prefix="/data")

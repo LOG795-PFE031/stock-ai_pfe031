@@ -12,8 +12,6 @@ from core.utils import format_prediction_response, get_next_trading_day
 from core.config import config
 from core import BaseService
 
-from services.evaluation import EvaluationService
-from services.data_ingestion import DataService
 from .prediction_storage import PredictionStorage
 from .flows import (
     run_evaluation_flow,
@@ -33,12 +31,8 @@ class OrchestrationService(BaseService):
 
     def __init__(
         self,
-        data_service: DataService,
-        evaluation_service: EvaluationService,
     ):
         super().__init__()
-        self.data_service = data_service
-        self.evaluation_service = evaluation_service
         self.logger = logger["orchestration"]
         self.prediction_storage = PredictionStorage(self.logger)
 
@@ -79,8 +73,6 @@ class OrchestrationService(BaseService):
                 run_training_flow,
                 model_type,
                 symbol,
-                self.data_service,
-                self.evaluation_service,
             )
 
             self.logger.info(
@@ -121,7 +113,6 @@ class OrchestrationService(BaseService):
             result: The result of the prediction pipeline execution.
         """
         try:
-            # Enforce upper case for the symbol
             symbol = symbol.upper()
 
             self.logger.info(
@@ -160,7 +151,6 @@ class OrchestrationService(BaseService):
                 run_prediction_flow,
                 model_type,
                 symbol,
-                self.data_service,
             )
 
             if prediction_result:
@@ -251,8 +241,6 @@ class OrchestrationService(BaseService):
                 run_evaluation_flow,
                 model_type,
                 symbol,
-                self.data_service,
-                self.evaluation_service,
             )
 
             # Log the successful completion of the pipeline
@@ -340,7 +328,6 @@ class OrchestrationService(BaseService):
                     model_type,
                     symbol,
                     trading_days,
-                    self.data_service,
                 )
 
                 if predictions:
@@ -482,11 +469,16 @@ class OrchestrationService(BaseService):
         model_types = trainers["types"]
 
         # Retrieve the symbols to predict
-        stocks_data = await self.data_service.get_nasdaq_stocks()
+        data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stocks"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(data_service_url)
+            response.raise_for_status()
+            stocks_data = response.json()
+
         symbols = [item["symbol"] for item in stocks_data["data"]]
 
         run_batch_prediction(
             model_types,
             symbols,
-            self.data_service,
         )
