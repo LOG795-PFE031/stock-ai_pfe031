@@ -7,7 +7,7 @@ from ..tasks.deployment import (
     promote_model,
     promote_scaler,
 )
-from services import EvaluationService, DeploymentService
+from services import DeploymentService
 
 
 @flow(
@@ -21,7 +21,6 @@ def run_deploy_flow(
     candidate_metrics: dict,
     prod_model_name: str | None,
     live_metrics: dict | None,
-    evaluation_service: EvaluationService,
     deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
@@ -60,7 +59,6 @@ def run_deploy_flow(
         should_deploy_train_model = is_ready_for_deployment.submit(
             candidate_metrics=candidate_metrics,
             live_metrics=live_metrics,
-            service=evaluation_service,
         )
         if should_deploy_train_model.result():
             logger.info("Candidate model outperformed production. Promoting...")

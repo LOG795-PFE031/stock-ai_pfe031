@@ -1,2 +1,10 @@
-numpy==1.24.4
+# Evaluation requirements
+
+numpy==1.26.4 # Must be above 1.24.4 for distutils
 scikit_learn==1.4.2
+pydantic==2.11.7
+
+# API Server
+fastapi==0.116.1
+starlette==0.47.2
+uvicorn[standard]==0.35.0

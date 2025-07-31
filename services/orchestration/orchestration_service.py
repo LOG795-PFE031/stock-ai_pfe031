@@ -13,7 +13,6 @@ from core.config import config
 from core import BaseService
 from services.deployment import DeploymentService
 
-from services.evaluation import EvaluationService
 from .prediction_storage import PredictionStorage
 from .flows import (
     run_evaluation_flow,
@@ -34,11 +33,9 @@ class OrchestrationService(BaseService):
     def __init__(
         self,
         deployment_service: DeploymentService,
-        evaluation_service: EvaluationService,
     ):
         super().__init__()
         self.deployment_service = deployment_service
-        self.evaluation_service = evaluation_service
         self.logger = logger["orchestration"]
         self.prediction_storage = PredictionStorage(self.logger)
 
@@ -80,7 +77,6 @@ class OrchestrationService(BaseService):
                 model_type,
                 symbol,
                 self.deployment_service,
-                self.evaluation_service,
             )
 
             self.logger.info(
@@ -251,7 +247,6 @@ class OrchestrationService(BaseService):
                 model_type,
                 symbol,
                 self.deployment_service,
-                self.evaluation_service,
             )
 
             # Log the successful completion of the pipeline
@@ -487,7 +482,7 @@ class OrchestrationService(BaseService):
             response = await client.get(data_service_url)
             response.raise_for_status()
             stocks_data = response.json()
-        
+
         symbols = [item["symbol"] for item in stocks_data["data"]]
 
         run_batch_prediction(

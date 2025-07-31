@@ -227,6 +227,22 @@ services:
       mlflow-server:
         condition: service_healthy
 
+  evaluation-service:
+    build:
+      context: .
+      dockerfile: services/evaluation/Dockerfile
+    container_name: evaluation-service
+    ports:
+      - "8006:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+    networks:
+      - microservices_auth
+    restart: on-failure
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+
   stock-ai:
     build:
       context: .
@@ -235,7 +251,6 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # - .:/app
       - ./data:/app/data
     environment:
       - RABBITMQ_HOST=rabbitmq

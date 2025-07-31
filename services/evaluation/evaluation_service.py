@@ -3,7 +3,7 @@ import numpy as np
 
 from core.logging import logger
 from core import BaseService
-from core.types import Metrics
+from .types import Metrics
 from core.prometheus_metrics import (
     evaluation_mae,
     evaluation_mse,
