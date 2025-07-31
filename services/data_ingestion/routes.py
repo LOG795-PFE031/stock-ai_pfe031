@@ -2,12 +2,10 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from datetime import datetime, timezone
 from typing import List
-import pandas as pd
 
 from .data_service import DataService
 from .schemas import (
     StockDataResponse,
-    CurrentPriceResponse,
     CleanupResponse,
     MetaInfo,
     HealthResponse,
@@ -111,7 +109,7 @@ async def get_stocks():
         raise HTTPException(status_code=500, detail=f"Failed to get stocks list: {e}")
 
 
-@router.get("/stock/current", response_model=CurrentPriceResponse, tags=["Data"])
+@router.get("/stock/current", response_model=StockDataResponse, tags=["Data"])
 async def get_current_price(
     symbol: str = Query(..., description="Stock symbol to get current price for")
 ):
@@ -124,14 +122,28 @@ async def get_current_price(
         stock_info = StockInfo(
             symbol=result["symbol"],
             name=result["stock_name"],
-            current_price=result["current_price"],
         )
 
-        return CurrentPriceResponse(
-            symbol=result["symbol"],
+        # Convert price dictionary to StockPrice objects
+        prices = []
+        for price_dict in result["current_price"]:
+            prices.append(
+                StockPrice(
+                    Date=price_dict["Date"],
+                    Open=price_dict["Open"],
+                    High=price_dict["High"],
+                    Low=price_dict["Low"],
+                    Close=price_dict["Close"],
+                    Volume=price_dict["Volume"],
+                    Dividends=price_dict["Dividends"],
+                    Stock_splits=price_dict["Stock_splits"],
+                )
+            )
+
+        return StockDataResponse(
             stock_info=stock_info,
-            current_price=result["current_price"],
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            prices=prices,
+            total_records=len(prices),
             meta=MetaInfo(
                 start_date=result["date_str"],
                 end_date=result["date_str"],
@@ -140,9 +152,11 @@ async def get_current_price(
                 documentation="/docs",
                 endpoints=["/stock/current"],
             ),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
     except ValueError as ve:
         # Handle validation errors
+        api_logger.error(f"Validation error : {str(ve)}")
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         error_detail = f"Failed to get current price for {symbol}: {str(e)}"
@@ -168,14 +182,14 @@ async def get_historical_data(
         for price_dict in result["prices"]:
             prices.append(
                 StockPrice(
-                    date=price_dict["date"],
-                    open=price_dict["open"],
-                    high=price_dict["high"],
-                    low=price_dict["low"],
-                    close=price_dict["close"],
-                    volume=price_dict["volume"],
-                    dividends=price_dict["dividends"],
-                    stock_splits=price_dict["stock_splits"],
+                    Date=price_dict["Date"],
+                    Open=price_dict["Open"],
+                    High=price_dict["High"],
+                    Low=price_dict["Low"],
+                    Close=price_dict["Close"],
+                    Volume=price_dict["Volume"],
+                    Dividends=price_dict["Dividends"],
+                    Stock_splits=price_dict["Stock_splits"],
                 )
             )
 
@@ -185,7 +199,6 @@ async def get_historical_data(
         )
 
         return StockDataResponse(
-            symbol=result["symbol"],
             stock_info=stock_info,
             prices=prices,
             total_records=result["total_records"],
@@ -197,9 +210,11 @@ async def get_historical_data(
                 documentation="/docs",
                 endpoints=["/stock/historical"],
             ),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
     except ValueError as ve:
         # Handle validation errors
+        api_logger.error(f"Validation error : {str(ve)}")
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         error_detail = f"Failed to get historical data for {symbol} from {start_date} to {end_date}: {str(e)}"
@@ -222,14 +237,14 @@ async def get_recent_data(
         for price_dict in result["prices"]:
             prices.append(
                 StockPrice(
-                    date=price_dict["date"],
-                    open=price_dict["open"],
-                    high=price_dict["high"],
-                    low=price_dict["low"],
-                    close=price_dict["close"],
-                    volume=price_dict["volume"],
-                    dividends=price_dict["dividends"],
-                    stock_splits=price_dict["stock_splits"],
+                    Date=price_dict["Date"],
+                    Open=price_dict["Open"],
+                    High=price_dict["High"],
+                    Low=price_dict["Low"],
+                    Close=price_dict["Close"],
+                    Volume=price_dict["Volume"],
+                    Dividends=price_dict["Dividends"],
+                    Stock_splits=price_dict["Stock_splits"],
                 )
             )
 
@@ -239,7 +254,6 @@ async def get_recent_data(
         )
 
         return StockDataResponse(
-            symbol=result["symbol"],
             stock_info=stock_info,
             prices=prices,
             total_records=result["total_records"],
@@ -249,9 +263,11 @@ async def get_recent_data(
                 documentation="/docs",
                 endpoints=["/stock/recent"],
             ),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
     except ValueError as ve:
         # Handle validation errors
+        api_logger.error(f"Validation error : {str(ve)}")
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         error_detail = (
@@ -279,21 +295,20 @@ async def get_data_from_end_date(
         for price_dict in result["prices"]:
             prices.append(
                 StockPrice(
-                    date=price_dict["date"],
-                    open=price_dict["open"],
-                    high=price_dict["high"],
-                    low=price_dict["low"],
-                    close=price_dict["close"],
-                    volume=price_dict["volume"],
-                    dividends=price_dict["dividends"],
-                    stock_splits=price_dict["stock_splits"],
+                    Date=price_dict["Date"],
+                    Open=price_dict["Open"],
+                    High=price_dict["High"],
+                    Low=price_dict["Low"],
+                    Close=price_dict["Close"],
+                    Volume=price_dict["Volume"],
+                    Dividends=price_dict["Dividends"],
+                    Stock_splits=price_dict["Stock_splits"],
                 )
             )
 
         stock_info = StockInfo(symbol=result["symbol"], name=result["stock_name"])
 
         return StockDataResponse(
-            symbol=result["symbol"],
             stock_info=stock_info,
             prices=prices,
             total_records=result["total_records"],
@@ -305,9 +320,11 @@ async def get_data_from_end_date(
                 documentation="/docs",
                 endpoints=["/stock/from-end-date"],
             ),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
     except ValueError as ve:
         # Handle validation errors
+        api_logger.error(f"Validation error : {str(ve)}")
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         error_detail = f"Failed to get data from end date for {symbol} from {end_date} going back {days_back} days: {str(e)}"

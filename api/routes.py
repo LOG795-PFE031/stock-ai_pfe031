@@ -170,16 +170,14 @@ async def get_current_stock_data(
 
         # The data ingestion service returns a CurrentPriceResponse, extract the data
         # Ensure 'data' is a list of dicts as expected by StockDataResponse
-        current_price = stock_data["current_price"]
+        current_price = stock_data["prices"]
         if isinstance(current_price, dict):
-            data_list = [current_price]
-        else:
-            # If current_price is a float, wrap it in a dict with a default key
-            data_list = [{"price": current_price}]
+            current_price = [current_price]
+
         return StockDataResponse(
-            symbol=stock_data["symbol"],
+            symbol=stock_data["stock_info"]["symbol"],
             name=stock_data["stock_info"]["name"],
-            data=data_list,
+            data=current_price,
             meta=MetaInfo(
                 message=f"Current stock data retrieved successfully for {symbol}",
                 version=config.api.API_VERSION,
@@ -252,7 +250,7 @@ async def get_historical_stock_data(
 
         # The data ingestion service returns a StockDataResponse structure
         return StockDataResponse(
-            symbol=stock_data["symbol"],
+            symbol=stock_data["stock_info"]["symbol"],
             name=stock_data["stock_info"]["name"],
             data=stock_data["prices"],
             meta=MetaInfo(
@@ -311,7 +309,7 @@ async def get_recent_stock_data(
 
         # The data ingestion service returns a StockDataResponse structure
         return StockDataResponse(
-            symbol=stock_data["symbol"],
+            symbol=stock_data["stock_info"]["symbol"],
             name=stock_data["stock_info"]["name"],
             data=stock_data["prices"],
             meta=MetaInfo(
@@ -390,7 +388,7 @@ async def get_historical_stock_prices_from_end_date(
 
         # The data ingestion service returns a StockDataResponse structure
         return StockDataResponse(
-            symbol=stock_data["symbol"],
+            symbol=stock_data["stock_info"]["symbol"],
             name=stock_data["stock_info"]["name"],
             data=stock_data["prices"],
             meta=MetaInfo(

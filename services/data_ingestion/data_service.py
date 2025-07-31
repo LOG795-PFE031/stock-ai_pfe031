@@ -178,10 +178,8 @@ class DataService(BaseService):
                     "message": "No data available for this symbol",
                 }
 
-            # Retrieve the latest trading day
-            latest_data = df[df["Date"].dt.date == start_date.date()]
-            current_price = round(latest_data["Close"].iloc[0], 2)
-            current_day = latest_data["Date"].iloc[0].strftime("%Y-%m-%d")
+            # Transform DataFrame to list of price objects
+            price = self._transform_dataframe_to_prices(df)
 
             # Get the stock_name
             stock_name = self.get_stock_name(symbol)
@@ -194,8 +192,8 @@ class DataService(BaseService):
             result = {
                 "symbol": symbol,
                 "stock_name": stock_name or symbol,
-                "current_price": current_price,
-                "date_str": current_day,
+                "date_str": start_date.isoformat(),
+                "current_price": price,
                 "message": message,
             }
 
@@ -1112,14 +1110,14 @@ class DataService(BaseService):
 
             prices.append(
                 {
-                    "date": date_str,
-                    "open": float(row["Open"]),
-                    "high": float(row["High"]),
-                    "low": float(row["Low"]),
-                    "close": float(row["Close"]),
-                    "volume": int(row["Volume"]),
-                    "dividends": float(row["Dividends"]),
-                    "stock_splits": float(row["Stock Splits"]),
+                    "Date": date_str,
+                    "Open": float(row["Open"]),
+                    "High": float(row["High"]),
+                    "Low": float(row["Low"]),
+                    "Close": float(row["Close"]),
+                    "Volume": int(row["Volume"]),
+                    "Dividends": float(row["Dividends"]),
+                    "Stock_splits": float(row["Stock Splits"]),
                 }
             )
 

@@ -46,14 +46,14 @@ class StocksListDataResponse(BaseModel):
 class StockPrice(BaseModel):
     """Schema for a stock price data point."""
 
-    date: str
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: int
-    dividends: Optional[float] = 0.0
-    stock_splits: Optional[float] = 0.0
+    Date: str
+    Open: float
+    High: float
+    Low: float
+    Close: float
+    Volume: int
+    Dividends: Optional[float] = 0.0
+    Stock_splits: Optional[float] = 0.0
 
 
 class StockInfo(BaseModel):
@@ -61,29 +61,16 @@ class StockInfo(BaseModel):
 
     symbol: str
     name: str
-    current_price: Optional[float] = None
-    change_percent: Optional[float] = None
 
 
 class StockDataResponse(BaseModel):
     """Response schema for stock data."""
 
-    symbol: str
     stock_info: StockInfo
     prices: List[StockPrice]
     total_records: int
     meta: MetaInfo
-
-
-class CurrentPriceResponse(BaseModel):
-    """Response schema for current price data."""
-
-    symbol: str
-    stock_info: StockInfo
-    current_price: float
-    change_percent: Optional[float] = None
     timestamp: str
-    meta: MetaInfo
 
 
 class CleanupResponse(BaseModel):

@@ -5,24 +5,6 @@ import pandas as pd
 from core.config import config
 
 
-def _format_data(data: pd.DataFrame) -> pd.DataFrame:
-    """
-    Standardizes column names in stock data to title case.
-    """
-    return data.rename(
-        columns={
-            "open": "Open",
-            "high": "High",
-            "low": "Low",
-            "close": "Close",
-            "volume": "Volume",
-            "dividends": "Dividends",
-            "stock_splits": "Stock Splits",
-            "date": "Date",
-        }
-    )
-
-
 @task(
     name="load_recent_stock_data",
     description="Load recent stock data for a given symbol using the provided data service.",
@@ -51,8 +33,6 @@ async def load_recent_stock_data(symbol: str) -> pd.DataFrame:
 
         if not isinstance(data, pd.DataFrame):
             raise ValueError("Response data is not a valid DataFrame")
-
-        data = _format_data(data)
 
         data["Date"] = pd.to_datetime(data["Date"]).dt.strftime("%Y-%m-%d")
 
@@ -92,8 +72,6 @@ async def load_historical_stock_prices_from_end_date(
         json_response = response.json()
 
         data = pd.DataFrame(json_response["prices"])
-
-        data = _format_data(data)
 
         if not isinstance(data, pd.DataFrame):
             raise ValueError("Response data is not a valid DataFrame")
