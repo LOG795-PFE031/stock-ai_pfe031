@@ -18,7 +18,7 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
-      
+
   # Dedicated Stock Data DB
   postgres-stock-data:
     image: postgres:14
@@ -30,7 +30,7 @@ services:
       POSTGRES_PASSWORD: stockpass
       POSTGRES_DB: stockdata
     volumes:
-      - ./services/data_ingestion/data/postgres:/var/lib/postgresql/data
+      - ./data/data_ingestion/postgres:/var/lib/postgresql/data
     networks:
       - microservices_auth
     healthcheck:
@@ -84,6 +84,8 @@ services:
       - STOCK_DB_USER=stockuser
       - STOCK_DB_PASSWORD=stockpass
       - STOCK_DB_NAME=stockdata
+    volumes:
+      - ./data/data_ingestion/data:/app/data
     networks:
       - microservices_auth
     depends_on:
