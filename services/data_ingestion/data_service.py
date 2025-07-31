@@ -458,7 +458,7 @@ class DataService(BaseService):
         except Exception as e:
             self.logger.error(
                 "Error getting historical stock data from end date %s for %s: %s",
-                end_date,
+                end_date.strftime("%Y-%m-%d"),
                 symbol,
                 str(e),
             )
