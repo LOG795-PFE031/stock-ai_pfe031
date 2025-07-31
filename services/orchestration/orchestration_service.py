@@ -13,7 +13,6 @@ from core.config import config
 from core import BaseService
 from services.deployment import DeploymentService
 
-from services.evaluation import EvaluationService
 from .prediction_storage import PredictionStorage
 from .flows import (
     run_evaluation_flow,
@@ -483,7 +482,7 @@ class OrchestrationService(BaseService):
             response = await client.get(data_service_url)
             response.raise_for_status()
             stocks_data = response.json()
-        
+
         symbols = [item["symbol"] for item in stocks_data["data"]]
 
         run_batch_prediction(
