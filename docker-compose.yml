@@ -235,10 +235,6 @@ services:
     container_name: deployment-service
     ports:
       - "8005:8000"
-    volumes:
-      - ./services/deployment:/app/services/deployment
-      - ./services/training:/app/services/training 
-      - /app/__pycache__
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow-server:5000
     networks:
