@@ -411,7 +411,7 @@ async def get_news_data(
         if end_date:
             params["end_date"] = end_date
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=None) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
