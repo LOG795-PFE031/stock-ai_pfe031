@@ -29,15 +29,15 @@ async def calculate_prediction_confidence(
     Returns:
         list[float]: Confidence scores
     """
-    
+
     # Build the payload
     def to_payload(x):
         if isinstance(x, pd.DataFrame):
-            return x.values.tolist()
-        if isinstance(x, (pd.Series, np.ndarray)):
+            return x.to_dict(orient="records")
+        if isinstance(x, np.ndarray):
             return x.tolist()
         return x
-    
+
     # Serialize the date
     def serialize_date(d):
         if d is None:
@@ -56,16 +56,16 @@ async def calculate_prediction_confidence(
             "y": to_payload(prediction_input.y),
             "feature_index_map": prediction_input.feature_index_map,
             "start_date": serialize_date(prediction_input.start_date),
-            "end_date":   serialize_date(prediction_input.end_date),
+            "end_date": serialize_date(prediction_input.end_date),
         },
         "y_pred": to_payload(y_pred),
     }
 
     url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/calculate_prediction_confidence"
-    
-    async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            result = response.json()
 
-    return result.get("confidences", [])    
+    async with httpx.AsyncClient(timeout=None) as client:
+        response = await client.post(url, json=payload)
+        response.raise_for_status()
+        result = response.json()
+
+    return result.get("confidences", [])
