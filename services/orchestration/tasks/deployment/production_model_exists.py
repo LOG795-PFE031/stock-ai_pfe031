@@ -3,6 +3,7 @@ import httpx
 
 from core.config import config
 
+
 @task(
     name="production_model_exists",
     description="Check if a production model exists using the deployment service.",
@@ -21,10 +22,9 @@ async def production_model_exists(
     Returns:
         bool: True if a production model exists, False otherwise.
     """
-    url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models/{prod_model_name}/exists" 
-    
-    response = httpx.get(url, timeout=None)
-    response.raise_for_status()
-    data = response.json()
+    url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models/{prod_model_name}/exists"
 
-    return data["exists"]
+    async with httpx.AsyncClient(timeout=None) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        return resp.json()["exists"]
