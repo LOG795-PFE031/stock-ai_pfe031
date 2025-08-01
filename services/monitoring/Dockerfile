@@ -7,12 +7,15 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file
-COPY requirements.txt .
+# Copy core and monitoring requirements
+COPY services/monitoring/requirements.txt monitoring-requirements.txt
+COPY core/requirements.txt core-requirements.txt
+
+# Combine both requirements into one
+RUN cat monitoring-requirements.txt core-requirements.txt > requirements.txt
 
 # Install build tools and wheel
 RUN pip install --no-cache-dir --upgrade pip && \
@@ -37,7 +40,8 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
-COPY . /app
+COPY services/monitoring /app/services/monitoring
+COPY core /app/core
 
 # Set environment variables
 ENV PYTHONPATH=/app \
@@ -48,4 +52,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
-CMD ["python", "main.py"]
+CMD ["uvicorn", "services.monitoring.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

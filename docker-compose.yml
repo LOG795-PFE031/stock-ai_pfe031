@@ -242,6 +242,20 @@ services:
     depends_on:
       mlflow-server:
         condition: service_healthy
+        
+  monitoring-service:
+    build:
+      context: .
+      dockerfile: services/monitoring/Dockerfile
+    container_name: monitoring-service
+    ports:
+      - "8007:8000"
+    networks:
+      - microservices_auth
+    restart: on-failure
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
 
   stock-ai:
     build:

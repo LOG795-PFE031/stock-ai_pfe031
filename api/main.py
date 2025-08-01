@@ -24,7 +24,7 @@ from db.init_db import create_database
 from services import (
     DeploymentService,
     RabbitMQService,
-    MonitoringService,
+    # MonitoringService,
 )
 from services.orchestration import OrchestrationService
 from core.monitor_utils import (
@@ -41,12 +41,12 @@ orchestation_service = OrchestrationService(
     deployment_service=deployment_service,
 )
 rabbitmq_service = RabbitMQService()
-monitoring_service = MonitoringService(
-    deployment_service,
-    orchestation_service,
-    check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
-    data_interval_seconds=7 * 24 * 60 * 60,
-)
+# monitoring_service = MonitoringService(
+#     deployment_service,
+#     orchestation_service,
+#     check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
+#     data_interval_seconds=7 * 24 * 60 * 60,
+# )
 
 
 @asynccontextmanager
@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
         # Initialize services in order of dependencies
         await deployment_service.initialize()
         await orchestation_service.initialize()
-        await monitoring_service.initialize()
+        # await monitoring_service.initialize()
 
         logger["main"].info("All services initialized successfully")
         yield
@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
             logger["main"].info("Shutting down services...")
 
             # Cleanup in reverse order of initialization
-            await monitoring_service.cleanup()
+            # await monitoring_service.cleanup()
             await orchestation_service.cleanup()
             await deployment_service.cleanup()
             rabbitmq_service.close()  # Close RabbitMQ connection

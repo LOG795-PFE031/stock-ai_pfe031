@@ -13,8 +13,8 @@ from core import BaseService
 from core.logging import logger
 from core.config import config
 from core.prometheus_metrics import evaluation_mae
-from services import DeploymentService
-from services.orchestration import OrchestrationService
+from api.main import DeploymentService
+from api.main import OrchestrationService
 from httpx import ReadTimeout, ConnectTimeout
 
 
