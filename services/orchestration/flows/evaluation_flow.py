@@ -7,8 +7,6 @@ from ..tasks.deployment import production_model_exists
 from ..tasks.evaluation import evaluate, log_metrics_to_mlflow
 from core.utils import get_model_name
 from core.types import ProcessedData
-from services import (
-)
 
 
 @flow(
@@ -42,14 +40,13 @@ def run_evaluation_flow(
 
     # Checks if the production model exists
     prod_model_exist = production_model_exists.submit(
-        production_model_name, 
+        production_model_name,
     ).result()
 
     if prod_model_exist:
 
         # Load the recent stock data
-        raw_data = load_recent_stock_data.submit(symbol=symbol
-        ).result()
+        raw_data = load_recent_stock_data.submit(symbol=symbol).result()
 
         # Preprocess the raw data
         eval_data = preprocess_data.submit(

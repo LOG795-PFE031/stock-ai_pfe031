@@ -3,8 +3,6 @@ from prefect.logging import get_run_logger
 from typing import Any
 
 from core.utils import get_model_name
-from services import (
-)
 from ..tasks.data import load_recent_stock_data, preprocess_data
 from ..tasks.training import train
 from ..tasks.deployment import production_model_exists
