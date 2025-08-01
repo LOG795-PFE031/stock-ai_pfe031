@@ -199,11 +199,7 @@ async def predict(request: PredictionRequest):
         elif isinstance(predictions, np.ndarray):
             predictions = predictions.tolist()
         elif isinstance(predictions, (pd.DataFrame, pd.Series)):
-            predictions = (
-                predictions.values.tolist()
-                if hasattr(predictions, "values")
-                else predictions.tolist()
-            )
+            predictions = predictions.to_dict(orient="records")
         elif not isinstance(predictions, list):
             # Handle single values or other types
             predictions = (
