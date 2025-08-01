@@ -67,34 +67,15 @@ async def health_check():
     """Check the health of all services."""
     try:
         # Import services from main to avoid circular imports
-        from api.main import (
-            deployment_service,
-            orchestation_service,
-            evaluation_service,
-        )
+        from api.main import orchestation_service
 
         # Check each service's health
-        deployment_health = await deployment_service.health_check()
-        evaluation_health = await evaluation_service.health_check()
         orchestation_health = await orchestation_service.health_check()
 
         # Create response with boolean values
         return HealthResponse(
-            status=(
-                "healthy"
-                if all(
-                    h["status"] == "healthy"
-                    for h in [
-                        deployment_health,
-                        evaluation_health,
-                        orchestation_health,
-                    ]
-                )
-                else "unhealthy"
-            ),
+            status=orchestation_health["status"],
             components={
-                "deployment_health": deployment_health["status"] == "healthy",
-                "evaluation_health": evaluation_health["status"] == "healthy",
                 "orchestation_health": orchestation_health["status"] == "healthy",
             },
             timestamp=datetime.utcnow().isoformat(),
