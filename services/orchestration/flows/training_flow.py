@@ -3,9 +3,6 @@ from prefect.logging import get_run_logger
 from typing import Any
 
 from core.utils import get_model_name
-from services import (
-    DeploymentService,
-)
 from ..tasks.data import load_recent_stock_data, preprocess_data
 from ..tasks.training import train
 from ..tasks.deployment import production_model_exists
@@ -23,7 +20,6 @@ PHASE = "training"
 def run_training_flow(
     model_type: str,
     symbol: str,
-    deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
     Orchestrates the training, evaluation, and potential deployment of a training model
@@ -39,8 +35,6 @@ def run_training_flow(
     Args:
         model_type (str): Type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol.
-        deployment_service: Service used to perform predictions and manage models.
-        evaluation_service: Service used to evaluate and compare models based on performance metrics.
 
     Returns:
         dict: Dictionary containing:
@@ -84,7 +78,7 @@ def run_training_flow(
     production_model_name = get_model_name(model_type=model_type, symbol=symbol)
 
     prod_model_exists = production_model_exists.submit(
-        prod_model_name=production_model_name, service=deployment_service
+        prod_model_name=production_model_name,
     ).result()
 
     if prod_model_exists:
@@ -104,7 +98,6 @@ def run_training_flow(
             symbol=symbol,
             phase=production_phase,
             eval_data=prod_eval_data,
-            deployment_service=deployment_service,
         )
 
     # --- Evaluation of the training model
@@ -124,7 +117,6 @@ def run_training_flow(
         symbol,
         PHASE,
         test_data,
-        deployment_service,
     )
 
     # Deploy (or not) the training model
@@ -137,7 +129,6 @@ def run_training_flow(
         candidate_metrics=candidate_metrics,
         prod_model_name=production_model_name,
         live_metrics=live_metrics,
-        deployment_service=deployment_service,
     )
     logger.info(f"Deployment process completed. Result: {deployment_results}")
 

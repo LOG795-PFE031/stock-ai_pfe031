@@ -11,7 +11,6 @@ from core.logging import logger
 from core.utils import format_prediction_response, get_next_trading_day
 from core.config import config
 from core import BaseService
-from services.deployment import DeploymentService
 
 from .prediction_storage import PredictionStorage
 from .flows import (
@@ -32,10 +31,8 @@ class OrchestrationService(BaseService):
 
     def __init__(
         self,
-        deployment_service: DeploymentService,
     ):
         super().__init__()
-        self.deployment_service = deployment_service
         self.logger = logger["orchestration"]
         self.prediction_storage = PredictionStorage(self.logger)
 
@@ -76,7 +73,6 @@ class OrchestrationService(BaseService):
                 run_training_flow,
                 model_type,
                 symbol,
-                self.deployment_service,
             )
 
             self.logger.info(
@@ -155,7 +151,6 @@ class OrchestrationService(BaseService):
                 run_prediction_flow,
                 model_type,
                 symbol,
-                self.deployment_service,
             )
 
             if prediction_result:
@@ -246,7 +241,6 @@ class OrchestrationService(BaseService):
                 run_evaluation_flow,
                 model_type,
                 symbol,
-                self.deployment_service,
             )
 
             # Log the successful completion of the pipeline
@@ -334,7 +328,6 @@ class OrchestrationService(BaseService):
                     model_type,
                     symbol,
                     trading_days,
-                    self.deployment_service,
                 )
 
                 if predictions:
@@ -488,5 +481,4 @@ class OrchestrationService(BaseService):
         run_batch_prediction(
             model_types,
             symbols,
-            self.deployment_service,
         )

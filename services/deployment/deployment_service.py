@@ -117,7 +117,7 @@ class DeploymentService(BaseService):
 
     async def predict(
         self, model_identifier: str, X: Union[pd.DataFrame, np.ndarray, list]
-    ) -> dict[Any, int]:
+    ) -> dict[str, Any]:
         """
         Run prediction on input data using either a logged model or a registered production model.
 
@@ -181,7 +181,7 @@ class DeploymentService(BaseService):
                 self._prediction_cache[cache_key] = (predictions, current_version)
                 self.logger.debug("Prediction cached for key %s.", cache_key)
 
-            return {"predictions": predictions, "model_version": current_version}
+            return {"predictions": predictions, "model_version": str(current_version or "unknown")} # Because sometime version is none
 
         except Exception as e:
 

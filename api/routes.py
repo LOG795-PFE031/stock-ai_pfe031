@@ -67,34 +67,15 @@ async def health_check():
     """Check the health of all services."""
     try:
         # Import services from main to avoid circular imports
-        from api.main import (
-            deployment_service,
-            orchestation_service,
-            evaluation_service,
-        )
+        from api.main import orchestation_service
 
         # Check each service's health
-        deployment_health = await deployment_service.health_check()
-        evaluation_health = await evaluation_service.health_check()
         orchestation_health = await orchestation_service.health_check()
 
         # Create response with boolean values
         return HealthResponse(
-            status=(
-                "healthy"
-                if all(
-                    h["status"] == "healthy"
-                    for h in [
-                        deployment_health,
-                        evaluation_health,
-                        orchestation_health,
-                    ]
-                )
-                else "unhealthy"
-            ),
+            status=orchestation_health["status"],
             components={
-                "deployment_health": deployment_health["status"] == "healthy",
-                "evaluation_health": evaluation_health["status"] == "healthy",
                 "orchestation_health": orchestation_health["status"] == "healthy",
             },
             timestamp=datetime.utcnow().isoformat(),
@@ -430,7 +411,7 @@ async def get_news_data(
         if end_date:
             params["end_date"] = end_date
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=None) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
@@ -463,16 +444,14 @@ async def get_news_data(
 async def get_models():
     """List all available ML models."""
     try:
-        # Import services from main to avoid circular imports
-        from api.main import deployment_service
+        url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models"
 
-        models = await deployment_service.list_models()
-        response = ModelListMlflowResponse(
-            models=models,
-            total_models=len(models),
-            timestamp=datetime.now().isoformat(),
-        )
-        return response
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            models_response = response.json()
+
+            return ModelListMlflowResponse(**models_response)
 
     except Exception as e:
         api_logger.error(f"Failed to get models: {str(e)}")
@@ -489,12 +468,15 @@ async def get_models():
 async def get_model_metadata(model_name: str):
     """Get metadata for a specific model."""
     try:
-        # Import services from main to avoid circular imports
-        from api.main import deployment_service
+        url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models/{model_name}"
 
-        metadata = await deployment_service.get_model_metadata(model_name)
-        print(f"Model metadata for {model_name}: {metadata}")
-        return metadata
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url)
+            r.raise_for_status()
+            metadata = r.json()
+
+            print(f"Model metadata for {model_name}: {metadata}")
+            return metadata
     except Exception as e:
         api_logger.error(f"Failed to get model metadata: {str(e)}")
         raise HTTPException(
@@ -667,7 +649,7 @@ async def train_model(
         api_logger.error(f"Training failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}") from e
 
-        
+
 @router.post("/data/cleanup", response_model=Dict[str, Any], tags=["Data Services"])
 async def cleanup_stock_data(symbol: Optional[str] = None):
     """Clean up and maintain stock data files."""

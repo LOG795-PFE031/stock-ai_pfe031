@@ -1,8 +1,8 @@
 from prefect import task
 from typing import Any
+import httpx
 
-from services import DeploymentService
-
+from core.config import config
 
 @task(
     name="promote_model",
@@ -13,7 +13,6 @@ from services import DeploymentService
 async def promote_model(
     run_id: str,
     prod_model_name: str,
-    service: DeploymentService,
 ) -> dict[str, Any]:
     """
     Promote a trained model version to production.
@@ -26,4 +25,11 @@ async def promote_model(
     Returns:
         bool: True if the promotion was successful, False otherwise.
     """
-    return await service.promote_model(run_id=run_id, prod_model_name=prod_model_name)
+    url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models/{prod_model_name}/promote"
+    
+    payload = {"run_id": run_id}
+    
+    async with httpx.AsyncClient(timeout=None) as client:
+        response = await client.post(url, json=payload)
+        response.raise_for_status()
+        return response.json()

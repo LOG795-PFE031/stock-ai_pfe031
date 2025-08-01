@@ -7,9 +7,6 @@ from ..tasks.deployment import production_model_exists
 from ..tasks.evaluation import evaluate, log_metrics_to_mlflow
 from core.utils import get_model_name
 from core.types import ProcessedData
-from services import (
-    DeploymentService,
-)
 
 
 @flow(
@@ -19,7 +16,6 @@ from services import (
 def run_evaluation_flow(
     model_type: str,
     symbol: str,
-    deployment_service: DeploymentService,
 ) -> Optional[dict[str, float]]:
     """
     Run evaluation on the current production model using recent stock data.
@@ -35,7 +31,6 @@ def run_evaluation_flow(
     Parameters:
         model_type (str): The type of model (e.g. 'lstm', 'prophet').
         symbol (str): Stock ticker symbol.
-        deployment_service (DeploymentService): Service to interact with deployed models.
 
     Returns:
         Optional[Dict[str, Any]]: Evaluation metrics if the production model exists, otherwise None.
@@ -45,14 +40,13 @@ def run_evaluation_flow(
 
     # Checks if the production model exists
     prod_model_exist = production_model_exists.submit(
-        production_model_name, deployment_service
+        production_model_name,
     ).result()
 
     if prod_model_exist:
 
         # Load the recent stock data
-        raw_data = load_recent_stock_data.submit(symbol=symbol
-        ).result()
+        raw_data = load_recent_stock_data.submit(symbol=symbol).result()
 
         # Preprocess the raw data
         eval_data = preprocess_data.submit(
@@ -69,7 +63,6 @@ def run_evaluation_flow(
             symbol=symbol,
             phase="prediction",
             eval_data=eval_data,
-            deployment_service=deployment_service,
         )
 
         return metrics
@@ -88,7 +81,6 @@ def run_evaluate_and_log_flow(
     symbol: str,
     true_target: ProcessedData,
     pred_target: ProcessedData,
-    deployment_service: DeploymentService,
 ) -> dict[str, float]:
     """
     Evaluates the performance of a model predictions and logs the resulting metrics to MLflow.
@@ -102,7 +94,6 @@ def run_evaluate_and_log_flow(
                 logged model (training model) or name of a registered model (live model)).
         true_target (ProcessedData) : The true target values.
         pred_target (ProcessedData): The predicted target values.
-        deployment_service (DeploymentService): Service responsible for logging metrics to MLflow.
 
     Returns:
         dict[str,float]: Dictionary of evaluation metrics (e.g., rmse, r2, etc).
@@ -121,7 +112,8 @@ def run_evaluate_and_log_flow(
 
     # Log the metrics
     future = log_metrics_to_mlflow.submit(
-        model_identifier=model_identifier, metrics=metrics, service=deployment_service
+        model_identifier=model_identifier,
+        metrics=metrics,
     )
     future.wait()
 
@@ -138,7 +130,6 @@ def evaluate_model(
     symbol: str,
     phase: str,
     eval_data: ProcessedData,
-    deployment_service: DeploymentService,
 ) -> dict[str, float]:
     """
     Evaluates a model's predictions against true values and logs the resulting evaluation metrics.
@@ -156,7 +147,6 @@ def evaluate_model(
         symbol (str): Stock ticker symbol.
         phase (str): The phase (e.g., "training", "evaluation", or "prediction").
         eval_data (ProcessedData): Preprocessed input data (for evaluation).
-        deployment_service (DeploymentService): Service used for model inference and MLflow interaction.
 
     Returns:
         dict[str,float]: Dictionary of evaluation metrics (e.g., rmse, r2, etc).
@@ -169,7 +159,6 @@ def evaluate_model(
         symbol=symbol,
         phase=phase,
         prediction_input=eval_data,
-        deployment_service=deployment_service,
     )["prediction"]
 
     # Postprocess ground truth
@@ -187,6 +176,5 @@ def evaluate_model(
         symbol=symbol,
         true_target=true_target,
         pred_target=pred_target,
-        deployment_service=deployment_service,
     )
     return metrics

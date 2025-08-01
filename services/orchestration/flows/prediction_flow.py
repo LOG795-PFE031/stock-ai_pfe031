@@ -13,7 +13,6 @@ from ..tasks.data import (
 )
 from ..tasks.deployment import production_model_exists
 from core.utils import get_model_name
-from services import DeploymentService
 from core.types import ProcessedData
 from core.config import config
 
@@ -31,7 +30,6 @@ def run_inference_flow(
     symbol: str,
     phase: str,
     prediction_input: ProcessedData,
-    deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
     Run the full inference pipeline for a given model and stock symbol.
@@ -48,7 +46,6 @@ def run_inference_flow(
         symbol (str): Stock ticker symbol
         phase (str): Phase of the pipeline (e.g., "prediction", "evaluation", 'training).
         prediction_input (ProcessedData): Preprocessed input features for prediction.
-        deployment_service: Service used for predicting and calculating confidence.
 
     Returns:
         dict: A dictionary containing the prediction results:
@@ -60,7 +57,6 @@ def run_inference_flow(
     predict_result = predict.submit(
         model_identifier=model_identifier,
         X=prediction_input.X,
-        service=deployment_service,
     ).result()
 
     y_pred, model_version = (
@@ -83,7 +79,6 @@ def run_inference_flow(
             symbol=symbol,
             y_pred=y_pred,
             prediction_input=prediction_input,
-            service=deployment_service,
         )
         if phase == "prediction"
         else None
@@ -109,7 +104,6 @@ def run_inference_flow(
 def run_prediction_pipeline(
     model_type: str,
     symbol: str,
-    deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
     Executes the prediction pipeline for a given model type and stock symbol.
@@ -123,7 +117,6 @@ def run_prediction_pipeline(
     Args:
         model_type (str): The type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol
-        deployment_service: Service responsible for model deployment and prediction.
 
     Returns:
         dict: A dictionary containing the prediction results:
@@ -138,7 +131,7 @@ def run_prediction_pipeline(
 
     # Check if it exist
     prod_model_exist = production_model_exists.submit(
-        production_model_name, deployment_service
+        production_model_name,
     ).result()
 
     if prod_model_exist:
@@ -160,7 +153,6 @@ def run_prediction_pipeline(
             symbol=symbol,
             phase=PHASE,
             prediction_input=prediction_input,
-            deployment_service=deployment_service,
         )
 
         return {
@@ -180,7 +172,6 @@ def run_prediction_pipeline(
 def run_prediction_flow(
     model_type: str,
     symbol: str,
-    deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
     Run the prediction pipeline. It is basically a flow wrapper of the task in function
@@ -189,7 +180,6 @@ def run_prediction_flow(
     Args:
         model_type (str): The type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol
-        deployment_service: Service responsible for model deployment and prediction.
 
     Returns:
         dict: A dictionary containing the prediction results:
@@ -201,7 +191,6 @@ def run_prediction_flow(
     prediction_result = run_prediction_pipeline.submit(
         model_type=model_type,
         symbol=symbol,
-        deployment_service=deployment_service,
     ).result()
 
     return prediction_result
@@ -214,7 +203,6 @@ def run_prediction_flow(
 def run_batch_prediction(
     model_types: list[str],
     symbols: list[str],
-    deployment_service: DeploymentService,
 ):
     """
     Executes batch predictions for all combinations of given model types and stock symbols.
@@ -222,7 +210,6 @@ def run_batch_prediction(
     Args:
         model_types (list[str]): A list of model types to use (e.g., ["lstm", "xgboost"]).
         symbols (list[str]): A list of stock symbols to generate predictions for.
-        deployment_service: Service responsible for model deployment and prediction.
     """
 
     # Generate (model_type, symbol) pairs
@@ -236,7 +223,6 @@ def run_batch_prediction(
     predictions = run_prediction_pipeline.map(
         model_type=model_type_list,
         symbol=symbol_list,
-        deployment_service=deployment_service,
     )
 
     # Wait for all predictions to complete
@@ -251,7 +237,6 @@ def historical_prediction(
     model_type: str,
     symbol: str,
     end_date: datetime,
-    deployment_service: DeploymentService,
 ) -> dict[str, Any]:
     """
     Run a historical prediction for a given stock symbol and date.
@@ -260,7 +245,6 @@ def historical_prediction(
         model_type (str): The type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker sym
         end_date (datetime): The day before the day to predict
-        deployment_service (DeploymentService): Deployment service
 
     Returns:
         dict: A dictionary containing the prediction results:
@@ -294,7 +278,6 @@ def historical_prediction(
         symbol=symbol,
         phase=PHASE,
         prediction_input=prediction_input,
-        deployment_service=deployment_service,
     )
 
     return {
@@ -312,7 +295,6 @@ def run_historical_predictions_flow(
     model_type: str,
     symbol: str,
     trading_days: list[datetime],
-    deployment_service: DeploymentService,
 ):
     """
     Run historical predictions for a given symbol and date range using a production model.
@@ -321,7 +303,6 @@ def run_historical_predictions_flow(
         model_type (str): The type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol
         trading_days (list[datetime]): The trading days we want to predict
-        deployment_service (DeploymentService): Deployment service.
 
     Returns:
         list|None: List of prediction results corresponding to those dates.
@@ -336,7 +317,7 @@ def run_historical_predictions_flow(
 
     # Check if it exist
     prod_model_exist = production_model_exists.submit(
-        production_model_name, deployment_service
+        production_model_name,
     ).result()
 
     if prod_model_exist:
@@ -346,7 +327,6 @@ def run_historical_predictions_flow(
             model_type=model_type,
             symbol=symbol,
             end_date=dates,
-             deployment_service=deployment_service,
         )
 
         # Wait for predictions and collect results

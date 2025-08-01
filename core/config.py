@@ -97,6 +97,13 @@ class TrainingServiceConfig(BaseModel):
     PORT: int = 8000
 
 
+class DeploymentServiceConfig(BaseModel):
+    """Deployment service configuration."""
+
+    HOST: str = "deployment-service"  # Use the Docker container's hostname
+    PORT: int = 8000
+
+      
 class EvaluationServiceConfig(BaseModel):
     """Evaluation service configuration."""
 
@@ -155,7 +162,6 @@ class MonitoringConfig(BaseModel):
     PERFORMANCE_CHECK_INTERVAL: int = 24 * 60 * 60  # 24 hours
     DATA_DRIFT_CHECK_INTERVAL: int = 7 * 24 * 60 * 60  # 7 days
 
-
 class Config:
     """Main configuration class."""
 
@@ -167,6 +173,7 @@ class Config:
         self.rabbitmq = RabbitMQConfig()
         self.data_processing_service = DataProcessingServiceConfig()
         self.training_service = TrainingServiceConfig()
+        self.deployment_service = DeploymentServiceConfig()
         self.evaluation_service = EvaluationServiceConfig()
         self.mlflow_server = MLFlowConfig()
         self.postgres = PostgresDatabaseConfig()

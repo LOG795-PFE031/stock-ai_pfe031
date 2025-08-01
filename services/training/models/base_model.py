@@ -14,6 +14,7 @@ from core.logging import logger
 from core.types import LSTMInput, ProphetInput, XGBoostInput
 from ..trainers import BaseTrainer
 from .saving_strategies import BaseSaver
+from mlflow.pyfunc import PythonModel
 
 
 class BaseModel(ABC, PythonModel):
@@ -52,6 +53,56 @@ class BaseModel(ABC, PythonModel):
         """
 
         try:
+
+            class LSTMPredictor(PythonModel):
+                def load_context(self, context):
+                    from keras import models  # Replace tensorflow import
+
+                    model_path = context.artifacts.get("model")
+                    if not model_path:
+                        raise ValueError(
+                            "Model path for LSTM model is missing from MLflow artifacts."
+                        )
+
+                    self.model = models.load_model(model_path, compile=False)
+
+                def predict(self, context, model_input, params=None):
+                    return self.model.predict(model_input)
+
+            class ProphetPredictor(PythonModel):
+                def load_context(self, context):
+                    import joblib
+
+                    model_path = context.artifacts.get("model")
+                    if not model_path:
+                        raise ValueError(
+                            "Model path for the Prophet model is missing from MLflow artifacts."
+                        )
+                    self.model = joblib.load(model_path)
+
+                def predict(self, context, model_input, params=None):
+                    return self.model.predict(model_input)
+
+            class XGBoostPredictor(PythonModel):
+                def load_context(self, context):
+                    import joblib
+
+                    model_path = context.artifacts.get("model")
+                    if not model_path:
+                        raise ValueError(
+                            "Model path for the XGBoost model is missing from MLflow artifacts."
+                        )
+                    self.model = joblib.load(model_path)
+
+                def predict(self, context, model_input, params=None):
+                    return self.model.predict(model_input)
+
+            model_map = {
+                "lstm": LSTMPredictor,
+                "xgboost": XGBoostPredictor,
+                "prophet": ProphetPredictor,
+            }
+
             mlflow.set_experiment("training_experiments")
 
             with mlflow.start_run() as run:
@@ -71,9 +122,10 @@ class BaseModel(ABC, PythonModel):
                     model, base_path=self._get_training_model_dir()
                 )
 
+                python_model = model_map.get(self.model_type)
                 # Register the model to MLFlow
                 mlflow.pyfunc.log_model(
-                    python_model=self.predictor,
+                    python_model=python_model(),
                     artifact_path="model",
                     artifacts={"model": str(saved_training_model_path)},
                 )

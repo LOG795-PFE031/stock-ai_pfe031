@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from core.types import ProcessedData
+from ...types import ProcessedData
 
 
 class ConfidenceCalculatorStrategy(ABC):
