@@ -2,17 +2,15 @@
 API routes for the Deployment Service.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 import numpy as np
 import pandas as pd
 from datetime import date, datetime
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 
 from core.config import config
 from core.logging import logger
-from core.types import ProcessedDataAPI
-from core.utils import validate_stock_symbol, get_date_range
 from .schemas import (
     HealthResponse,
     MetaInfo,
@@ -29,7 +27,7 @@ from .schemas import (
     LogMetricsResponse,
 )
 
-from core.types import ProcessedData
+from .types import ProcessedData
 
 # Create router
 router = APIRouter()
@@ -58,15 +56,14 @@ async def api_welcome():
             "/metrics",
             "/models",
             "/models/{model_name}",
-            "/models/{prod_model_name}/exists"
-            "/predict",
+            "/models/{prod_model_name}/exists" "/predict",
             "/calculate_prediction_confidence",
             "/models/{prod_model_name}/promote",
             "/models/{model_identifier}/log_metrics",
             "/cleanup",
         ],
     }
-    
+
 
 # Health check endpoint
 @router.get("/health", response_model=HealthResponse, tags=["System"])
@@ -92,19 +89,18 @@ async def health_check():
         raise HTTPException(
             status_code=500, detail=f"Health check failed: {str(exception)}"
         ) from exception
-        
+
 
 # Get all available models
 @router.get(
-    "/models", 
-    response_model=ModelListMlflowResponse,
-    tags=["Model Management"])
+    "/models", response_model=ModelListMlflowResponse, tags=["Model Management"]
+)
 async def list_models():
     """List all available models."""
     try:
         # Import services from main to avoid circular imports
         from .main import deployment_service
-        
+
         # models = await deployment_service.list_models()
         # return models
         models = await deployment_service.list_models()
@@ -133,7 +129,7 @@ async def get_model_metadata(model_name: str):
     try:
         # Import services from main to avoid circular imports
         from .main import deployment_service
-        
+
         metadata = await deployment_service.get_model_metadata(model_name)
         return metadata
     except Exception as exception:
@@ -155,7 +151,7 @@ async def production_model_exists(prod_model_name: str):
     try:
         # Import services from main to avoid circular imports
         from .main import deployment_service
-        
+
         exists = await deployment_service.production_model_exists(
             prod_model_name=prod_model_name
         )
@@ -166,8 +162,8 @@ async def production_model_exists(prod_model_name: str):
         raise HTTPException(
             status_code=500, detail=f"Get production model failed: {str(e)}"
         ) from e
-        
-        
+
+
 @router.post(
     "/predict",
     response_model=PredictionResponse,
@@ -184,30 +180,36 @@ async def predict(request: PredictionRequest):
         X_input = np.array(raw)
     else:
         X_input = raw
-        
+
     try:
         # Import services from main to avoid circular imports
         from .main import deployment_service
-        
+
         result = await deployment_service.predict(
             model_identifier=request.model_identifier,
             X=X_input,
         )
-        
+
         # !!! Ensure predictions is always a List for Pydantic schema
         predictions = result.get("predictions")
-        
+
         # Handle different prediction types and convert to List
         if predictions is None:
             predictions = []
         elif isinstance(predictions, np.ndarray):
             predictions = predictions.tolist()
         elif isinstance(predictions, (pd.DataFrame, pd.Series)):
-            predictions = predictions.values.tolist() if hasattr(predictions, 'values') else predictions.tolist()
+            predictions = (
+                predictions.values.tolist()
+                if hasattr(predictions, "values")
+                else predictions.tolist()
+            )
         elif not isinstance(predictions, list):
             # Handle single values or other types
-            predictions = [predictions] if np.isscalar(predictions) else list(predictions)
-        
+            predictions = (
+                [predictions] if np.isscalar(predictions) else list(predictions)
+            )
+
         # Ensure all elements are JSON serializable (int, float, or basic types)
         clean_predictions = []
         for pred in predictions:
@@ -219,18 +221,16 @@ async def predict(request: PredictionRequest):
                 clean_predictions.append(bool(pred))
             else:
                 clean_predictions.append(pred)
-        
+
         return PredictionResponse(
             predictions=clean_predictions,
-            model_version=result.get("model_version", "unknown")
+            model_version=result.get("model_version", "unknown"),
         )
-        
+
     except Exception as e:
         api_logger.error(f"Prediction failed: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Prediction failed: {e}"
-        ) from e
-        
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {e}") from e
+
 
 @router.post(
     "/calculate_prediction_confidence",
@@ -249,13 +249,20 @@ async def calculate_prediction_confidence(
 
     # rebuild the ProcessedData object from json
     pi = request.prediction_input
+
     try:
         processed_input = ProcessedData(
-            X = np.array(pi["X"]),
-            y = np.array(pi["y"]) if pi.get("y") is not None else None,
-            feature_index_map = pi.get("feature_index_map"),
-            start_date = date.fromisoformat(pi["start_date"]) if pi.get("start_date") else None,
-            end_date   = date.fromisoformat(pi["end_date"])   if pi.get("end_date")   else None,
+            X=(
+                pd.DataFrame(pi["X"])
+                if isinstance(pi["X"][0], dict)
+                else np.array(pi["X"])
+            ),
+            y=np.array(pi["y"]) if pi.get("y") is not None else None,
+            feature_index_map=pi.get("feature_index_map"),
+            start_date=(
+                date.fromisoformat(pi["start_date"]) if pi.get("start_date") else None
+            ),
+            end_date=date.fromisoformat(pi["end_date"]) if pi.get("end_date") else None,
         )
     except Exception as e:
         raise HTTPException(400, f"Bad prediction_input payload: {e}")
@@ -273,8 +280,8 @@ async def calculate_prediction_confidence(
             status_code=500,
             detail=f"Failed to calculate prediction confidence: {e}",
         )
-        
-        
+
+
 @router.post(
     "/models/{prod_model_name}/promote",
     response_model=PromoteModelResponse,
@@ -287,14 +294,14 @@ async def promote_model(
     try:
         # Import services from main to avoid circular imports
         from .main import deployment_service
-        
+
         result = await deployment_service.promote_model(
             run_id=payload.run_id,
             prod_model_name=prod_model_name,
         )
-        
+
         return PromoteModelResponse(**result)
-    
+
     except Exception as e:
         api_logger.error(f"Promote model failed: {str(e)}")
         raise HTTPException(
@@ -317,13 +324,13 @@ async def log_metrics(
     try:
         # Import services from main to avoid circular imports
         from .main import deployment_service
-        
+
         success = await deployment_service.log_metrics(
             model_identifier=model_identifier,
             metrics=payload.metrics,
         )
         return {"logged": success, "model_identifier": model_identifier}
-    
+
     except Exception as e:
         api_logger.error(f"Failed to log metrics for {model_identifier}: {e}")
         raise HTTPException(
@@ -352,11 +359,6 @@ async def cleanup_deployment_service():
     except Exception as exception:
         api_logger.error(f"Deployment service cleanup failed: {str(exception)}")
         raise HTTPException(
-            status_code=500, detail=f"Deployment service cleanup failed: {str(exception)}"
+            status_code=500,
+            detail=f"Deployment service cleanup failed: {str(exception)}",
         ) from exception
-        
-                
-
-        
-
-
