@@ -21,10 +21,7 @@ from core.prometheus_metrics import (
 from api.routes import router
 from core.logging import logger
 from db.init_db import create_database
-from services import (
-    RabbitMQService,
-    MonitoringService,
-)
+from services import MonitoringService
 from services.orchestration import OrchestrationService
 from core.monitor_utils import (
     monitor_cpu_usage,
@@ -36,7 +33,6 @@ os.makedirs("data/news", exist_ok=True)
 
 # Create service instances in dependency order
 orchestation_service = OrchestrationService()
-rabbitmq_service = RabbitMQService()
 monitoring_service = MonitoringService(
     orchestation_service,
     check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
@@ -73,7 +69,6 @@ async def lifespan(app: FastAPI):
             # Cleanup in reverse order of initialization
             await monitoring_service.cleanup()
             await orchestation_service.cleanup()
-            rabbitmq_service.close()  # Close RabbitMQ connection
 
             logger["main"].info("All services cleaned up successfully")
 
