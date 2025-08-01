@@ -240,35 +240,54 @@ async def calculate_prediction_confidence(
     Calculate and log prediction confidence for a model/symbol,
     emit to Prometheus, and return the raw confidence scores.
     """
-    # Import services from main to avoid circular imports
-    from .main import deployment_service
-
-    # rebuild the ProcessedData object from json
-    pi = request.prediction_input
-
     try:
-        processed_input = ProcessedData(
-            X=(
-                pd.DataFrame(pi["X"])
-                if isinstance(pi["X"][0], dict)
-                else np.array(pi["X"])
-            ),
-            y=np.array(pi["y"]) if pi.get("y") is not None else None,
-            feature_index_map=pi.get("feature_index_map"),
-            start_date=(
-                date.fromisoformat(pi["start_date"]) if pi.get("start_date") else None
-            ),
-            end_date=date.fromisoformat(pi["end_date"]) if pi.get("end_date") else None,
-        )
-    except Exception as e:
-        raise HTTPException(400, f"Bad prediction_input payload: {e}")
+        # Import services from main to avoid circular imports
+        from .main import deployment_service
 
-    try:
+        # rebuild the ProcessedData object from json
+        pi = request.prediction_input
+
+        try:
+            processed_input = ProcessedData(
+                X=(
+                    pd.DataFrame(pi["X"])
+                    if isinstance(pi["X"], list)
+                    and pi["X"]
+                    and isinstance(pi["X"][0], dict)
+                    else np.array(pi["X"])
+                ),
+                y=np.array(pi["y"]) if pi.get("y") is not None else None,
+                feature_index_map=pi.get("feature_index_map"),
+                start_date=(pi["start_date"] if pi.get("start_date") else None),
+                end_date=(pi["end_date"] if pi.get("end_date") else None),
+            )
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail=f"Bad prediction_input payload: {e}"
+            )
+
+        # Retrieve the y_pred from the request
+        request_y_pred = request.y_pred
+
+        if isinstance(request_y_pred, list):
+            if len(request_y_pred) > 0:
+                if isinstance(request_y_pred[0], dict):
+                    y_pred = pd.DataFrame(request_y_pred)
+                else:
+                    y_pred = np.array(request_y_pred)
+            else:
+                raise HTTPException(
+                    status_code=400, detail="Empty prediction input (y_pred)."
+                )
+        else:
+            raise HTTPException(status_code=400, detail="Invalid format for y_pred.")
+
         confidences = await deployment_service.calculate_prediction_confidence(
             model_type=request.model_type,
             symbol=request.symbol,
             prediction_input=processed_input,
-            y_pred=np.array(request.y_pred),
+            y_pred=y_pred,
         )
         return ConfidenceResponse(confidences=confidences or [])
     except Exception as e:
