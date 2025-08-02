@@ -129,7 +129,7 @@ def evaluate_model(
     model_type: str,
     symbol: str,
     phase: str,
-    eval_data: dict,
+    eval_data: ProcessedData,
 ) -> dict[str, float]:
     """
     Evaluates a model's predictions against true values and logs the resulting evaluation metrics.
@@ -146,8 +146,7 @@ def evaluate_model(
         model_type (str): The type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol.
         phase (str): The phase (e.g., "training", "evaluation", or "prediction").
-        eval_data (dict): Preprocessed input data (for evaluation). The dict is a ProcessedData
-            object turned to a dict
+        eval_data (ProcessedData): Preprocessed input data (for evaluation).
 
     Returns:
         dict[str,float]: Dictionary of evaluation metrics (e.g., rmse, r2, etc).
@@ -167,7 +166,7 @@ def evaluate_model(
         symbol=symbol,
         model_type=model_type,
         phase=phase,
-        prediction=eval_data.get("y"),
+        prediction=eval_data.y,
     ).result()
 
     # Run evaluation and log metrics

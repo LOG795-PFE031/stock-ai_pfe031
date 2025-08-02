@@ -18,16 +18,12 @@ COPY ../requirements.txt .
 COPY api/requirements.txt api-requirements.txt
 COPY core/requirements.txt core-requirements.txt
 
-# TODO : Delete/Modify this once the monitoring has its own container
-COPY services/monitoring/requirements.txt monitoring-requirements.txt
-
 # Combine all requirements into one file
-RUN cat api-requirements.txt core-requirements.txt monitoring-requirements.txt > requirements.txt
+RUN cat api-requirements.txt core-requirements.txt > requirements.txt
 
 # Install build tools and wheel
 # Install build tools and wheel
-RUN pip install --no-cache-dir --upgrade pip && \
-  pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 
 # Stage 2: Runtime

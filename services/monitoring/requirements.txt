@@ -1,2 +1,11 @@
+# Monitoring requirements
+
 numpy==1.26.4
 scipy==1.16.0
+
+# API Server
+fastapi==0.116.1
+starlette==0.47.2
+uvicorn[standard]==0.35.0
+
+httpx==0.28.1

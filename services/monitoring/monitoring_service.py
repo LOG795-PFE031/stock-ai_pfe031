@@ -13,7 +13,7 @@ from core import BaseService
 from core.logging import logger
 from core.config import config
 from core.prometheus_metrics import evaluation_mae
-from api.schemas import ModelListMlflowResponse
+from .schemas import ModelListMlflowResponse
 from httpx import ReadTimeout, ConnectTimeout
 
 

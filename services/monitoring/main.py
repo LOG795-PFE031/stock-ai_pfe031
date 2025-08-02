@@ -1,5 +1,5 @@
 """
-Main application module for Evaluation service.
+Main application module for Monitoring service.
 """
 
 import asyncio
@@ -22,46 +22,46 @@ from core.prometheus_metrics import (
     http_request_duration_seconds,
     http_errors_total,
 )
-from .routes import router
-from .evaluation_service import EvaluationService
 
-# Create the evaluation service instance
-evaluation_service = EvaluationService()
+from .monitoring_service import MonitoringService
+
+# Create the monitoring service instance
+monitoring_service = MonitoringService()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     try:
-        logger["evaluation"].info("Starting up the evaluation service...")
+        logger["monitoring"].info("Starting up the monitoring service...")
 
-        await evaluation_service.initialize()
+        await monitoring_service.initialize()
 
-        logger["main"].info("Evaluation service initialized successfully")
+        logger["main"].info("Monitoring service initialized successfully")
         yield
 
     except Exception as exception:
-        logger["main"].error(f"Error during evaluation service startup: {str(exception)}")
+        logger["main"].error(f"Error during monitoring service startup: {str(exception)}")
         raise
 
     finally:
         # Shutdown
         try:
-            logger["main"].info("Shutting down the evaluation service...")
+            logger["main"].info("Shutting down the monitoring service...")
 
             # Cleanup the services
-            await evaluation_service.cleanup()
+            await monitoring_service.cleanup()
 
-            logger["main"].info("The evaluation service was cleaned up successfully")
+            logger["main"].info("The monitoring service was cleaned up successfully")
 
         except Exception as exception:
             logger["main"].error(
-                f"Error during the evaluation service shutdown: {str(exception)}"
+                f"Error during the monitoring service shutdown: {str(exception)}"
             )
             
 
 app = FastAPI(
-    title="Evaluation Service API",
+    title="Monitoring Service API",
     description="""
     API for serving/deploying ML models and predictions.
     """,
@@ -70,8 +70,8 @@ app = FastAPI(
     openapi_tags=[
         {"name": "System", "description": "System health and status endpoints"},
         {
-            "name": "Evaluation Services",
-            "description": "Endpoints to list models and get predictions",
+            "name": "Monitoring Services",
+            "description": "Monitors AI",
         },
     ],
 )
@@ -90,9 +90,6 @@ app.add_middleware(
 async def root():
     """Redirect root to API documentation."""
     return RedirectResponse(url="/docs")
-
-# Include routers
-app.include_router(router, prefix="/evaluation") 
 
 
 # Prometheus middleware
