@@ -129,7 +129,7 @@ def evaluate_model(
     model_type: str,
     symbol: str,
     phase: str,
-    prediction_input: ProcessedData,
+    eval_data: dict,
 ) -> dict[str, float]:
     """
     Evaluates a model's predictions against true values and logs the resulting evaluation metrics.
@@ -167,7 +167,7 @@ def evaluate_model(
         symbol=symbol,
         model_type=model_type,
         phase=phase,
-        prediction=prediction_input.y,
+        prediction=eval_data.get("y"),
     ).result()
 
     # Run evaluation and log metrics

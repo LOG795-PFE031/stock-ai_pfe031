@@ -351,6 +351,27 @@ services:
         condition: service_healthy
 
   # ============================
+  # 📉 Model Monitoring Service
+  # ============================
+  monitoring-service:
+    build:
+      context: .
+      dockerfile: services/monitoring/Dockerfile
+    container_name: monitoring-service
+    ports:
+      - "8007:8000"
+    volumes:
+      - ./services/monitoring:/app/services/monitoring
+    networks:
+      - microservices_auth
+    restart: on-failure
+    depends_on:
+      deployment-service:
+        condition: service_healthy
+      orchestration-service:
+        condition: service_healthy
+
+  # ============================
   # 🔀 Orchestration Service
   # ============================
   orchestration-service:
@@ -376,27 +397,6 @@ services:
     depends_on:
       prefect-server:
         condition: service_started
-
-  # ============================
-  # 🔍 Monitoring Service
-  # ============================
-  monitoring-service:
-    build:
-      context: .
-      dockerfile: services/monitoring/Dockerfile
-    container_name: monitoring-service
-    ports:
-      - "8007:8000"
-    volumes:
-      - ./services/monitoring:/app/services/monitoring
-    networks:
-      - microservices_auth
-    restart: on-failure
-    depends_on:
-      deployment-service:
-        condition: service_healthy
-      orchestration-service:
-        condition: service_healthy
 
 # ============================
 # 🔗 Networks

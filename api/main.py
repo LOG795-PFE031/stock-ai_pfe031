@@ -28,32 +28,6 @@ from core.monitor_utils import (
 # Create necessary directories
 os.makedirs("data/news", exist_ok=True)
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan events."""
-    # Startup
-    try:
-        logger["main"].info("Starting up services...")
-
-        logger["main"].info("All services initialized successfully")
-        yield
-
-    except Exception as e:
-        logger["main"].error(f"Error during startup: {str(e)}")
-        raise
-
-    finally:
-        # Shutdown
-        try:
-            logger["main"].info("Shutting down services...")
-
-            logger["main"].info("All services cleaned up successfully")
-
-        except Exception as e:
-            logger["main"].error(f"Error during shutdown: {str(e)}")
-
-
 # Create FastAPI app
 app = FastAPI(
     title="Stock AI API",
