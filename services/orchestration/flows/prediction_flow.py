@@ -1,8 +1,10 @@
+from dataclasses import asdict
+from datetime import datetime, timedelta
+from typing import Any
+
 from prefect import flow, task
 from prefect.futures import wait
 from itertools import product
-from typing import Any
-from datetime import datetime, timedelta
 
 from ..tasks.prediction import predict, calculate_prediction_confidence
 from ..tasks.data import (
@@ -13,7 +15,7 @@ from ..tasks.data import (
 )
 from ..tasks.deployment import production_model_exists
 from core.utils import get_model_name
-from core.types import ProcessedData
+from ..types import ProcessedData
 from core.config import config
 
 PHASE = "prediction"
@@ -144,7 +146,7 @@ def run_prediction_pipeline(
             symbol=symbol,
             data=raw_data,
             phase=PHASE,
-        )
+        ).result()
 
         # Make prediction (prediction and confidence included)
         prediction_result = run_inference_flow(
@@ -152,7 +154,7 @@ def run_prediction_pipeline(
             model_type=model_type,
             symbol=symbol,
             phase=PHASE,
-            prediction_input=prediction_input,
+            prediction_input=asdict(prediction_input),
         )
 
         return {
@@ -236,7 +238,7 @@ def run_batch_prediction(
 def historical_prediction(
     model_type: str,
     symbol: str,
-    end_date: datetime,
+    end_date: str,
 ) -> dict[str, Any]:
     """
     Run a historical prediction for a given stock symbol and date.
@@ -244,7 +246,7 @@ def historical_prediction(
     Args:
         model_type (str): The type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker sym
-        end_date (datetime): The day before the day to predict
+        end_date (str): The day before the day to predict
 
     Returns:
         dict: A dictionary containing the prediction results:
@@ -266,7 +268,7 @@ def historical_prediction(
         symbol=symbol,
         data=raw_data,
         phase=PHASE,
-    )
+    ).result()
 
     # Generate the production model name
     production_model_name = get_model_name(model_type, symbol)
@@ -277,7 +279,7 @@ def historical_prediction(
         model_type=model_type,
         symbol=symbol,
         phase=PHASE,
-        prediction_input=prediction_input,
+        prediction_input=asdict(prediction_input),
     )
 
     return {
@@ -310,7 +312,7 @@ def run_historical_predictions_flow(
     """
 
     # Shift all the dates by minus 1 (because we want all the sequence before the date to not see in the future)
-    dates = [d - timedelta(days=1) for d in trading_days]
+    dates = [(d - timedelta(days=1)).date().isoformat() for d in trading_days]
 
     # Generate the production model name
     production_model_name = get_model_name(model_type, symbol)

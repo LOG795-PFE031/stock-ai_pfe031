@@ -6,7 +6,7 @@ from ..tasks.data import load_recent_stock_data, postprocess_data, preprocess_da
 from ..tasks.deployment import production_model_exists
 from ..tasks.evaluation import evaluate, log_metrics_to_mlflow
 from core.utils import get_model_name
-from core.types import ProcessedData
+from ..types import ProcessedData
 
 
 @flow(
@@ -129,7 +129,7 @@ def evaluate_model(
     model_type: str,
     symbol: str,
     phase: str,
-    eval_data: ProcessedData,
+    eval_data: dict,
 ) -> dict[str, float]:
     """
     Evaluates a model's predictions against true values and logs the resulting evaluation metrics.
@@ -146,7 +146,8 @@ def evaluate_model(
         model_type (str): The type of model (e.g., "lstm", "prophet").
         symbol (str): Stock ticker symbol.
         phase (str): The phase (e.g., "training", "evaluation", or "prediction").
-        eval_data (ProcessedData): Preprocessed input data (for evaluation).
+        eval_data (dict): Preprocessed input data (for evaluation). The dict is a ProcessedData
+            object turned to a dict
 
     Returns:
         dict[str,float]: Dictionary of evaluation metrics (e.g., rmse, r2, etc).
@@ -166,7 +167,7 @@ def evaluate_model(
         symbol=symbol,
         model_type=model_type,
         phase=phase,
-        prediction=eval_data.y,
+        prediction=eval_data.get("y"),
     ).result()
 
     # Run evaluation and log metrics

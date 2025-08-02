@@ -5,7 +5,7 @@ import pandas as pd
 from prefect import task
 
 from core.config import config
-from core.types import ProcessedData
+from ...types import ProcessedData
 from ...utils import to_processed_data
 
 
