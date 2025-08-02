@@ -19,7 +19,6 @@ from core.logging import logger
 
 router = APIRouter()
 api_logger = logger["data"]
-data_service = DataService()
 
 
 @router.get("/", response_class=RedirectResponse, tags=["System"])
@@ -73,6 +72,9 @@ async def health_check():
 async def get_stocks():
     """Get list of available stocks from NASDAQ-100, sorted by absolute percentage change (top movers first)."""
     try:
+        # Import services from main to avoid circular imports
+        from .main import data_service
+
         response = await data_service.get_nasdaq_stocks()
 
         # Extract the list of stocks from the response
@@ -115,6 +117,9 @@ async def get_current_price(
 ):
     """Get current price for a specific stock."""
     try:
+        # Import services from main to avoid circular imports
+        from .main import data_service
+
         # Use service method that handles all business logic
         result = await data_service.get_current_price(symbol)
 
@@ -172,6 +177,9 @@ async def get_historical_data(
 ):
     """Get historical stock data for a specific date range."""
     try:
+        # Import services from main to avoid circular imports
+        from .main import data_service
+
         # Use service method that handles all business logic
         result = await data_service.get_historical_stock_prices(
             symbol, start_date, end_date
@@ -229,6 +237,9 @@ async def get_recent_data(
 ):
     """Get recent stock data for a specific number of days back."""
     try:
+        # Import services from main to avoid circular imports
+        from .main import data_service
+
         # Use service method that handles all business logic
         result = await data_service.get_recent_data(symbol, days_back)
 
@@ -285,6 +296,11 @@ async def get_data_from_end_date(
 ):
     """Get stock data from a specific end date going back a number of days."""
     try:
+        # Import services from main to avoid circular imports
+        from .main import data_service
+
+        api_logger.info("Request from-end-date data")
+
         # Use service method that handles all business logic
         result = await data_service.get_historical_stock_prices_from_end_date(
             symbol, end_date, days_back
@@ -338,6 +354,9 @@ async def cleanup_data(
 ):
     """Clean up data for a specific symbol or all data."""
     try:
+        # Import services from main to avoid circular imports
+        from .main import data_service
+
         # Perform cleanup
         result = await data_service.cleanup_data(symbol)
 
@@ -371,6 +390,9 @@ async def pre_populate_database(
 ):
     """Pre-populate the database with popular stocks to improve access speed."""
     try:
+        # Import services from main to avoid circular imports
+        from .main import data_service
+
         # Perform pre-population
         result = await data_service.pre_populate_popular_stocks(symbols, days_back)
 
@@ -400,6 +422,9 @@ async def verify_yahoo_finance_data(
 ):
     """Verify if data is available in Yahoo Finance for a given symbol."""
     try:
+        # Import services from main to avoid circular imports
+        from .main import data_service
+
         # Validate symbol
         data_service.validate_symbol(symbol)
 

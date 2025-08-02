@@ -13,7 +13,6 @@ from core import BaseService
 from core.logging import logger
 from core.config import config
 from core.prometheus_metrics import evaluation_mae
-from services.orchestration import OrchestrationService
 from api.schemas import ModelListMlflowResponse
 from httpx import ReadTimeout, ConnectTimeout
 
@@ -21,7 +20,6 @@ from httpx import ReadTimeout, ConnectTimeout
 class MonitoringService(BaseService):
     def __init__(
         self,
-        orchestration_service: OrchestrationService,
         check_interval_seconds: int = 24 * 60 * 60,  # default: once per day
         data_interval_seconds: int = 7 * 24 * 60 * 60,  # once per week
         max_drift_samples: int = 500,
@@ -30,8 +28,8 @@ class MonitoringService(BaseService):
         data_drift_zscore: float = 2.0,
     ):
         super().__init__()
+
         self.logger = logger["monitoring"]
-        self.orchestration_service = orchestration_service
         self.check_interval_seconds = check_interval_seconds
         self.data_interval = data_interval_seconds
         self.max_drift_samples = max_drift_samples
@@ -92,7 +90,7 @@ class MonitoringService(BaseService):
         self.logger.info("Starting daily drift check")
         try:
             # URL to the endpoint to preprocess the data
-            url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models"  
+            url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models"
             async with httpx.AsyncClient(timeout=None) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
@@ -101,7 +99,7 @@ class MonitoringService(BaseService):
             # Parse with Pydantic to get .models list
             mlflow_list = ModelListMlflowResponse(**payload)
             live_models = mlflow_list.models
-            
+
             for model in live_models:
                 full_name = model.name
                 if not full_name or "_" not in full_name:
@@ -113,9 +111,7 @@ class MonitoringService(BaseService):
                 symbol = symbol.upper()
 
                 # 1) Run evaluation pipeline (updates the evaluation_mae gauge)
-                result = await self.orchestration_service.run_evaluation_pipeline(
-                    model_type, symbol
-                )
+                await self._run_evaluation_pipeline(model_type, symbol)
 
                 # self.logger.info(f"Evaluation pipeline result is: {result}")
 
@@ -136,9 +132,7 @@ class MonitoringService(BaseService):
                     self.logger.info(
                         f"MAE increased for {model}: {prev:.4f} → {current:.4f}; retraining..."
                     )
-                    await self.orchestration_service.run_training_pipeline(
-                        model_type, symbol
-                    )
+                    await self._run_training_pipeline(model_type, symbol)
                 else:
                     self.logger.info(
                         f"No retraining needed for {model}, prev MAE: {prev} vs current MAE: {current}"
@@ -299,14 +293,85 @@ class MonitoringService(BaseService):
             )
             raise
 
+    async def _run_evaluation_pipeline(self, model_type, symbol):
+        """
+        Run the full evaluation pipeline for the specified model and symbol.
+
+        Args:
+            model_type (str): The type of model to be used (e.g., 'LSTM', 'Prophet').
+            symbol (str): The stock symbol for which the model is being evaluated.
+
+        Returns:
+            metrics: The result of the evaluation pipeline execution.
+        """
+        try:
+            # URL to the endpoint to train the model
+            url = f"http://{config.orchestration_service.HOST}:{config.orchestration_service.PORT}/orchestration/evaluate"
+
+            async with httpx.AsyncClient(timeout=None) as client:
+                # Define the query parameters
+                params = {
+                    "symbol": symbol,
+                    "model_type": model_type,
+                }
+
+                # Send POST request to FastAPI endpoint
+                response = await client.post(url, params=params)
+
+                # Check if the response is successful
+                response.raise_for_status()
+
+                # Return the response as is
+                return response.json()
+        except Exception as e:
+            self.logger.error(
+                f"Error running evaluation pipeline for model {model_type} and symbol {symbol} : {e}"
+            )
+
+    async def _run_training_pipeline(self, model_type, symbol):
+        """
+        Run the full training pipeline for the specified model and symbol.
+
+        Args:
+            model_type (str): The type of model to be used (e.g., 'LSTM', 'Prophet').
+            symbol (str): The stock symbol for which the model is being trained.
+
+        Returns:
+            result: The result of the training pipeline execution.
+        """
+        try:
+            # URL to the endpoint to train the model
+            url = f"http://{config.orchestration_service.HOST}:{config.orchestration_service.PORT}/orchestration/train"
+
+            async with httpx.AsyncClient(timeout=None) as client:
+                # Define the query parameters
+                params = {
+                    "symbol": symbol,
+                    "model_type": model_type,
+                }
+
+                # Send POST request to FastAPI endpoint
+                response = await client.post(url, params=params)
+
+                # Check if the response is successful
+                response.raise_for_status()
+
+                # Return the response as is
+                return response.json()
+        except Exception as e:
+            self.logger.error(
+                f"Error running training pipeline for model {model_type} and symbol {symbol} : {e}"
+            )
+            raise
+
     async def _run_data_drift_check(self) -> None:
         """
         Run data drift check with monitoring config intervals.
         """
         self.logger.info("Starting weekly data drift check")
         try:
-             # URL to the endpoint to preprocess the data
-            url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models"  
+            # URL to the endpoint to preprocess the data
+            url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models"
             async with httpx.AsyncClient(timeout=None) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
@@ -315,7 +380,7 @@ class MonitoringService(BaseService):
             # Parse with Pydantic to get .models list
             mlflow_list = ModelListMlflowResponse(**payload)
             live_models = mlflow_list.models
-            
+
             self.logger.debug(f"Found {len(live_models)} live models: {live_models}")
             for model in live_models:
                 full_name = model.name
@@ -426,9 +491,7 @@ class MonitoringService(BaseService):
                 self.logger.info(
                     f"Drift detected for {model_type}_{symbol}, retraining"
                 )
-                await self.orchestration_service.run_training_pipeline(
-                    model_type, symbol
-                )
+                await self._run_training_pipeline(model_type, symbol)
             else:
                 self.logger.debug(f"No drift for {model_type}_{symbol}")
 

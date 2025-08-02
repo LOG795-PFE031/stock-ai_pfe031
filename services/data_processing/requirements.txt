@@ -6,4 +6,4 @@ scikit_learn==1.4.2
 # API Server
 fastapi==0.116.1
 starlette==0.47.2
-uvicorn==0.35.0
+uvicorn[standard]==0.35.0

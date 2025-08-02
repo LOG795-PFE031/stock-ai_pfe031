@@ -9,7 +9,7 @@ from core.config import config
     name="load_recent_stock_data",
     description="Load recent stock data for a given symbol using the provided data service.",
     retries=3,
-    retry_delay_seconds=10,
+    retry_delay_seconds=2,
 )
 async def load_recent_stock_data(symbol: str) -> pd.DataFrame:
     """
@@ -44,10 +44,10 @@ async def load_recent_stock_data(symbol: str) -> pd.DataFrame:
     description="Load historical stock data for a given symbol using an end date and a "
     + "specified number of days back, with the provided API endpoint.",
     retries=3,
-    retry_delay_seconds=10,
+    retry_delay_seconds=2,
 )
 async def load_historical_stock_prices_from_end_date(
-    symbol: str, end_date: datetime, days_back: int
+    symbol: str, end_date: str, days_back: int
 ) -> pd.DataFrame:
     """
     Prefect task to load historical stock data for a given symbol, ending at a specified
@@ -55,7 +55,7 @@ async def load_historical_stock_prices_from_end_date(
 
     Args:
         symbol (str): Stock ticker symbol.
-        end_date (datetime): The end date for the historical data.
+        end_date (str): The end date for the historical data.
         days_back (int): The number of days to look back from the end date.
 
     Returns:
@@ -66,7 +66,7 @@ async def load_historical_stock_prices_from_end_date(
         f"http://{config.data.HOST}:{config.data.PORT}/data/stock/from-end-date"
     )
     params = {"symbol": symbol, "end_date": end_date, "days_back": days_back}
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=None) as client:
         response = await client.get(data_service_url, params=params)
         response.raise_for_status()
         json_response = response.json()
@@ -75,7 +75,5 @@ async def load_historical_stock_prices_from_end_date(
 
         if not isinstance(data, pd.DataFrame):
             raise ValueError("Response data is not a valid DataFrame")
-
-        data["Date"] = pd.to_datetime(data["Date"]).dt.strftime("%Y-%m-%d")
 
     return pd.DataFrame(data)

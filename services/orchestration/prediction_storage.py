@@ -3,8 +3,8 @@ from datetime import datetime
 import pandas as pd
 from sqlalchemy import select
 
-from db.session import get_async_session
-from db.models.prediction import Prediction
+from .db.session import get_prediction_async_session
+from .db.models.prediction import Prediction
 
 
 class PredictionStorage:
@@ -40,7 +40,7 @@ class PredictionStorage:
         """
 
         # Create a new SQLAlchemy session to interact with the database
-        AsyncSessionLocal = get_async_session()
+        AsyncSessionLocal = get_prediction_async_session()
         async with AsyncSessionLocal() as session:
             try:
                 # Check if there is a prediction given the symbol, the date and the model_type
@@ -87,7 +87,7 @@ class PredictionStorage:
         """
 
         # Create a new SQLAlchemy session to interact with the database
-        AsyncSessionLocal = get_async_session()
+        AsyncSessionLocal = get_prediction_async_session()
         async with AsyncSessionLocal() as session:
             try:
 
@@ -135,7 +135,7 @@ class PredictionStorage:
         """
 
         # Create a new SQLAlchemy session to interact with the database
-        AsyncSessionLocal = get_async_session()
+        AsyncSessionLocal = get_prediction_async_session()
 
         # Convert the model version into an integer
         model_version = int(model_version)

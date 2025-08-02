@@ -66,18 +66,9 @@ async def api_welcome():
 async def health_check():
     """Check the health of all services."""
     try:
-        # Import services from main to avoid circular imports
-        from api.main import orchestation_service
-
-        # Check each service's health
-        orchestation_health = await orchestation_service.health_check()
-
-        # Create response with boolean values
         return HealthResponse(
-            status=orchestation_health["status"],
-            components={
-                "orchestation_health": orchestation_health["status"] == "healthy",
-            },
+            status="healthy",
+            components={},
             timestamp=datetime.utcnow().isoformat(),
         )
     except Exception as e:
@@ -485,7 +476,9 @@ async def get_model_metadata(model_name: str):
 
 
 # Prediction endpoints
-@router.get("/predict", response_model=PredictionResponse, tags=["Prediction Services"])
+@router.post(
+    "/predict", response_model=PredictionResponse, tags=["Prediction Services"]
+)
 async def get_next_day_prediction(
     model_type: str = Query(..., description="Type of prediction model to use"),
     symbol: str = Query(
@@ -494,26 +487,33 @@ async def get_next_day_prediction(
 ):
     """Get stock price prediction for the next day."""
     try:
-        # Import services from main to avoid circular imports
-        from api.main import orchestation_service
+        # URL to the endpoint fro prediction
+        url = f"http://{config.orchestration_service.HOST}:{config.orchestration_service.PORT}/orchestration/predict"
 
-        # Validate symbol
-        if not validate_stock_symbol(symbol):
-            raise HTTPException(
-                status_code=400, detail=f"Invalid stock symbol: {symbol}"
+        async with httpx.AsyncClient(timeout=None) as client:
+
+            # Define the query parameters
+            params = {
+                "symbol": symbol,
+                "model_type": model_type,
+            }
+
+            api_logger.info(
+                "Sending POST request to the orchestration service for prediction"
             )
 
-        # Get prediction using the new method
-        prediction = await orchestation_service.run_prediction_pipeline(
-            model_type=model_type, symbol=symbol
-        )
+            # Send POST request to FastAPI endpoint
+            response = await client.post(url, params=params)
 
-        if prediction.get("status") == "success":
-            return prediction
+            # Check if the response is successful
+            response.raise_for_status()
 
-        error_msg = prediction.get("error", "Unknown error")
-        api_logger.error(f"Prediction failed for {symbol}: {error_msg}")
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {error_msg}")
+            api_logger.info(
+                "Successfully received response from the orchestration service for prediction"
+            )
+
+            # Return the response as is
+            return response.json()
 
     except Exception as e:
         api_logger.error(f"Prediction failed: {str(e)}")
@@ -522,7 +522,7 @@ async def get_next_day_prediction(
         ) from e
 
 
-@router.get(
+@router.post(
     "/predict/historical",
     response_model=PredictionsResponse,
     tags=["Prediction Services"],
@@ -532,29 +532,46 @@ async def get_historical_predictions(
     symbol: str = Query(
         ..., description="Ticker symbol of the stock (e.g., AAPL, MSFT)"
     ),
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: Optional[str] = Query(
+        None, description="Start date for prediction (optional)"
+    ),
+    end_date: Optional[str] = Query(
+        None, description="End date for prediction (optional)"
+    ),
 ):
     """Get historical predictions for a symbol."""
     try:
-        # Import services from main to avoid circular imports
-        from api.main import orchestation_service
 
-        # Validate symbol
-        if not validate_stock_symbol(symbol):
-            raise HTTPException(
-                status_code=400, detail=f"Invalid stock symbol: {symbol}"
+        # URL to the endpoint fro prediction
+        url = f"http://{config.orchestration_service.HOST}:{config.orchestration_service.PORT}/orchestration/predict/historical"
+
+        async with httpx.AsyncClient(timeout=None) as client:
+
+            # Define the query parameters
+            params = {
+                "symbol": symbol,
+                "model_type": model_type,
+                "start_date": start_date,
+                "end_date": end_date,
+            }
+
+            api_logger.info(
+                "Sending POST request to the orchestration service for historical prediction"
             )
 
-        # Get date range
-        start, end = get_date_range(start_date, end_date)
+            # Send POST request to FastAPI endpoint
+            response = await client.post(url, params=params)
 
-        # Get predictions
-        predictions = await orchestation_service.run_historical_prediction_pipeline(
-            model_type=model_type, symbol=symbol, start_date=start, end_date=end
-        )
+            # Check if the response is successful
+            response.raise_for_status()
 
-        return predictions
+            api_logger.info(
+                "Successfully received response from the orchestration service for historical prediction"
+            )
+
+            # Return the response as is
+            return response.json()
+
     except Exception as e:
         api_logger.error(f"Historical predictions failed: {str(e)}")
         raise HTTPException(
@@ -573,7 +590,6 @@ async def get_trainers():
     Retrieve the list of available training trainers.
     """
     try:
-
         # URL to the endpoint to fetch the list of available trainers
         url = f"http://{config.training_service.HOST}:{config.training_service.PORT}/training/trainers"
 
@@ -616,34 +632,34 @@ async def train_model(
 ):
     """Train a new model for a symbol."""
     try:
-        # Import services from main to avoid circular imports
-        from api.main import orchestation_service
 
-        # Validate symbol
-        if not validate_stock_symbol(symbol):
-            raise HTTPException(
-                status_code=400, detail=f"Invalid stock symbol: {symbol}"
+        # URL to the endpoint to train the model
+        url = f"http://{config.orchestration_service.HOST}:{config.orchestration_service.PORT}/orchestration/train"
+
+        async with httpx.AsyncClient(timeout=None) as client:
+
+            # Define the query parameters
+            params = {
+                "symbol": symbol,
+                "model_type": model_type,
+            }
+
+            api_logger.info(
+                "Sending POST request to the orchestration service for training"
             )
 
-        # Train the model
-        training_result = await orchestation_service.run_training_pipeline(
-            model_type=model_type, symbol=symbol
-        )
+            # Send POST request to FastAPI endpoint
+            response = await client.post(url, params=params)
 
-        if training_result.get("status") == "success":
-            return TrainingResponse(
-                status=training_result["status"],
-                symbol=symbol,
-                model_type=model_type,
-                training_results=training_result["training_results"],
-                metrics=training_result["metrics"],
-                deployment_results=training_result["deployment_results"],
-                timestamp=datetime.now().isoformat(),
+            # Check if the response is successful
+            response.raise_for_status()
+
+            api_logger.info(
+                "Successfully received response from the orchestration service for training"
             )
 
-        error_msg = training_result.get("error", "Unknown error")
-        api_logger.error(f"Training failed for {symbol}: {error_msg}")
-        raise HTTPException(status_code=500, detail=f"Training failed: {error_msg}")
+            # Return the response as is
+            return response.json()
 
     except Exception as e:
         api_logger.error(f"Training failed: {str(e)}")

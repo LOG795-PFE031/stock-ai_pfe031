@@ -1,39 +1,31 @@
 """
-Main application module for Stock AI.
+Main application module for the orchestration service (Stock AI).
 """
 
 import asyncio
-import os
+import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from starlette.requests import Request
-from starlette.responses import Response
-import time
 
+from core.logging import logger
+from core.monitor_utils import (
+    monitor_cpu_usage,
+    monitor_memory_usage,
+)
 from core.prometheus_metrics import (
     http_requests_total,
     http_request_duration_seconds,
     http_errors_total,
 )
+from .orchestration_service import OrchestrationService
 from .routes import router
-from core.logging import logger
-from services.monitoring import MonitoringService
-from core.monitor_utils import (
-    monitor_cpu_usage,
-    monitor_memory_usage,
-)
 
-# Create necessary directories
-os.makedirs("data/news", exist_ok=True)
-
-# Create service instances in dependency order
-monitoring_service = MonitoringService(
-    check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
-    data_interval_seconds=7 * 24 * 60 * 60,
-)
+# Create the orchestration service instance
+orchestration_service = OrchestrationService()
 
 
 @asynccontextmanager
@@ -41,64 +33,59 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     try:
-        logger["main"].info("Starting up services...")
+        logger["orchestration"].info("Starting up the orchestration service...")
 
-        # Initialize services in order of dependencies
-        await monitoring_service.initialize()
+        await orchestration_service.initialize()
 
-        logger["main"].info("All services initialized successfully")
+        logger["orchestration"].info("Orchestration service initialized successfully")
         yield
 
-    except Exception as e:
-        logger["main"].error(f"Error during startup: {str(e)}")
+    except Exception as exception:
+        logger["orchestration"].error(
+            f"Error during orchestration service startup: {str(exception)}"
+        )
         raise
 
     finally:
         # Shutdown
         try:
-            logger["main"].info("Shutting down services...")
+            logger["orchestration"].info("Shutting down the orchestration service...")
 
-            # Cleanup in reverse order of initialization
-            await monitoring_service.cleanup()
+            # Cleanup the service
+            await orchestration_service.cleanup()
 
-            logger["main"].info("All services cleaned up successfully")
+            logger["orchestration"].info(
+                "The orchestration service was cleaned up successfully"
+            )
 
-        except Exception as e:
-            logger["main"].error(f"Error during shutdown: {str(e)}")
+        except Exception as exception:
+            logger["orchestration"].error(
+                f"Error during the orchestration service shutdown: {str(exception)}"
+            )
 
 
 # Create FastAPI app
 app = FastAPI(
-    title="Stock AI API",
+    title="Orchestration Service API",
     description="""
-    API for stock price prediction and analysis, providing comprehensive financial data analysis and ML-powered predictions.
+    API for orchestrating ML operations or ML pipelines.
     
     ## Features
-    - Real-time stock data retrieval and analysis
-    - News sentiment analysis with FinBERT
-    - ML-powered price predictions
-    - Model training and management
+    - Run training pipelines
+    - Run prediction pipelines
+    - Run evaluation pipelines
     """,
     version="1.0.0",
     lifespan=lifespan,
     openapi_tags=[
         {"name": "System", "description": "System health and status endpoints"},
         {
-            "name": "Data Services",
-            "description": "Endpoints for retrieving and updating stock and news data",
-        },
-        {"name": "Model Management", "description": "Endpoints for managing ML models"},
-        {
-            "name": "Prediction Services",
-            "description": "Endpoints for stock price predictions",
+            "name": "Training",
+            "description": "Endpoints for launching and managing training pipelines",
         },
         {
-            "name": "Training Services",
-            "description": "Endpoints for model training and status monitoring",
-        },
-        {
-            "name": "News Services",
-            "description": "Endpoints for news retrieval and sentiment analysis",
+            "name": "Predictions",
+            "description": "Endpoints for running and retrieving model predictions",
         },
     ],
 )
@@ -121,7 +108,7 @@ async def root():
 
 
 # Include routers
-app.include_router(router, prefix="/api")  # Add /api prefix to all routes
+app.include_router(router, prefix="/orchestration")  # Add /api prefix to all routes
 
 
 @app.middleware("http")
@@ -159,14 +146,15 @@ async def prometheus_middleware(request: Request, call_next):
     return response
 
 
+# Prometheus metrics
+@app.get("/metrics")
+def metrics():
+    """Prometheus metrics exposer"""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 # Health check endpoint
 @app.get("/health", tags=["System"])
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
-
-
-# Prometheus metrics
-@app.get("/metrics")
-def metrics():
-    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

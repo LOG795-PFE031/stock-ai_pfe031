@@ -28,14 +28,6 @@ from core.config import config
 class DataService(BaseService):
     """Service for managing data collection and processing."""
 
-    _instance = None
-    _initialized = False
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(DataService, cls).__new__(cls)
-        return cls._instance
-
     def __init__(self):
         super().__init__()
         self.logger = logger["data"]
@@ -381,7 +373,7 @@ class DataService(BaseService):
             raise
 
     async def get_historical_stock_prices_from_end_date(
-        self, symbol: str, end_date: datetime, days_back: int
+        self, symbol: str, end_date: str, days_back: int
     ):
         """
         Retrieve historical stock prices for a symbol from a specified end date, looking back a
@@ -389,7 +381,7 @@ class DataService(BaseService):
 
         Args:
             symbol (str): The stock symbol (e.g., "AAPL").
-            end_date: The end date to retrieve stock data from.
+            end_date (str): The end date to retrieve stock data from.
             days_back: The number of trading days to look back from the end date.
 
         Returns:
@@ -400,10 +392,10 @@ class DataService(BaseService):
             self.validate_days_back(days_back)
 
             # Get correct end_date
-            end_date = self.validate_date_format(end_date)
+            end_date_formatted = self.validate_date_format(end_date)
 
             # Replace the time of end_date to 9:30 AM
-            modified_end_date = end_date.replace(
+            modified_end_date = end_date_formatted.replace(
                 hour=9, minute=30, second=0, microsecond=0
             )
 
@@ -414,20 +406,20 @@ class DataService(BaseService):
             # Check if the modified end_date is not in the future
             if modified_end_date <= datetime.now().astimezone(eastern):
                 # If it's not in the future, update the original end_date
-                end_date = modified_end_date
+                end_date_formatted = modified_end_date
             else:
                 # If it's in the future, leave end_date unchanged
                 pass
 
             # Get the start date
-            start_date = get_start_date_from_trading_days(end_date, days_back)
+            start_date = get_start_date_from_trading_days(end_date_formatted, days_back)
 
             # Retrieve stock data prices
-            df = await self._get_stock_data(symbol, start_date, end_date)
+            df = await self._get_stock_data(symbol, start_date, end_date_formatted)
 
             # Filter data for requested date range
             mask = (df["Date"].dt.date >= start_date.date()) & (
-                df["Date"].dt.date <= end_date.date()
+                df["Date"].dt.date <= end_date_formatted.date()
             )
             df = df[mask]
 
@@ -441,8 +433,8 @@ class DataService(BaseService):
                 "Retrieved recent stock prices for %s looking back for %d trading days from %s to %s",
                 symbol,
                 days_back,
-                start_date.strftime("%Y-%m-%d"),
-                end_date.strftime("%Y-%m-%d"),
+                start_date.isoformat(),
+                end_date_formatted.isoformat(),
             )
 
             return {
@@ -450,8 +442,8 @@ class DataService(BaseService):
                 "stock_name": stock_name,
                 "prices": prices,
                 "total_records": len(prices),
-                "start_date": start_date.strftime("%Y-%m-%d"),
-                "end_date": end_date.strftime("%Y-%m-%d"),
+                "start_date": start_date.isoformat(),
+                "end_date": end_date_formatted.isoformat(),
                 "days_back": days_back,
             }
 

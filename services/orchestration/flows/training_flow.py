@@ -1,6 +1,8 @@
+from typing import Any
+from dataclasses import asdict
+
 from prefect import flow
 from prefect.logging import get_run_logger
-from typing import Any
 
 from core.utils import get_model_name
 from ..tasks.data import load_recent_stock_data, preprocess_data
@@ -89,7 +91,7 @@ def run_training_flow(
             symbol=symbol,
             data=raw_data,
             phase="evaluation",
-        )
+        ).result()
 
         # Evaluate the production model
         live_metrics = evaluate_model(
@@ -97,7 +99,7 @@ def run_training_flow(
             model_type=model_type,
             symbol=symbol,
             phase=production_phase,
-            eval_data=prod_eval_data,
+            eval_data=asdict(prod_eval_data),
         )
 
     # --- Evaluation of the training model
@@ -116,7 +118,7 @@ def run_training_flow(
         model_type,
         symbol,
         PHASE,
-        test_data,
+        asdict(test_data),
     )
 
     # Deploy (or not) the training model

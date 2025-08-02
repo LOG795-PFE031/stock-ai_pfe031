@@ -5,12 +5,15 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pandas_market_calendars as mcal
 from pytz import timezone
+from sqlalchemy import select
 import httpx
 
 from core.logging import logger
 from core.utils import format_prediction_response, get_next_trading_day
 from core.config import config
 from core import BaseService
+from .db.models.prediction import Prediction
+from .db.session import get_prediction_async_session
 
 from .prediction_storage import PredictionStorage
 from .flows import (
@@ -41,6 +44,38 @@ class OrchestrationService(BaseService):
         try:
             # Configure the prediction scheduler
             self._set_prediction_scheduler()
+
+            # Test connection to the prediction database
+            try:
+                AsyncSessionLocal = get_prediction_async_session()
+                async with AsyncSessionLocal() as session:
+                    # Simple query to test database connection and create tables if needed
+                    try:
+                        stmt = select(Prediction).limit(1)
+                        await session.execute(stmt)
+                        self.logger.info(
+                            "✅ Connection to the prediction database verified successfully"
+                        )
+                    except Exception as table_error:
+                        # Table might not exist yet, try to create it
+                        self.logger.warning(
+                            f"⚠️ Prediction table not found, attempting to create: {table_error}"
+                        )
+                        try:
+                            from .db.init_db import init_prediction_db
+
+                            await init_prediction_db()
+                            self.logger.info("✅ Database tables created successfully")
+                        except Exception as create_error:
+                            self.logger.error(
+                                f"❌ Failed to create database tables: {create_error}"
+                            )
+                            raise
+            except Exception as db_error:
+                self.logger.error(
+                    f"❌ Error connecting to prediction database: {str(db_error)}"
+                )
+                raise
 
             self._initialized = True
             self.logger.info("Orchestration service initialized successfully")

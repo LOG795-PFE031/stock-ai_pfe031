@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from core.config import config
-from core.types import ProcessedData
+from ...types import ProcessedData
 
 
 @task(
