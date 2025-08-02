@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from core.types import ProcessedData
+from .types import ProcessedData
 
 
 def to_processed_data(d: dict) -> ProcessedData:
