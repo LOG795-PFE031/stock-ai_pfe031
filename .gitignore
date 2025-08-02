@@ -51,6 +51,9 @@ stock-prediction/*.log
 ehthumbs.db
 Thumbs.db
 
+# Ignore pylint config
+.pylintrc
+
 # Ignore all files in the venv directory
 venv/
 
