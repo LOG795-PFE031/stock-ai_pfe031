@@ -13,8 +13,21 @@ RUN apt-get update && \
 # Copy requirements file
 COPY ../requirements.txt .
 
+
+# Copy core and api requirements
+COPY api/requirements.txt api-requirements.txt
+COPY core/requirements.txt core-requirements.txt
+
+# TODO : Delete/Modify this once the monitoring has its own container
+COPY services/monitoring/requirements.txt monitoring-requirements.txt
+
+# Combine all requirements into one file
+RUN cat api-requirements.txt core-requirements.txt monitoring-requirements.txt > requirements.txt
+
 # Install build tools and wheel
-RUN pip install --no-cache-dir -r requirements.txt
+# Install build tools and wheel
+RUN pip install --no-cache-dir --upgrade pip && \
+  pip install --no-cache-dir -r requirements.txt
 
 
 # Stage 2: Runtime
@@ -36,10 +49,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy gateway code and its dependencies
 COPY api/        ./api/
 COPY core/             ./core/
-COPY db/               ./db/
-COPY services/         ./services/
-COPY prometheus/       ./prometheus/
-COPY grafana/          ./grafana/
+COPY services/monitoring ./services/monitoring
 
 # Set environment variables
 ENV API_HOST=0.0.0.0 \
@@ -52,4 +62,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
