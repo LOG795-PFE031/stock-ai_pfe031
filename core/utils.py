@@ -195,7 +195,7 @@ def get_start_date_from_trading_days(
     # Select the start date that is exactly `lookback_days` trading sessions before the end date
     start_date = sessions[-lookback_days]
 
-    return start_date
+    return start_date.to_pydatetime()
 
 
 def get_model_name(model_type: str, symbol: str):
