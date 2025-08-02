@@ -1,115 +1,7 @@
 services:
-  # Stock AI DB
-  postgres:
-    image: postgres:14
-    container_name: postgres-stock-ai
-    ports:
-      - "5433:5432"
-    environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
-      POSTGRES_DB: stocks
-    volumes:
-      - ./data/stock_postgres_data:/var/lib/postgresql/data
-    networks:
-      - microservices_auth
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d stocks"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-
-  # Dedicated Stock Data DB
-  postgres-stock-data:
-    image: postgres:14
-    container_name: postgres-stock-data
-    ports:
-      - "5436:5432"
-    environment:
-      POSTGRES_USER: stockuser
-      POSTGRES_PASSWORD: stockpass
-      POSTGRES_DB: stockdata
-    volumes:
-      - ./data/data_ingestion/postgres:/var/lib/postgresql/data
-    networks:
-      - microservices_auth
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U stockuser -d stockdata"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-
-  # Prefect DB
-  prefect-postgres:
-    image: postgres:14
-    container_name: prefect-postgres
-    ports:
-      - "5435:5432"
-    environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
-      POSTGRES_DB: prefect
-    volumes:
-      - ./data/prefect_postgres_data:/var/lib/postgresql/data
-    networks:
-      - microservices_auth
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d prefect"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-
-  news-service:
-    build:
-      context: .
-      dockerfile: services/news/Dockerfile
-    container_name: news-service
-    ports:
-      - "8002:8000"
-    networks:
-      - microservices_auth
-    restart: on-failure
-
-  data-service:
-    build:
-      context: .
-      dockerfile: services/data_ingestion/Dockerfile
-    container_name: data-service
-    ports:
-      - "8001:8000"
-    environment:
-      # Dedicated stock database config
-      - STOCK_DB_HOST=postgres-stock-data
-      - STOCK_DB_PORT=5432
-      - STOCK_DB_USER=stockuser
-      - STOCK_DB_PASSWORD=stockpass
-      - STOCK_DB_NAME=stockdata
-    volumes:
-      - ./data/data_ingestion/data:/app/data
-    networks:
-      - microservices_auth
-    depends_on:
-      postgres-stock-data:
-        condition: service_healthy
-    restart: on-failure
-
-  # Prefect server
-  prefect-server:
-    image: prefecthq/prefect:3-latest
-    container_name: prefect-server
-    ports:
-      - "4200:4200"
-    volumes:
-      - ./data/prefect_data:/root/.prefect
-    environment:
-      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://admin:admin@prefect-postgres:5432/prefect
-    command: prefect server start --host 0.0.0.0
-    networks:
-      - microservices_auth
-    depends_on:
-      prefect-postgres:
-        condition: service_healthy
-    restart: always
+  # ============================
+  # 🧪 MLflow Service
+  # ============================
 
   # MLFlow Backstore DB
   mlflow-postgres:
@@ -197,101 +89,51 @@ services:
       - minio-create-bucket
     restart: on-failure
 
-  data-processing-service:
-    build:
-      context: .
-      dockerfile: services/data_processing/Dockerfile
-    container_name: data-processing-service
+  # ============================
+  # ⚙️ Prefect Service
+  # ============================
+
+  # Prefect DB
+  prefect-postgres:
+    image: postgres:14
+    container_name: prefect-postgres
     ports:
-      - "8003:8000"
+      - "5435:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: prefect
     volumes:
-      - ./data/scalers:/app/data/scalers
+      - ./data/prefect_postgres_data:/var/lib/postgresql/data
     networks:
       - microservices_auth
-    restart: on-failure
-
-  training-service:
-    build:
-      context: .
-      dockerfile: services/training/Dockerfile
-    container_name: training-service
-    ports:
-      - "8004:8000"
-    volumes:
-      - ./data/models:/app/data/models
-    environment:
-      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
-    networks:
-      - microservices_auth
-    restart: on-failure
-    depends_on:
-      mlflow-server:
-        condition: service_healthy
-
-  deployment-service:
-    build:
-      context: .
-      dockerfile: services/deployment/Dockerfile
-    container_name: deployment-service
-    ports:
-      - "8005:8000"
-    environment:
-      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
-    networks:
-      - microservices_auth
-    restart: on-failure
-    depends_on:
-      mlflow-server:
-        condition: service_healthy
-
-  evaluation-service:
-    build:
-      context: .
-      dockerfile: services/evaluation/Dockerfile
-    container_name: evaluation-service
-    ports:
-      - "8006:8000"
-    environment:
-      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
-    networks:
-      - microservices_auth
-    restart: on-failure
-    depends_on:
-      mlflow-server:
-        condition: service_healthy
-
-  stock-ai:
-    build:
-      context: .
-      dockerfile: api/Dockerfile
-    container_name: stock-ai
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./data:/app/data
-    environment:
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
-      - RABBITMQ_USER=guest
-      - RABBITMQ_PASS=guest
-      - API_HOST=0.0.0.0
-      - API_PORT=8000
-      - PREFECT_API_URL=http://prefect-server:4200/api
-      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
-    networks:
-      - microservices_auth
-    restart: on-failure:3
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
+      test: ["CMD-SHELL", "pg_isready -U admin -d prefect"]
+      interval: 10s
       timeout: 10s
-      retries: 3
-      start_period: 5s
+      retries: 5
+
+  # Prefect server
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    container_name: prefect-server
+    ports:
+      - "4200:4200"
+    volumes:
+      - ./data/prefect_data:/root/.prefect
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://admin:admin@prefect-postgres:5432/prefect
+    command: prefect server start --host 0.0.0.0
+    networks:
+      - microservices_auth
     depends_on:
-      prefect-server:
-        condition: service_started
-      mlflow-server:
+      prefect-postgres:
         condition: service_healthy
+    restart: always
+
+  # ============================
+  # 📊 Monitoring Stack
+  # ============================
 
   prometheus:
     image: prom/prometheus
@@ -318,6 +160,229 @@ services:
     depends_on:
       - prometheus
 
+  # ============================
+  # 🌐 API Gateway Service
+  # ============================
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app/api
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    networks:
+      - microservices_auth
+    restart: on-failure:3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    depends_on:
+      prefect-server:
+        condition: service_started
+      mlflow-server:
+        condition: service_healthy
+
+  # ============================
+  # 🧠 Data Service
+  # ============================
+
+  # Dedicated Stock Data DB
+  postgres-stock-data:
+    image: postgres:14
+    container_name: postgres-stock-data
+    ports:
+      - "5436:5432"
+    environment:
+      POSTGRES_USER: stockuser
+      POSTGRES_PASSWORD: stockpass
+      POSTGRES_DB: stockdata
+    volumes:
+      - ./data/data_ingestion/postgres:/var/lib/postgresql/data
+    networks:
+      - microservices_auth
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stockuser -d stockdata"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # Data (Ingestion) service
+  data-service:
+    build:
+      context: .
+      dockerfile: services/data_ingestion/Dockerfile
+    container_name: data-service
+    ports:
+      - "8001:8000"
+    environment:
+      # Dedicated stock database config
+      - STOCK_DB_HOST=postgres-stock-data
+      - STOCK_DB_PORT=5432
+      - STOCK_DB_USER=stockuser
+      - STOCK_DB_PASSWORD=stockpass
+      - STOCK_DB_NAME=stockdata
+    volumes:
+      - ./services/data_ingestion:/app/services/data_ingestion
+    networks:
+      - microservices_auth
+    depends_on:
+      postgres-stock-data:
+        condition: service_healthy
+    restart: on-failure
+
+  # ============================
+  # 📰 News Service
+  # ============================
+  news-service:
+    build:
+      context: .
+      dockerfile: services/news/Dockerfile
+    container_name: news-service
+    ports:
+      - "8002:8000"
+    networks:
+      - microservices_auth
+    restart: on-failure
+
+  # ============================
+  # 🧮 Data Processing Service
+  # ============================
+  data-processing-service:
+    build:
+      context: .
+      dockerfile: services/data_processing/Dockerfile
+    container_name: data-processing-service
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./data/scalers:/app/data/scalers
+    networks:
+      - microservices_auth
+    restart: on-failure
+
+  # Dedicated Prediction Data DB
+  postgres-prediction-data:
+    image: postgres:14
+    container_name: postgres-prediction-data
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: predictionuser
+      POSTGRES_PASSWORD: predictionpass
+      POSTGRES_DB: predictiondata
+    volumes:
+      - ./data/orchestration_data:/var/lib/postgresql/data
+    networks:
+      - microservices_auth
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U predictionuser -d predictiondata"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # ============================
+  # 🏋️‍♂️ Model Training Service
+  # ============================
+  training-service:
+    build:
+      context: .
+      dockerfile: services/training/Dockerfile
+    container_name: training-service
+    ports:
+      - "8004:8000"
+    volumes:
+      - ./data/models:/app/data/models
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+    networks:
+      - microservices_auth
+    restart: on-failure
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+
+  # ============================
+  # 🚀 Model Deployment (Prediction) Service
+  # ============================
+  deployment-service:
+    build:
+      context: .
+      dockerfile: services/deployment/Dockerfile
+    container_name: deployment-service
+    ports:
+      - "8005:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+    networks:
+      - microservices_auth
+    restart: on-failure
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+
+  # ============================
+  # 📈 Model Evaluation Service
+  # ============================
+  evaluation-service:
+    build:
+      context: .
+      dockerfile: services/evaluation/Dockerfile
+    container_name: evaluation-service
+    ports:
+      - "8006:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+    networks:
+      - microservices_auth
+    restart: on-failure
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+
+  # ============================
+  # 📉 Model Monitoring Service
+  # ============================
+  # TODO
+
+  # ============================
+  # 🔀 Orchestration Service
+  # ============================
+  orchestration-service:
+    build:
+      context: .
+      dockerfile: services/orchestration/Dockerfile
+    container_name: orchestration-service
+    ports:
+      - 8008:8000
+    volumes:
+      - ./services/orchestration:/app/services/orchestration
+    environment:
+      - PREFECT_API_URL=http://prefect-server:4200/api
+      # Dedicated prediction database config
+      - PREDICTION_DB_HOST=postgres-prediction-data
+      - PREDICTION_DB_PORT=5432
+      - PREDICTION_DB_USER=predictionuser
+      - PREDICTION_DB_PASSWORD=predictionpass
+      - PREDICTION_DB_NAME=predictiondata
+    networks:
+      - microservices_auth
+    restart: on-failure
+    depends_on:
+      prefect-server:
+        condition: service_started
+
+# ============================
+# 🔗 Networks
+# ============================
 networks:
   microservices_auth:
     external: true
