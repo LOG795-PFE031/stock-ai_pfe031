@@ -20,7 +20,6 @@ from core.prometheus_metrics import (
 )
 from .routes import router
 from core.logging import logger
-from services.monitoring import MonitoringService
 from core.monitor_utils import (
     monitor_cpu_usage,
     monitor_memory_usage,
@@ -29,12 +28,6 @@ from core.monitor_utils import (
 # Create necessary directories
 os.makedirs("data/news", exist_ok=True)
 
-# Create service instances in dependency order
-monitoring_service = MonitoringService(
-    check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
-    data_interval_seconds=7 * 24 * 60 * 60,
-)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,9 +35,6 @@ async def lifespan(app: FastAPI):
     # Startup
     try:
         logger["main"].info("Starting up services...")
-
-        # Initialize services in order of dependencies
-        await monitoring_service.initialize()
 
         logger["main"].info("All services initialized successfully")
         yield
@@ -57,9 +47,6 @@ async def lifespan(app: FastAPI):
         # Shutdown
         try:
             logger["main"].info("Shutting down services...")
-
-            # Cleanup in reverse order of initialization
-            await monitoring_service.cleanup()
 
             logger["main"].info("All services cleaned up successfully")
 

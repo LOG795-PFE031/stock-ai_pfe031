@@ -99,7 +99,7 @@ def run_training_flow(
             model_type=model_type,
             symbol=symbol,
             phase=production_phase,
-            eval_data=asdict(prod_eval_data),
+            prediction_input=asdict(prod_eval_data),
         )
 
     # --- Evaluation of the training model
@@ -118,7 +118,7 @@ def run_training_flow(
         model_type,
         symbol,
         PHASE,
-        asdict(test_data),
+        prediction_input=asdict(test_data),
     )
 
     # Deploy (or not) the training model

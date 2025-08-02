@@ -320,6 +320,8 @@ services:
     container_name: deployment-service
     ports:
       - "8005:8000"
+    volumes:
+      - ./services/deployment:/app/services/deployment
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow-server:5000
     networks:
@@ -349,11 +351,6 @@ services:
         condition: service_healthy
 
   # ============================
-  # 📉 Model Monitoring Service
-  # ============================
-  # TODO
-
-  # ============================
   # 🔀 Orchestration Service
   # ============================
   orchestration-service:
@@ -379,6 +376,27 @@ services:
     depends_on:
       prefect-server:
         condition: service_started
+
+  # ============================
+  # 🔍 Monitoring Service
+  # ============================
+  monitoring-service:
+    build:
+      context: .
+      dockerfile: services/monitoring/Dockerfile
+    container_name: monitoring-service
+    ports:
+      - "8007:8000"
+    volumes:
+      - ./services/monitoring:/app/services/monitoring
+    networks:
+      - microservices_auth
+    restart: on-failure
+    depends_on:
+      deployment-service:
+        condition: service_healthy
+      orchestration-service:
+        condition: service_healthy
 
 # ============================
 # 🔗 Networks

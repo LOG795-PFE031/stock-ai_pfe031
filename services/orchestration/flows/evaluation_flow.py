@@ -62,7 +62,7 @@ def run_evaluation_flow(
             model_type=model_type,
             symbol=symbol,
             phase="prediction",
-            eval_data=eval_data,
+            prediction_input=eval_data,
         )
 
         return metrics
@@ -129,7 +129,7 @@ def evaluate_model(
     model_type: str,
     symbol: str,
     phase: str,
-    eval_data: dict,
+    prediction_input: ProcessedData,
 ) -> dict[str, float]:
     """
     Evaluates a model's predictions against true values and logs the resulting evaluation metrics.
@@ -159,7 +159,7 @@ def evaluate_model(
         model_type=model_type,
         symbol=symbol,
         phase=phase,
-        prediction_input=eval_data,
+        prediction_input=prediction_input,
     )["prediction"]
 
     # Postprocess ground truth
@@ -167,7 +167,7 @@ def evaluate_model(
         symbol=symbol,
         model_type=model_type,
         phase=phase,
-        prediction=eval_data.get("y"),
+        prediction=prediction_input.y,
     ).result()
 
     # Run evaluation and log metrics
