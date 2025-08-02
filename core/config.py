@@ -103,39 +103,19 @@ class DeploymentServiceConfig(BaseModel):
     HOST: str = "deployment-service"  # Use the Docker container's hostname
     PORT: int = 8000
 
-      
+
 class EvaluationServiceConfig(BaseModel):
     """Evaluation service configuration."""
 
     HOST: str = "evaluation-service"  # Use the Docker container's hostname
     PORT: int = 8000
-    
-
-class PostgresDatabaseConfig(BaseModel):
-    """PostgreSQL configuration for the main database"""
-
-    HOST: str = "postgres-stock-ai"
-    PORT: int = 5432
-    USER: str = "admin"
-    PASSWORD: str = "admin"
-
-    @property
-    def URL(self) -> str:
-        return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/stocks"
 
 
-class StocksDatabaseConfig(BaseModel):
-    """PostgreSQL configuration for the dedicated stock data database"""
+class OrchestrationServiceConfig(BaseModel):
+    """Orchestration service configuration."""
 
-    HOST: str = os.getenv("STOCK_DB_HOST", "postgres-stock-data")
-    PORT: int = int(os.getenv("STOCK_DB_PORT", "5432"))
-    USER: str = os.getenv("STOCK_DB_USER", "stockuser")
-    PASSWORD: str = os.getenv("STOCK_DB_PASSWORD", "stockpass")
-    DB_NAME: str = os.getenv("STOCK_DB_NAME", "stockdata")
-
-    @property
-    def URL(self) -> str:
-        return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.DB_NAME}"
+    HOST: str = "orchestration-service"  # Use the Docker container's hostname
+    PORT: int = 8000
 
 
 class NewsServiceConfig(BaseModel):
@@ -162,6 +142,35 @@ class MonitoringConfig(BaseModel):
     PERFORMANCE_CHECK_INTERVAL: int = 24 * 60 * 60  # 24 hours
     DATA_DRIFT_CHECK_INTERVAL: int = 7 * 24 * 60 * 60  # 7 days
 
+
+class StocksDatabaseConfig(BaseModel):
+    """PostgreSQL configuration for the dedicated stock data database"""
+
+    HOST: str = os.getenv("STOCK_DB_HOST", "postgres-stock-data")
+    PORT: int = int(os.getenv("STOCK_DB_PORT", "5432"))
+    USER: str = os.getenv("STOCK_DB_USER", "stockuser")
+    PASSWORD: str = os.getenv("STOCK_DB_PASSWORD", "stockpass")
+    DB_NAME: str = os.getenv("STOCK_DB_NAME", "stockdata")
+
+    @property
+    def URL(self) -> str:
+        return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.DB_NAME}"
+
+
+class PredictionsDatabaseConfig(BaseModel):
+    """PostgreSQL configuration for the dedicated predictions data database"""
+
+    HOST: str = os.getenv("PREDICTION_DB_HOST", "postgres-prediction-data")
+    PORT: int = int(os.getenv("PREDICTION_DB_PORT", "5432"))
+    USER: str = os.getenv("PREDICTION_DB_USER", "predictionuser")
+    PASSWORD: str = os.getenv("PREDICTION_DB_PASSWORD", "predictionpass")
+    DB_NAME: str = os.getenv("PREDICTION_DB_NAME", "predictiondata")
+
+    @property
+    def URL(self) -> str:
+        return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.DB_NAME}"
+
+
 class Config:
     """Main configuration class."""
 
@@ -175,9 +184,10 @@ class Config:
         self.training_service = TrainingServiceConfig()
         self.deployment_service = DeploymentServiceConfig()
         self.evaluation_service = EvaluationServiceConfig()
+        self.orchestration_service = OrchestrationServiceConfig()
         self.mlflow_server = MLFlowConfig()
-        self.postgres = PostgresDatabaseConfig()
         self.stocks_db = StocksDatabaseConfig()
+        self.predictions_db = PredictionsDatabaseConfig()
         self.news_service = NewsServiceConfig()
         self.monitoring = MonitoringConfig()
 
