@@ -62,7 +62,7 @@ def run_evaluation_flow(
             model_type=model_type,
             symbol=symbol,
             phase="prediction",
-            prediction_input=eval_data,
+            eval_data=eval_data,
         )
 
         return metrics
@@ -159,7 +159,7 @@ def evaluate_model(
         model_type=model_type,
         symbol=symbol,
         phase=phase,
-        prediction_input=prediction_input,
+        prediction_input=eval_data,
     )["prediction"]
 
     # Postprocess ground truth
