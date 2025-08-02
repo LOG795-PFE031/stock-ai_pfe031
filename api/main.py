@@ -18,11 +18,9 @@ from core.prometheus_metrics import (
     http_request_duration_seconds,
     http_errors_total,
 )
-from api.routes import router
+from .routes import router
 from core.logging import logger
-from db.init_db import create_database
-from services import MonitoringService
-from services.orchestration import OrchestrationService
+from services.monitoring import MonitoringService
 from core.monitor_utils import (
     monitor_cpu_usage,
     monitor_memory_usage,
@@ -32,9 +30,7 @@ from core.monitor_utils import (
 os.makedirs("data/news", exist_ok=True)
 
 # Create service instances in dependency order
-orchestation_service = OrchestrationService()
 monitoring_service = MonitoringService(
-    orchestation_service,
     check_interval_seconds=24 * 60 * 60,  # 86400 sec in a day
     data_interval_seconds=7 * 24 * 60 * 60,
 )
@@ -47,11 +43,7 @@ async def lifespan(app: FastAPI):
     try:
         logger["main"].info("Starting up services...")
 
-        # Create the tables
-        create_database()
-
         # Initialize services in order of dependencies
-        await orchestation_service.initialize()
         await monitoring_service.initialize()
 
         logger["main"].info("All services initialized successfully")
@@ -68,7 +60,6 @@ async def lifespan(app: FastAPI):
 
             # Cleanup in reverse order of initialization
             await monitoring_service.cleanup()
-            await orchestation_service.cleanup()
 
             logger["main"].info("All services cleaned up successfully")
 
