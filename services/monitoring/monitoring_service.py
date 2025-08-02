@@ -48,7 +48,7 @@ class MonitoringService(BaseService):
         self._initialized = True
         # Start background loops
         self._perf_task = asyncio.create_task(self._performance_loop())
-        # self._data_task = asyncio.create_task(self._data_loop())
+        self._data_task = asyncio.create_task(self._data_loop())
         self.logger.info("MonitoringService initialized and loops started")
 
     async def cleanup(self) -> None:
