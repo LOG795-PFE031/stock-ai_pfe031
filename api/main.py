@@ -41,7 +41,6 @@ app = FastAPI(
     - Model training and management
     """,
     version="1.0.0",
-    lifespan=lifespan,
     openapi_tags=[
         {"name": "System", "description": "System health and status endpoints"},
         {
