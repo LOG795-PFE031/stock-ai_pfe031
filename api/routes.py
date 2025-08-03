@@ -457,7 +457,7 @@ async def get_model_metadata(model_name: str):
 
 
 # Prediction endpoints
-@router.get("/predict", response_model=PredictionResponse, tags=["Prediction Services"])
+@router.post("/predict", response_model=PredictionResponse, tags=["Prediction Services"])
 async def get_next_day_prediction(
     model_type: str = Query(..., description="Type of prediction model to use"),
     symbol: str = Query(
@@ -494,7 +494,7 @@ async def get_next_day_prediction(
         ) from e
 
 
-@router.get(
+@router.post(
     "/predict/historical",
     response_model=PredictionsResponse,
     tags=["Prediction Services"],
