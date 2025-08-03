@@ -163,23 +163,18 @@ async def get_current_stock_data(
     try:
         # Import services from main to avoid circular imports
         from main import data_service
+ 
 
-        # Validate symbol
-        if not validate_stock_symbol(symbol):
-            raise HTTPException(
-                status_code=400, detail=f"Invalid stock symbol: {symbol}"
-            )
-
-        data, stock_name = await data_service.get_current_price(symbol=symbol)
+        data= await data_service.get_current_price(symbol=symbol)
         return StockDataResponse(
-            symbol=symbol,
-            name=stock_name,
-            data=data.to_dict(orient="records"),
+            symbol=data['symbol'],
+            name=data['stock_name'],
+            data=data['current_price'],
             meta=MetaInfo(
-                message=f"Stock data retrieved successfully for {symbol}",
+                message=data['message'],
                 version=config.api.API_VERSION,
                 documentation="https://api.example.com/docs",
-                endpoints=["/api/data/stock/{symbol}"],
+                endpoints=["/api/data/stock/current"],
             ),
             timestamp=datetime.now().isoformat(),
         )

@@ -4,7 +4,7 @@ Data service for fetching and processing stock data.
 
 import asyncio
 from datetime import datetime, timezone, time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 import pandas as pd
 import pandas_market_calendars as mcal
@@ -140,7 +140,7 @@ class DataService(BaseService):
             self.logger.error("Error collecting NASDAQ 100 stocks data: %s", str(e))
             raise
 
-    async def get_current_price(self, symbol: str):
+    async def get_current_price(self, symbol: str) -> Dict[str, Any]:
         """
         Retrieves the stock price for the given symbol on the latest trading day.
 
@@ -152,22 +152,47 @@ class DataService(BaseService):
             str: Stock Company Name
         """
         try:
+            self.validate_symbol(symbol)
+
             # Get start and end dates (as today)
             start_date = get_latest_trading_day()
-            end_date = start_date
 
-            # Retrieve stock data prices
-            df = await self._get_stock_data(symbol, start_date, end_date)
+            # Collect fresh stock data price
+            df = await self._collect_stock_data(
+                symbol, start_date=start_date, end_date=start_date
+            )
 
-            # Retrieve the latest trading day
-            current_price = df[df["Date"].dt.date == end_date.date()]
+            # If no data available
+            if df.empty:
+                self.logger.error(f"No data available for {symbol}")
+                return {
+                    "symbol": symbol,
+                    "stock_name": symbol,
+                    "current_price": 0.0,
+                    "date_str": None,
+                    "message": "No data available for this symbol",
+                }
+
+            # Transform DataFrame to list of price objects
+            price = self._transform_dataframe_to_prices(df)
 
             # Get the stock_name
             stock_name = self.get_stock_name(symbol)
 
+            # Create message
+            message = "Current price retrieved successfully from fresh data"
+
             self.logger.info("Retrieved current stock price for %s", symbol)
 
-            return current_price, stock_name
+            result = {
+                "symbol": symbol,
+                "stock_name": stock_name or symbol,
+                "date_str": start_date.isoformat(),
+                "current_price": price,
+                "message": message,
+            }
+
+            return result
         except Exception as e:
             self.logger.error(
                 "Error getting current stock price for %s: %s", symbol, str(e)
@@ -204,6 +229,10 @@ class DataService(BaseService):
 
             # Retrieve stock data prices
             df = await self._get_stock_data(symbol, start_date, end_date)
+
+            # Ensure the Date column is properly converted to datetime
+            if not pd.api.types.is_datetime64_any_dtype(df["Date"]):
+                df["Date"] = pd.to_datetime(df["Date"], utc=True)
 
             # Filter data for requested date range
             mask = (df["Date"].dt.date >= start_date.date()) & (
@@ -255,6 +284,10 @@ class DataService(BaseService):
 
             # Retrieve stock data prices
             df = await self._get_stock_data(symbol, start_date, end_date)
+
+            # Ensure the Date column is properly converted to datetime
+            if not pd.api.types.is_datetime64_any_dtype(df["Date"]):
+                df["Date"] = pd.to_datetime(df["Date"], utc=True)
 
             # Filter data for requested date range
             mask = (df["Date"].dt.date >= start_date.date()) & (
@@ -309,6 +342,10 @@ class DataService(BaseService):
                 start_date = start_date.replace(tzinfo=timezone.utc)
             if end_date.tzinfo is None:
                 end_date = end_date.replace(tzinfo=timezone.utc)
+
+            # Ensure the Date column is properly converted to datetime
+            if not pd.api.types.is_datetime64_any_dtype(df["Date"]):
+                df["Date"] = pd.to_datetime(df["Date"], utc=True)
 
             # Filter data for requested date range
             mask = (df["Date"].dt.date >= start_date.date()) & (
@@ -446,6 +483,56 @@ class DataService(BaseService):
             external_requests_total.labels(site="yahoo_finance", result="error").inc()
             raise
 
+    def _transform_dataframe_to_prices(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
+        """
+        Transform DataFrame to list of price dictionaries.
+
+        Args:
+            df: DataFrame containing stock price data
+
+        Returns:
+            List of price dictionaries
+        """
+        prices = []
+        for _, row in df.iterrows():
+            # Handle date formatting safely
+            if hasattr(row.name, "strftime"):
+                date_str = row.name.strftime("%Y-%m-%d")
+            elif "Date" in row and hasattr(row["Date"], "strftime"):
+                date_str = row["Date"].strftime("%Y-%m-%d")
+            else:
+                date_str = str(row.name)
+
+            prices.append(
+                {
+                    "Date": date_str,
+                    "Open": float(row["Open"]),
+                    "High": float(row["High"]),
+                    "Low": float(row["Low"]),
+                    "Close": float(row["Close"]),
+                    "Volume": int(row["Volume"]),
+                    "Dividends": float(row["Dividends"]),
+                    "Stock_splits": float(row["Stock Splits"]),
+                }
+            )
+
+        return prices
+    
+    def validate_symbol(self, symbol: str) -> None:
+        """
+        Validate stock symbol format.
+
+        Args:
+            symbol: Stock symbol to validate
+
+        Raises:
+            ValueError: If symbol is invalid
+        """
+        if not symbol or not symbol.isalnum():
+            raise ValueError(f"Invalid stock symbol: {symbol}")
+        
+        
+
     async def _get_stock_data(
         self, symbol: str, start_date: datetime, end_date: datetime
     ):
@@ -503,10 +590,12 @@ class DataService(BaseService):
                             ]
                         )
 
-                        # Convert dates to timezone-aware UTC
-                        df["Date"] = pd.to_datetime(
-                            df["Date"], format="mixed", utc=True
-                        )
+                        # Convert dates to timezone-aware UTC datetime objects
+                        df["Date"] = pd.to_datetime(df["Date"], utc=True)
+                        
+                        # Ensure the Date column is properly converted to datetime
+                        if not pd.api.types.is_datetime64_any_dtype(df["Date"]):
+                            df["Date"] = pd.to_datetime(df["Date"], utc=True)
 
                         # Check if the cache needs to be reloaded
                         reload = self._is_cache_valid(df, start_date, end_date)
@@ -546,6 +635,10 @@ class DataService(BaseService):
         nyse = mcal.get_calendar("NYSE")
         schedule = nyse.schedule(start_date=start_date, end_date=end_date)
         trading_dates = set(schedule["market_open"].dt.date)
+
+        # Ensure the Date column is properly converted to datetime
+        if not pd.api.types.is_datetime64_any_dtype(df["Date"]):
+            df["Date"] = pd.to_datetime(df["Date"], utc=True)
 
         # Extract the dates present in the data
         df_dates = set(df["Date"].dt.date)
