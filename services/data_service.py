@@ -159,7 +159,7 @@ class DataService(BaseService):
 
             # Collect fresh stock data price
             df = await self._collect_stock_data(
-                symbol, start_date=start_date, end_date=start_date
+                symbol, start_date=start_date, end_date=start_date, update_existing=True
             )
 
             # If no data available
@@ -372,6 +372,7 @@ class DataService(BaseService):
         symbol: str,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        update_existing: bool = False,
     ) -> pd.DataFrame:
         """
         Collect stock data from Yahoo Finance.
@@ -429,7 +430,8 @@ class DataService(BaseService):
                     result = await session.execute(query)
 
                     # Get all the existing dates in the db
-                    existing_dates = {row.date for row in result.scalars().all()}
+                    existing_rows = result.scalars().all()
+                    existing_map = {row.date: row for row in existing_rows}
 
                     new_entries = []
 
@@ -438,7 +440,7 @@ class DataService(BaseService):
                         # and the date)
                         date_only = row["Date"].date()
 
-                        if date_only not in existing_dates:
+                        if date_only not in existing_map:
                             # Add the new entry
                             new_entries.append(
                                 StockPrice(
@@ -458,9 +460,22 @@ class DataService(BaseService):
                                     stock_splits=row.get("Stock Splits"),
                                 )
                             )
+                        elif update_existing:
+                            # Update the data in the database
+                            existing = existing_map[date_only]
+                            existing.open = row.get("Open")
+                            existing.high = row.get("High")
+                            existing.low = row.get("Low")
+                            existing.close = row.get("Close")
+                            existing.volume = (
+                                int(row["Volume"]) if row.get("Volume", 0) else None
+                            )
+                            existing.dividends = row.get("Dividends")
+                            existing.stock_splits = row.get("Stock Splits")
 
                     # Add all the new entries to the db
-                    session.add_all(new_entries)
+                    if new_entries:
+                        session.add_all(new_entries)
 
                     # Commit the transaction
                     await session.commit()
