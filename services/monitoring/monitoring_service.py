@@ -8,6 +8,8 @@ import httpx
 import numpy as np
 import pandas as pd
 from scipy.stats import ks_2samp
+from mlflow.tracking import MlflowClient
+from mlflow.entities import ViewType
 
 from core import BaseService
 from core.logging import logger
@@ -38,6 +40,9 @@ class MonitoringService(BaseService):
         self._drift_history_length = data_drift_history_length
         self._drift_zscore = data_drift_zscore
         self._drift_history: Dict[Tuple[str, str], deque] = {}
+        
+        # MLflow client for fetching model tags
+        self.mlflow = MlflowClient(tracking_uri=f"http://{config.mlflow_server.HOST}:{config.mlflow_server.PORT}")
 
         # Background tasks for performance and data loops
         self._perf_task: asyncio.Task | None = None
@@ -47,7 +52,7 @@ class MonitoringService(BaseService):
     async def initialize(self) -> None:
         self._initialized = True
         # Start background loops
-        self._perf_task = asyncio.create_task(self._performance_loop())
+        # self._perf_task = asyncio.create_task(self._performance_loop())
         self._data_task = asyncio.create_task(self._data_loop())
         self.logger.info("MonitoringService initialized and loops started")
 
@@ -405,15 +410,56 @@ class MonitoringService(BaseService):
         self.logger.debug(f"Starting data drift check for {model_type}_{symbol}")
         start_time = time.time()
 
+        # Determine reference training window…
+        days_back = config.data.LOOKBACK_PERIOD_DAYS
+        train_df = None
+
         try:
-            # Load data windows with monitoring config timeouts
-            days_back = config.data.LOOKBACK_PERIOD_DAYS
+            # 1) Registry tags
+            try:
+                versions = self.mlflow.get_latest_versions(f"{model_type}_{symbol}")
+                version = versions[0]
+                run_tags = self.mlflow.get_run(version.run_id).data.tags
+                sd = run_tags.get("training_data_start_date")
+                ed = run_tags.get("training_data_end_date")
+                if sd and ed:
+                    self.logger.info(f"Using registry‐tag window for {symbol}: {sd} → {ed}")
+                    train_df = await self._fetch_stock_historical(symbol, sd, ed)
+                else:
+                    raise KeyError("training_data_* tags missing on registry run")
 
-            # Fetch training data
-            self.logger.info(f"Fetching training data for {symbol}")
-            train_df = await self._fetch_stock_data(symbol, days_back)
+            except Exception as e:
+                self.logger.warning(f"Registry lookup failed ({e}), trying run‐level tags")
 
-            # Evaluation window must cover at least the model's sequence length
+                # 2) Fallback: grab the latest training run in "training_experiments"
+                try:
+                    exp = self.mlflow.get_experiment_by_name("training_experiments")
+                    runs = self.mlflow.search_runs(
+                        [exp.experiment_id],
+                        filter_string=(
+                            f"tags.stage = 'training' AND "
+                            f"tags.model_type = '{model_type}' AND "
+                            f"tags.symbol = '{symbol}'"
+                        ),
+                        run_view_type=ViewType.ACTIVE_ONLY,
+                        max_results=1,
+                        order_by=["start_time DESC"],
+                    )
+                    run = runs[0]
+                    tags = run.data.tags
+                    sd = tags.get("training_data_start_date")
+                    ed = tags.get("training_data_end_date")
+                    if sd and ed:
+                        self.logger.info(f"Using run‐tag window for {symbol}: {sd} → {ed}")
+                        train_df = await self._fetch_stock_historical(symbol, sd, ed)
+                    else:
+                        raise KeyError("training_data_* tags missing on run")
+
+                except Exception as ex2:
+                    self.logger.warning(f"Run‐tag lookup failed ({ex2}), falling back to last {days_back} days")
+                    train_df = await self._fetch_stock_data(symbol, days_back)
+
+            # Evaluation window must cover at least the model's sequence length 
             seq_len = getattr(config.model, "SEQUENCE_LENGTH", 60)
             days_needed = max(seq_len, days_back)
 
@@ -506,3 +552,32 @@ class MonitoringService(BaseService):
                 f"Error in data drift for {model_type}_{symbol} after {elapsed:.2f} seconds: {e}",
                 exc_info=True,
             )
+
+
+    async def _fetch_stock_historical(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+        """
+        Fetch stock data for an explicit date range (drift reference).
+        """
+        api_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stock/historical"
+        params = {"symbol": symbol, "start_date": start_date, "end_date": end_date}
+        timeout = httpx.Timeout(
+            connect=config.monitoring.CONNECT_TIMEOUT,
+            read=config.monitoring.DATA_FETCH_TIMEOUT,
+            write=config.monitoring.CONNECT_TIMEOUT,
+            pool=config.monitoring.CONNECT_TIMEOUT,
+        )
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            self.logger.info(f"Fetching historical data for {symbol} from {start_date} to {end_date}")
+            resp = await client.get(api_url, params=params)
+            resp.raise_for_status()
+            data = resp.json().get("prices", [])
+        if not data:
+            raise ValueError(f"No historical prices for {symbol} between {start_date} and {end_date}")
+        df = pd.DataFrame(data)
+        # normalize date column
+        if "Date" in df.columns:
+            df["Date"] = pd.to_datetime(df["Date"])
+        elif "date" in df.columns:
+            df = df.rename(columns={"date": "Date"})
+            df["Date"] = pd.to_datetime(df["Date"])
+        return df.sort_values("Date")

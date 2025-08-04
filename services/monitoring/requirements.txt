@@ -1,5 +1,6 @@
 # Monitoring requirements
 
+mlflow[boto3]==2.22.0
 numpy==1.26.4
 scipy==1.16.0
 
