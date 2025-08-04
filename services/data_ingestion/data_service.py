@@ -732,8 +732,6 @@ class DataService(BaseService):
             stock = yf.Ticker(symbol)
 
             # Retrieve the data
-            df = stock.history(start=start_date, end=end_date)
-
             df = await asyncio.to_thread(stock.history, start=start_date, end=end_date)
 
             # Log the successful external request to Yahoo Finance (Prometheus)
