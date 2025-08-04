@@ -2,12 +2,13 @@
 Utility functions for the Stock AI system.
 """
 
+import time
 import pandas as pd
 import pandas_market_calendars as mcal
 import pytz
 import numpy as np
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import logging
 from core.config import config
 
@@ -104,10 +105,10 @@ def get_date_range(
 
 def get_latest_trading_day():
     """
-    Get the latest valid trading day
-
+    Get the latest valid trading day with available data.
+    
     Returns:
-        str: the latest valid trading day (in string format)
+        datetime: the latest valid trading day (considering market hours)
     """
     nyse = mcal.get_calendar("NYSE")
     eastern = pytz.timezone("US/Eastern")
@@ -115,17 +116,32 @@ def get_latest_trading_day():
     now_utc = datetime.utcnow().replace(tzinfo=pytz.utc)
     now_est = now_utc.astimezone(eastern)
     today = now_est.date()
-
-    # Look back over the past 10 days to find the most recent trading day
+    current_time = now_est.time()
+    
+    # Market opens at 9:30 AM ET
+    market_open_time = time(9, 30)
+    
+    # Look back over the past 10 days to find trading days
     start_date = today - timedelta(days=10)
     end_date = today
-
+    
     schedule = nyse.schedule(start_date=start_date, end_date=end_date)
-
-    # Find the latest trading day that is today or before
     past_trading_days = schedule.index.date
-    latest_trading_day = max(d for d in past_trading_days if d <= today)
-
+    
+    # Check if today is a trading day AND market has opened
+    if today in past_trading_days and current_time >= market_open_time:
+        # Market is open today, use today
+        latest_trading_day = today
+    else:
+        # Either not a trading day OR market hasn't opened yet
+        # Use the most recent past trading day
+        previous_trading_days = [d for d in past_trading_days if d < today]
+        if previous_trading_days:
+            latest_trading_day = max(previous_trading_days)
+        else:
+            # Fallback: use the most recent trading day from our range
+            latest_trading_day = max(d for d in past_trading_days if d <= today)
+    
     # Return the latest valid trading day
     return datetime.combine(latest_trading_day, datetime.min.time())
 
