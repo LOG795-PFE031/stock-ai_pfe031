@@ -265,6 +265,7 @@ services:
       - "8003:8000"
     volumes:
       - ./data/scalers:/app/data/scalers
+      - ./services/data_processing:/app/services/data_processing
     networks:
       - microservices_auth
     restart: on-failure
