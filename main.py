@@ -21,6 +21,7 @@ from monitoring.utils import monitor_cpu_usage, monitor_memory_usage
 from api.routes import router
 from core.logging import logger
 from db.init_db import create_database
+from db.session import cleanup_engines
 from services import (
     DataService,
     NewsService,
@@ -103,6 +104,9 @@ async def lifespan(app: FastAPI):
             await news_service.cleanup()
             await data_service.cleanup()
             rabbitmq_service.close()  # Close RabbitMQ connection
+
+            # Clean up database engines for all event loops
+            await cleanup_engines()
 
             logger["main"].info("All services cleaned up successfully")
 
