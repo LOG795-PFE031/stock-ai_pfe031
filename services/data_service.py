@@ -3,18 +3,19 @@ Data service for fetching and processing stock data.
 """
 
 import asyncio
-from datetime import datetime, timezone, time
+import time
+from datetime import datetime, timezone, time as dt_time
 from typing import Dict, Any, List, Optional
 
 import pandas as pd
 import pandas_market_calendars as mcal
 import requests
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, text
 import yfinance as yf
 
 
 from core.utils import get_start_date_from_trading_days, get_latest_trading_day
-from db.session import get_async_session
+from db.session import AsyncSessionLocal
 from db.models.stock_price import StockPrice
 from monitoring.prometheus_metrics import external_requests_total
 from .base_service import BaseService
@@ -168,7 +169,7 @@ class DataService(BaseService):
                 return {
                     "symbol": symbol,
                     "stock_name": symbol,
-                    "current_price": 0.0,
+                    "current_price": [],  # ✅ Return empty list instead of 0.0
                     "date_str": None,
                     "message": "No data available for this symbol",
                 }
@@ -399,14 +400,12 @@ class DataService(BaseService):
                 end_date = end_date.replace(tzinfo=timezone.utc)
 
             # Adjust the end date to the last possible moment of the day (to have the full-day)
-            end_date = datetime.combine(end_date, time.max)
+            end_date = datetime.combine(end_date, dt_time.max)
 
             # Download data from Yahoo Finance
             stock = yf.Ticker(symbol)
 
             # Retrieve the data
-            df = stock.history(start=start_date, end=end_date)
-
             df = await asyncio.to_thread(stock.history, start=start_date, end=end_date)
 
             # Log the successful external request to Yahoo Finance (Prometheus)
@@ -419,20 +418,40 @@ class DataService(BaseService):
             stock_name = self.get_stock_name(symbol)
 
             # Create a new async SQLAlchemy session to interact with the database
-            AsyncSessionLocal = get_async_session()
+            db_start_time = time.time()
+            
+            # Log connection pool status
+            from db.session import get_engine
+            engine = get_engine()
+            pool_status = engine.pool.status()
+            self.logger.info("🔗 Connection pool status: %s", pool_status)
+            
+            self.logger.info("🕐 Starting database operations for symbol %s", symbol)
+            
             async with AsyncSessionLocal() as session:
 
                 try:
+                    # Set transaction isolation level for better concurrency
+                    from sqlalchemy import text
+                    await session.execute(text("SET TRANSACTION ISOLATION LEVEL READ COMMITTED"))
+                    
                     # Get all the prices given the symbol
+                    query_start_time = time.time()
                     query = select(StockPrice).where(
                         StockPrice.stock_symbol == symbol.upper()
                     )
                     result = await session.execute(query)
+                    query_end_time = time.time()
+                    self.logger.info("⏱️  Query execution for %s took %.3f seconds", symbol, query_end_time - query_start_time)
 
                     # Get all the existing dates in the db
+                    fetch_start_time = time.time()
                     existing_rows = result.scalars().all()
                     existing_map = {row.date: row for row in existing_rows}
+                    fetch_end_time = time.time()
+                    self.logger.info("📊 Fetched %d existing records for %s in %.3f seconds", len(existing_rows), symbol, fetch_end_time - fetch_start_time)
 
+                    processing_start_time = time.time()
                     new_entries = []
 
                     for _, row in df.iterrows():
@@ -473,12 +492,26 @@ class DataService(BaseService):
                             existing.dividends = row.get("Dividends")
                             existing.stock_splits = row.get("Stock Splits")
 
+                    processing_end_time = time.time()
+                    self.logger.info("🔄 Processed %d DataFrame rows, found %d new entries for %s in %.3f seconds", 
+                                   len(df), len(new_entries), symbol, processing_end_time - processing_start_time)
+
                     # Add all the new entries to the db
                     if new_entries:
+                        insert_start_time = time.time()
                         session.add_all(new_entries)
+                        insert_end_time = time.time()
+                        self.logger.info("➕ Added %d new entries to session for %s in %.3f seconds", 
+                                       len(new_entries), symbol, insert_end_time - insert_start_time)
 
                     # Commit the transaction
+                    commit_start_time = time.time()
                     await session.commit()
+                    commit_end_time = time.time()
+                    self.logger.info("💾 Database commit for %s took %.3f seconds", symbol, commit_end_time - commit_start_time)
+                    
+                    db_end_time = time.time()
+                    self.logger.info("✅ Total database operations for %s completed in %.3f seconds", symbol, db_end_time - db_start_time)
                 except Exception as db_error:
                     # Rollback in case of error
                     await session.rollback()
@@ -567,21 +600,31 @@ class DataService(BaseService):
                 range.
         """
         try:
-            AsyncSessionLocal = get_async_session()
+            read_start_time = time.time()
+            self.logger.info("🔍 Starting database READ operations for symbol %s (%s to %s)", 
+                           symbol, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
+            
             async with AsyncSessionLocal() as session:
 
                 try:
                     # Query the prices between the start and end date for the symbol
+                    query_start_time = time.time()
                     query = select(StockPrice).where(
                         StockPrice.stock_symbol == symbol.upper(),
                         StockPrice.date >= start_date,
                         StockPrice.date <= end_date,
                     )
                     result = await session.execute(query)
+                    query_end_time = time.time()
+                    self.logger.info("⚡ READ query execution for %s took %.3f seconds", symbol, query_end_time - query_start_time)
+                    
+                    fetch_start_time = time.time()
                     records = result.scalars().all()
+                    fetch_end_time = time.time()
+                    self.logger.info("📥 Fetched %d records for %s in %.3f seconds", len(records), symbol, fetch_end_time - fetch_start_time)
 
                     if records:
-
+                        dataframe_start_time = time.time()
                         # Convert to DataFrame
                         df = pd.DataFrame(
                             [
@@ -612,21 +655,39 @@ class DataService(BaseService):
                         if not pd.api.types.is_datetime64_any_dtype(df["Date"]):
                             df["Date"] = pd.to_datetime(df["Date"], utc=True)
 
+                        dataframe_end_time = time.time()
+                        self.logger.info("🔄 DataFrame conversion for %s took %.3f seconds", symbol, dataframe_end_time - dataframe_start_time)
+
                         # Check if the cache needs to be reloaded
+                        cache_check_start_time = time.time()
                         reload = self._is_cache_valid(df, start_date, end_date)
+                        cache_check_end_time = time.time()
+                        self.logger.info("🔍 Cache validation for %s took %.3f seconds", symbol, cache_check_end_time - cache_check_start_time)
 
                         if not reload:
-                            self.logger.info("Load data from cache for %s", symbol)
+                            read_end_time = time.time()
+                            self.logger.info("✅ READ operations completed for %s - using cache data in %.3f seconds total", 
+                                           symbol, read_end_time - read_start_time)
                             # Return data from cache
                             return df.sort_values("Date")
+                    else:
+                        read_end_time = time.time()
+                        self.logger.info("📭 No records found for %s in %.3f seconds - will collect new data", 
+                                       symbol, read_end_time - read_start_time)
+                        
                 except Exception as db_error:
+                    read_end_time = time.time()
                     self.logger.error(
-                        "Error during DB query for symbol %s: %s", symbol, str(db_error)
+                        "❌ READ query ERROR for symbol %s after %.3f seconds: %s", symbol, read_end_time - read_start_time, str(db_error)
                     )
                     raise
 
             # No data exists or need reload, collect new data
+            collect_start_time = time.time()
+            self.logger.info("🔄 Falling back to collecting fresh data for %s", symbol)
             df = await self._collect_stock_data(symbol, start_date, end_date)
+            collect_end_time = time.time()
+            self.logger.info("✅ Fresh data collection for %s completed in %.3f seconds", symbol, collect_end_time - collect_start_time)
             return df
 
         except Exception as e:
@@ -678,7 +739,6 @@ class DataService(BaseService):
             deleted_count = 0
 
             # Create a new async SQLAlchemy session to interact with the database
-            AsyncSessionLocal = get_async_session()
             async with AsyncSessionLocal() as session:
 
                 try:

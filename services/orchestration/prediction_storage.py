@@ -3,7 +3,7 @@ from datetime import datetime
 import pandas as pd
 from sqlalchemy import select
 
-from db.session import get_async_session
+from db.session import AsyncSessionLocal
 from db.models.prediction import Prediction
 
 
@@ -40,7 +40,6 @@ class PredictionStorage:
         """
 
         # Create a new SQLAlchemy session to interact with the database
-        AsyncSessionLocal = get_async_session()
         async with AsyncSessionLocal() as session:
             try:
                 # Check if there is a prediction given the symbol, the date and the model_type
@@ -87,7 +86,6 @@ class PredictionStorage:
         """
 
         # Create a new SQLAlchemy session to interact with the database
-        AsyncSessionLocal = get_async_session()
         async with AsyncSessionLocal() as session:
             try:
 
@@ -135,7 +133,6 @@ class PredictionStorage:
         """
 
         # Create a new SQLAlchemy session to interact with the database
-        AsyncSessionLocal = get_async_session()
         async with AsyncSessionLocal() as session:
             try:
                 # Check if prediction already exists for that symbol and date
