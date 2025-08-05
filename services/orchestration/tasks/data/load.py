@@ -50,6 +50,6 @@ async def load_historical_stock_prices_from_end_date(
         pd.DataFrame: A DataFrame containing the historical stock data.
     """
     data, _ = await service.get_historical_stock_prices_from_end_date(
-        symbol, end_date=end_date, days_back=days_back
+        symbol, end_date=end_date.date().isoformat(), days_back=days_back
     )
     return data

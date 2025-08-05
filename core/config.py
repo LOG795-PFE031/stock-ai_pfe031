@@ -92,6 +92,13 @@ class PostgresDatabaseConfig(BaseModel):
     def URL(self) -> str:
         return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/stocks"
 
+    @property
+    def URL_sync(self) -> str:
+        return (
+            f"postgresql://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/stocks"
+        )
+
+
 class MonitoringConfig(BaseModel):
     """Monitoring service configuration."""
 
@@ -108,8 +115,8 @@ class MonitoringConfig(BaseModel):
     # Monitoring intervals
     PERFORMANCE_CHECK_INTERVAL: int = 24 * 60 * 60  # 24 hours
     DATA_DRIFT_CHECK_INTERVAL: int = 7 * 24 * 60 * 60  # 7 days
-    
-    
+
+
 class Config:
     """Main configuration class."""
 

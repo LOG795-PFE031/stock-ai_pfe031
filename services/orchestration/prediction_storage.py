@@ -3,7 +3,7 @@ from datetime import datetime
 import pandas as pd
 from sqlalchemy import select
 
-from db.session import get_async_session
+from db.session import get_sync_session
 from db.models.prediction import Prediction
 
 
@@ -40,8 +40,8 @@ class PredictionStorage:
         """
 
         # Create a new SQLAlchemy session to interact with the database
-        AsyncSessionLocal = get_async_session()
-        async with AsyncSessionLocal() as session:
+        SessionLocal = get_sync_session()
+        with SessionLocal() as session:
             try:
                 # Check if there is a prediction given the symbol, the date and the model_type
                 stmt = select(Prediction).filter(
@@ -49,7 +49,7 @@ class PredictionStorage:
                     Prediction.date == date.date(),
                     Prediction.model_type == model_type,
                 )
-                result = await session.execute(stmt)
+                result = session.execute(stmt)
 
                 # Retrieve the first matching prediction (if any)
                 prediction = result.scalars().first()
@@ -87,8 +87,8 @@ class PredictionStorage:
         """
 
         # Create a new SQLAlchemy session to interact with the database
-        AsyncSessionLocal = get_async_session()
-        async with AsyncSessionLocal() as session:
+        SessionLocal = get_sync_session()
+        with SessionLocal() as session:
             try:
 
                 # Query predictions for the given symbol
@@ -96,7 +96,7 @@ class PredictionStorage:
                     Prediction.stock_symbol == symbol,
                     Prediction.model_type == model_type,
                 )
-                result = await session.execute(query)
+                result = session.execute(query)
                 dates = result.scalars().all()
 
                 if not dates:
@@ -135,8 +135,8 @@ class PredictionStorage:
         """
 
         # Create a new SQLAlchemy session to interact with the database
-        AsyncSessionLocal = get_async_session()
-        async with AsyncSessionLocal() as session:
+        SessionLocal = get_sync_session()
+        with SessionLocal() as session:
             try:
                 # Check if prediction already exists for that symbol and date
                 query = select(Prediction).where(
@@ -144,7 +144,7 @@ class PredictionStorage:
                     Prediction.date == date.date(),
                     Prediction.model_type == model_type,
                 )
-                result = await session.execute(query)
+                result = session.execute(query)
                 existing = result.scalars().first()
 
                 if existing:
@@ -164,9 +164,6 @@ class PredictionStorage:
                         model_type=model_type,
                     )
                     session.add(new_prediction)
-
-                # Commit the transaction
-                await session.commit()
 
                 self.logger.debug(
                     "Saved prediction for %s on %s using model {model_type}",
