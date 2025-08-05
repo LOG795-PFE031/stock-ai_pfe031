@@ -1,142 +1,119 @@
-# Stock-AI: Advanced Stock Prediction and Analysis System
+# Guide d'utilisateur pour Stock-AI: Prédiction des prix d’actions en bourse
 
-A comprehensive platform for stock price prediction and sentiment analysis using deep learning models (TensorFlow and PyTorch LSTM), distributed processing with RabbitMQ, and an AI-powered chatbot interface.
+Bienvenue dans le guide d'utilisateur de notre projet! Ici, vous trouverez une documentation complète et détaillée sur différents aspects de notre projet.
 
-## Table of Contents
+Tout d'abord, Stock-AI est une plateforme complète de prédiction du cours des actions et d'analyse des sentiments utilisant des modèles d'apprentissage en profondeur (TensorFlow et PyTorch LSTM) et une interface de chatbot alimentée par l'IA.
 
-1. [Overview](#overview)
-2. [System Architecture](#system-architecture)
-3. [Installation](#installation)
-4. [Running the System](#running-the-system)
-5. [Testing the Services](#testing-the-services)
-6. [Troubleshooting](#troubleshooting)
-7. [Features](#features)
-8. [Project Structure](#project-structure)
+## Table des matières
 
-## Overview
+1. [Aperçu du projet](#aperçu)
+2. [Comment utiliser ce guide](#comment-utiliser-ce-guide-dutilisateur)
+3. [Architecture du système](#architecture-du-système)
+4. [Installation](#installation)
+5. [Rouler le système](#rouler-le-système)
+6. [Tester les services](#tester-les-services)
+7. [Troubleshooting](#troubleshooting)
+8. [Fonctionnalités](#fonctionnalités)
+9. [Remerciements](#remerciements)
 
-The Stock-AI system is an integrated platform that:
+## Comment utiliser ce guide d'utilisateur
 
-- Performs stock price predictions using deep learning models
-- Analyzes news sentiment to provide investment insights
-- Processes data through distributed message queues
-- Provides an interactive chatbot interface for user queries
-- Offers microservice architecture for scalability and resilience
+- 🔗 **Liens utiles :** Consultez les liens surlignés en bleu vers d'autres parties du projet, des documents externes ou des ressources pertinentes.
+- ⇽ **Retour vers le guide :** Pour retourner à ce guide.
 
-The system combines multiple technologies including PyTorch, TensorFlow, RabbitMQ, and Docker to create a comprehensive stock analysis platform.
+## Aperçu 
 
-## System Architecture
+Le système Stock-AI est une plateforme intégrée qui :
 
-The system consists of the following components:
+- Prédit le cours des actions grâce à des modèles d'apprentissage profond.
+- Analyse l'opinion publique pour fournir des informations d'investissement.
+- Traite les données via des files d'attente de messages distribuées.
+- Fournit une interface de chatbot interactive pour les requêtes des utilisateurs.
+- Propose une architecture de microservices pour une évolutivité et une résilience optimales.
 
-1. **Stock Prediction Service**: Predicts future stock prices using LSTM models
-2. **News Analyzer Service**: Performs sentiment analysis on financial news
-3. **RabbitMQ Message Queue**: Handles distributed message processing
-4. **Chatbot Interface**: Provides natural language interaction with the system
-5. **Backend**: C# service that manages authentication and API coordination
+Le système combine plusieurs technologies, dont PyTorch, TensorFlow, Docker et autres, pour créer une plateforme complète d'analyse boursière.
 
-All components are containerized using Docker for easy deployment and scaling.
+## Architecture du système
+
+Le système est organisé autour d'une architecture de microservices conteneurisés avec Docker. Chaque composant est dédié à une fonction précise dans le pipeline d'analyse et de prédiction des marchés boursiers.
+
+Les services principaux sont :
+
+1. **🧠 Service d'ingestion de données (`data-service`)**  
+   Récupère et stocke les données historiques des actions depuis des sources externes dans une base PostgreSQL dédiée.
+
+2. **📰 Service d'analyse d'actualités (`news-service`)**  
+   Collecte les actualités financières et effectue une analyse de sentiment via FinBERT.
+
+3. **🧮 Service de prétraitement (`data-processing-service`)**  
+   Nettoie, normalise et transforme les données brutes pour les rendre compatibles avec les modèles d'entraînement et d'inférence.
+
+4. **🏋️‍♂️ Service d'entraînement de modèles (`training-service`)**  
+   Entraîne des modèles LSTM, Prophet ou XGBoost à partir des données préparées et les enregistre dans MLflow.
+
+5. **🚀 Service de prédiction (`deployment-service`)**  
+   Charge les modèles en production et génère des prédictions futures sur les cours boursiers. Fournit également les scores de confiance.
+
+6. **📈 Service d’évaluation (`evaluation-service`)**  
+   Compare les prédictions aux valeurs réelles et calcule des métriques comme MAE, RMSE et R².
+
+7. **📉 Service de monitoring (`monitoring-service`)**  
+   Surveille les performances des modèles (drift, erreur, etc.) et déclenche automatiquement un réentraînement si nécessaire.
+
+8. **🔀 Service d’orchestration (`orchestration-service`)**  
+   Coordonne l’exécution des workflows de bout en bout (prétraitement → entraînement → prédiction → évaluation).
+
+9. **🌐 API Gateway (`api-gateway`)**  
+   Point d’entrée unique pour les utilisateurs. Expose toutes les fonctionnalités via une interface REST (FastAPI).
+
+10. **📊 Services de suivi (`mlflow-server`, `mlflow-postgres`, `mlflow-minio`)**  
+    Gèrent le suivi des expériences ML, le stockage des artefacts, et les métadonnées de modèles.
+
+11. **⚙️ Services d’automatisation (`prefect-server`, `prefect-postgres`)**  
+    Utilisés pour exécuter et planifier les workflows à l’aide de Prefect.
+
+Tous les composants sont conteneurisés avec Docker pour un déploiement et une mise à l'échelle simple.
 
 ## Installation
 
-### Prerequisites
+### Prérequis
 
-- Docker and Docker Compose
-- Python 3.11+ (for local development)
+- Docker et Docker Compose
+- Python 3.11+ (pour le développement local)
 - Git
 
-### Step 1: Set Up Data and Models
+### Étape 1 : Configurer le backend
+   1. Clonez le dépôt backend (service C#) à l'adresse https://github.com/LOG795-PFE031/BackendMicroservices_pfe031
+   2. Suivez les étapes du fichier README de ce dépôt pour le mettre en service.
 
-1. Create the required directories:
+### Étape 2 : Installer le projet
 
+1. **Cloner le dépôt**
    ```bash
-   mkdir -p data/{stock,news,processed,raw}
-   mkdir -p models/{general,prophet,specific}
-   mkdir -p logs
-   ```
-2. Download the required data and models:
-
-   - Option 1: Manual Download
-
-     1. Visit the SharePoint links in your browser:
-        - Data: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/Ed_0wI8AD8xNmEtrGtQpTRAB_WuEg9C99yxiq7mraEsr3Q?e=uPbi7a
-        - Models: https://etsmtl365-my.sharepoint.com/:u:/g/personal/basile_paradis_1_ens_etsmtl_ca/EUR5xD1QhJNAoJsduDJhJLYBxRIYmJGSe3J5fBIuTPpaLw?e=PlasAh
-     2. Download the files
-     3. Extract the contents to the root of the project
-   - Option 2: Using the Setup Script
-
-     ```bash
-     cd scripts
-     pip install -r requirements.txt
-     python setup_data.py
-     ```
-3. Verify the data structure:
-
-   ```bash
-   # Check data directories
-   ls -la data/stock
-   ls -la data/news
-
-   # Check model directories
-   ls -la models/general
-   ls -la models/prophet
-   ls -la models/specific
+   git clone <url-du-depot>
    ```
 
-### Step 2: Set Up the Backend
+2. Assurez-vous d’être à la racine du projet, là où se trouve le fichier `docker-compose.yml`.
 
-1. Clone the backend repository (C# service with RabbitMQ) at https://github.com/LOG795-PFE020/BackendMicroservices
-2. Follow the README steps in that repository to get it up and running
-3. Ensure the RabbitMQ container is running properly
+### Étape 3 : Configurer le Chatbot
 
-### Step 3: Create and Configure Docker Network
-
-The system uses the "stockai-backend_auth" network created by the Backend. No manual network creation is needed, but you need to ensure your services are configured to use this network.
-
-1. First, verify the network exists after starting the backend services:
-
-```bash
-docker network ls | grep stockai-backend_auth
-```
-
-2. Update your docker-compose.yml to use the existing network:
-
-```yaml
-services:
-  # Your services configuration...
-  networks:
-    - stockai-backend_auth
-
-networks:
-  stockai-backend_auth:
-    external: true
-```
-
-3. To verify network connectivity, you can test the connection (after starting the services):
-
-```bash
-# Install netcat in the container
-docker exec -it stock-predictor apt-get update && docker exec -it stock-predictor apt-get install -y netcat-openbsd
-
-# Test connection to RabbitMQ
-docker exec stock-predictor nc -zv rabbitmq 5672
-```
-
-A successful connection will show: "Connection to rabbitmq port [tcp/amqp] succeeded!"
-
-### Step 4: Configure the Chatbot
-
-Create a `.env` file in the `chatbot` folder with your OpenAI API key:
-
+Créez un fichier `.env` dans le dossier `/chatbot` avec votre clé API OpenAI :
 ```
 OPENAI_API_KEY=your_api_key_here
 ```
+ - *Vous devez avoir une carte de paiement reliée à votre compte.*
 
-## Running the System
+### Étape 4 : Installer le frontend 
+   1. Clonez le dépôt frontend à l'adresse https://github.com/LOG795-PFE031/NotYahoo_pfe031
+   2. Suivez les étapes du ficher README de ce dépôt pour le mettre en service.
 
-### Build and Start the Services
+## Rouler le système
 
-Build and run all services with Docker Compose:
+### Créer et démarrer les services
+
+Assurez-vous d’être à la racine du projet, là où se trouve le fichier `docker-compose.yml`.
+
+Créez et exécutez tous les services avec Docker Compose :
 
 ```bash
 docker compose up --build
@@ -144,176 +121,85 @@ docker compose up --build
 
 **Note**: Initial build may take 10-30 minutes as PyTorch and other dependencies are installed.
 
-### Starting Individual Components
+⚠️ Si ce n’est pas votre premier build, supprimez d’abord le dossier `data/` pour éviter les conflits avec d’anciens artefacts : 
+   ```bash
+   rm -rf data
+   docker-compose up --build
+   ```
 
-If you need to start components separately:
+Patientez pendant le lancement, tous les services vont démarrer automatiquement. Vous pouvez ensuite accéder à l’API sur http://localhost:8000/docs.
 
-**Stock Prediction Service**:
+### Démarrage de composants individuels
+
+Si vous voulez démarrer des composants séparément :
+
+**Service d'analyse d'actualités** :
 
 ```bash
-docker compose up stock-predictor
+docker compose up news-service
 ```
+*Même logique pour les autres services.*
 
-**News Analyzer Service**:
-
-```bash
-docker compose up news-analyzer
-```
-
-**Chatbot (locally)**:
+**Chatbot (localement)** :
 
 ```bash
 cd chatbot
 python chatbot.py
 ```
 
-## Testing the Services
+## Tester les services
 
-### Stock Prediction Service
+### Service de prédiction boursière
 
-Access the Swagger UI documentation and test interface:
+Accéder à la documentation de l'interface utilisateur Swagger et à l'interface de test :
 
 ```
 http://localhost:8000/docs
 ```
 
-Example API calls:
+Exemples d'appels d'API :
 
 ```bash
 curl -X GET "http://localhost:8000/api/predict/AAPL"
 ```
 
-### News Sentiment Analysis Service
+### Interface du chatbot
 
-Access the sentiment analysis service:
-
-```
-http://localhost:8092/
-```
-
-Example API calls:
+Testez le chatbot avec la commande curl :
 
 ```bash
-curl -X GET "http://localhost:8092/api/sentiment/AAPL"
+curl -X POST http://localhost:5004/chat -H "Content-Type: application/json" -d '{"user_id": "test_user", "query": "Devrais-je investir dans MSFT ?"}'
 ```
 
-### Chatbot Interface
+Exemples de requêtes pour le chatbot :
 
-Test the chatbot with a curl command:
-
-```bash
-curl -X POST http://localhost:5004/chat -H "Content-Type: application/json" -d '{"user_id": "test_user", "query": "Should I invest into MSFT?"}'
-```
-
-Example queries for the chatbot:
-
-- "What's the price prediction for AAPL?"
-- "Show me the sentiment analysis for Tesla"
-- "Should I invest in Google right now?"
-- "What's the news sentiment for NVDA?"
+- « Quelle est la prévision de cours pour AAPL ?»
+- « Montrez-moi l'analyse de sentiment pour Tesla »
+- « Devrais-je investir dans Google en ce moment ?»
+- « Quel est le sentiment de l'actualité pour NVDA ? »
 
 ## Troubleshooting
 
-### Data and Model Issues
+### Problèmes de clé API du chatbot
 
-If you encounter issues with data or models:
+Si le chatbot ne parvient pas à se connecter à OpenAI :
 
-1. Verify the data structure:
+1. Vérifiez votre clé API dans le fichier « .env ».
+2. Vérifiez les limites de débit OpenAI ou les modifications de l'API.
 
-   ```bash
-   # Check if directories exist and have content
-   ls -la data/stock
-   ls -la data/news
-   ls -la models/general
-   ```
-2. If directories are empty:
+## Fonctionnalités
 
-   - Try downloading the data manually from SharePoint
-   - Make sure you're logged into your ETS account
-   - Check if the SharePoint links are still valid
-3. If you get HTML instead of zip files:
+* **Prévision boursière multi-modèles** : Modèles LSTM TensorFlow, PyTorch, Prophet et Xgboost.
+* **Chatbot optimisé par l'IA** : Interface en langage naturel utilisant OpenAI.
+* **Conteneurisation Docker** : Déploiement et mise à l'échelle faciles.
+* **Architecture de microservices** : Services indépendants et faiblement couplés.
 
-   - Make sure you're logged into your ETS account
-   - Try opening the links in a new browser window
-   - Use the "Download" button in SharePoint instead of direct links
+## Remerciements
 
-### Docker Networking Issues
-
-If services cannot communicate:
-
-1. Check if all containers are on the same network:
-   ```bash
-   docker network inspect auth
-   ```
-2. Restart the network connection if needed:
-   ```bash
-   docker network disconnect auth container_name && docker network connect auth container_name
-   ```
-
-### RabbitMQ Connection Problems
-
-If services can't connect to RabbitMQ:
-
-1. Check RabbitMQ status:
-   ```bash
-   docker exec -it rabbitmq rabbitmqctl status
-   ```
-2. Ensure the RabbitMQ management interface is accessible:
-   ```
-   http://localhost:15672 (user: guest, pass: guest)
-   ```
-
-### Model Loading Errors
-
-If the prediction service fails to load models:
-
-1. Verify the models were correctly placed in the `stock-prediction` folder
-2. Check container logs:
-   ```bash
-   docker logs stock-predictor
-   ```
-
-### Chatbot API Key Issues
-
-If the chatbot fails to connect to OpenAI:
-
-1. Verify your API key in the `.env` file
-2. Check for OpenAI rate limits or API changes
-
-## Features
-
-* **Multi-model Stock Prediction**: TensorFlow and PyTorch LSTM models
-* **News Sentiment Analysis**: NLP-based analysis of financial news
-* **AI-Powered Chatbot**: Natural language interface using OpenAI
-* **Real-time Data Pipeline**: RabbitMQ for distributed processing
-* **Docker Containerization**: Easy deployment and scaling
-* **Microservice Architecture**: Independent, loosely-coupled services
-
-## Project Structure
-
-```
-stock-ai/
-├── stock-prediction/         # Stock prediction service
-│   ├── models/               # Trained ML models
-│   ├── data/                 # Stock data
-│   └── logs/                 # Service logs
-├── news-analyzer/            # News sentiment analysis service
-│   ├── Dockerfile
-│   └── ...
-├── chatbot/                  # AI chatbot interface
-│   ├── chatbot.py            # Main chatbot code
-│   └── .env                  # Environment variables (API keys)
-├── docker-compose.yml        # Docker compose configuration
-└── README.md                 # This file
-```
-
-## Acknowledgments
-
-- OpenAI for the chatbot capabilities
-- yfinance and Stooq for providing stock data
-- TensorFlow and PyTorch for deep learning frameworks
-- RabbitMQ for message queue processing
-- The open-source community for various libraries and tools
+- OpenAI pour les fonctionnalités du chatbot
+- yfinance et Stooq pour la fourniture de données boursières
+- TensorFlow et PyTorch pour les frameworks d'apprentissage profond
+- La communauté open source pour les différents outils et bibliothèques
 
 ---
 
