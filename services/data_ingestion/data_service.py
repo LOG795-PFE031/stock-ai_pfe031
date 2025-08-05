@@ -6,6 +6,7 @@ import asyncio
 from datetime import datetime, timezone, time
 from typing import Dict, Any, Optional, List
 import pytz
+from time import perf_counter
 
 import pandas as pd
 import pandas_market_calendars as mcal
@@ -17,7 +18,7 @@ import yfinance as yf
 from core.utils import get_start_date_from_trading_days, get_latest_trading_day
 
 # Import the new session and model for the dedicated stock database
-from services.data_ingestion.db.session import get_stock_async_session
+from services.data_ingestion.db.session import get_stock_session
 from services.data_ingestion.db.models.stock_price import StockPrice
 from core.prometheus_metrics import external_requests_total
 from core import BaseService
@@ -42,12 +43,12 @@ class DataService(BaseService):
 
             # Test connection to the stock database
             try:
-                AsyncSessionLocal = get_stock_async_session()
-                async with AsyncSessionLocal() as session:
+                SessionLocal = get_stock_session()
+                with SessionLocal() as session:
                     # Simple query to test database connection and create tables if needed
                     try:
                         stmt = select(StockPrice).limit(1)
-                        await session.execute(stmt)
+                        session.execute(stmt)
                         self.logger.info(
                             "✅ Connection to stock database verified successfully"
                         )
@@ -525,8 +526,8 @@ class DataService(BaseService):
             deleted_count = 0
 
             # Create a new async SQLAlchemy session to interact with the dedicated stock database
-            AsyncSessionLocal = get_stock_async_session()
-            async with AsyncSessionLocal() as session:
+            SessionLocal = get_stock_session()
+            with SessionLocal() as session:
 
                 try:
                     if symbol:
@@ -535,7 +536,7 @@ class DataService(BaseService):
                         stmt = delete(StockPrice).where(
                             StockPrice.stock_symbol == symbol
                         )
-                        result = await session.execute(stmt)
+                        result = session.execute(stmt)
 
                         # Get the count of deleted rows
                         deleted_count = result.rowcount
@@ -546,7 +547,7 @@ class DataService(BaseService):
                     else:
                         # Perform delete operation for all given symbol (asynchronously)
                         stmt = delete(StockPrice)
-                        result = await session.execute(stmt)
+                        result = session.execute(stmt)
 
                         # Get the count of deleted rows
                         deleted_count = result.rowcount
@@ -554,12 +555,7 @@ class DataService(BaseService):
                             "Deleted all %d stock price records", deleted_count
                         )
 
-                    # Commit the transaction if records were deleted
-                    await session.commit()
-
                 except Exception as db_error:
-                    # Rollback in case of error
-                    await session.rollback()
                     self.logger.error("Error during DB cleanup: %s", str(db_error))
                     raise
 
@@ -667,11 +663,11 @@ class DataService(BaseService):
 
             # Check database connectivity
             try:
-                AsyncSessionLocal = get_stock_async_session()
-                async with AsyncSessionLocal() as session:
+                SessionLocal = get_stock_session()
+                async with SessionLocal() as session:
                     # Simple query to test database connection
                     stmt = select(StockPrice).limit(1)
-                    await session.execute(stmt)
+                    session.execute(stmt)
 
                 return {
                     "status": "healthy",
@@ -700,7 +696,7 @@ class DataService(BaseService):
         update_existing=False,
     ) -> pd.DataFrame:
         """
-        Collect stock data from Yahoo Finance.
+        Collect stock data from Yahoo Finance and store it in the database
 
         Args:
             symbol: Stock symbol
@@ -713,115 +709,146 @@ class DataService(BaseService):
             DataFrame containing stock data
         """
         try:
+            total_start = perf_counter()
+            self.logger.debug(f"[START] Collecting stock data for {symbol}")
+
             # Set default date range if not provided
             if not end_date:
                 end_date = datetime.now(timezone.utc)
             if not start_date:
                 start_date = get_start_date_from_trading_days(end_date)
 
-            # Ensure dates are timezone-aware
             if start_date.tzinfo is None:
                 start_date = start_date.replace(tzinfo=timezone.utc)
             if end_date.tzinfo is None:
                 end_date = end_date.replace(tzinfo=timezone.utc)
 
-            # Adjust the end date to the last possible moment of the day (to have the full-day)
             end_date = datetime.combine(end_date, time.max)
 
+            self.logger.debug(f"[DATES] start_date: {start_date}, end_date: {end_date}")
+
             # Download data from Yahoo Finance
+            yahoo_start = perf_counter()
+            self.logger.debug(f"[YF] Starting Yahoo Finance fetch for {symbol}")
             stock = yf.Ticker(symbol)
+            df = stock.history(start=start_date, end=end_date)
+            yahoo_duration = perf_counter() - yahoo_start
+            self.logger.debug(
+                f"[YF] Finished Yahoo Finance fetch in {yahoo_duration:.2f}s"
+            )
 
-            # Retrieve the data
-            df = await asyncio.to_thread(stock.history, start=start_date, end=end_date)
-
-            # Log the successful external request to Yahoo Finance (Prometheus)
+            # Prometheus logging
             external_requests_total.labels(site="yahoo_finance", result="success").inc()
 
-            # Reset index to make Date a column
+            # Process DataFrame
             df = df.reset_index()
+            self.logger.debug(f"[DF] Retrieved {len(df)} rows")
 
-            # Get the stock_name
+            # Get stock name
             stock_name = self.get_stock_name(symbol)
+            self.logger.debug(f"[INFO] Resolved stock name: {stock_name}")
 
-            # Create a new async SQLAlchemy session to interact with the database
-            AsyncSessionLocal = get_stock_async_session()
-            async with AsyncSessionLocal() as session:
+            # Interact with the database
+            db_start = perf_counter()
+            self.logger.debug("[DB] Starting DB session")
+            # Use asyncio.to_thread to avoid blocking the event loop for DB calls
+            await asyncio.to_thread(
+                self._upsert_stock_data,
+                symbol,
+                start_date,
+                end_date,
+                df,
+                stock_name,
+                update_existing,
+            )
 
-                try:
-                    # Get all the prices given the symbol
-                    query = select(StockPrice).where(
-                        StockPrice.stock_symbol == symbol.upper()
-                    )
-                    result = await session.execute(query)
+            db_duration = perf_counter() - db_start
+            total_duration = perf_counter() - total_start
 
-                    # Get all the existing dates in the db
-                    existing_rows = result.scalars().all()
-                    existing_map = {row.date: row for row in existing_rows}
+            self.logger.info(
+                f"[SUCCESS] Collected stock data for {symbol} "
+                f"(Yahoo: {yahoo_duration:.2f}s, "
+                f"DB: {db_duration:.2f}s, Total: {total_duration:.2f}s)"
+            )
 
-                    new_entries = []
-
-                    for _, row in df.iterrows():
-                        # Check if there is already an entry in the db (given the symbol ticker
-                        # and the date)
-                        date_only = row["Date"].date()
-
-                        if date_only not in existing_map:
-                            # Add the new entry
-                            new_entries.append(
-                                StockPrice(
-                                    stock_symbol=symbol.upper(),
-                                    stock_name=stock_name,
-                                    date=row["Date"].date(),
-                                    open=row.get("Open"),
-                                    high=row.get("High"),
-                                    low=row.get("Low"),
-                                    close=row.get("Close"),
-                                    volume=(
-                                        int(row.get("Volume", 0))
-                                        if row.get("Volume")
-                                        else None
-                                    ),
-                                    dividends=row.get("Dividends"),
-                                    stock_splits=row.get("Stock Splits"),
-                                )
-                            )
-                        elif update_existing:
-                            # Update the data in the database
-                            existing = existing_map[date_only]
-                            existing.open = row.get("Open")
-                            existing.high = row.get("High")
-                            existing.low = row.get("Low")
-                            existing.close = row.get("Close")
-                            existing.volume = (
-                                int(row["Volume"]) if row.get("Volume", 0) else None
-                            )
-                            existing.dividends = row.get("Dividends")
-                            existing.stock_splits = row.get("Stock Splits")
-
-                    # Add all the new entries to the db
-                    if new_entries:
-                        session.add_all(new_entries)
-
-                    # Commit the transaction
-                    await session.commit()
-                except Exception as db_error:
-                    # Rollback in case of error
-                    await session.rollback()
-
-                    self.logger.error(
-                        "Error while interacting with the database: %s", str(db_error)
-                    )
-                    raise
-
-            self.logger.info("Collected stock data for %s", symbol)
             return df
 
         except Exception as e:
-            self.logger.error("Error collecting stock data for %s: %s", symbol, str(e))
-
-            # Log the unsuccessful external request to Yahoo Finance (Prometheus)
+            self.logger.error(f"[FAILURE] Collecting data for {symbol}: {str(e)}")
             external_requests_total.labels(site="yahoo_finance", result="error").inc()
             raise
+
+    def _upsert_stock_data(
+        self, symbol, start_date, end_date, df, stock_name, update_existing
+    ):
+        """
+        Sync function to insert or update stock price data in the database.
+
+        This function checks if stock price records already exist for the given symbol
+        and date range. If not, it inserts new records. If `update_existing` is True,
+        it updates existing records with the latest values from the DataFrame.
+
+
+        Args:
+            symbol: Stock symbol
+            start_date: Start date for data collection
+            end_date: End date for data collection
+            update_existing (bool): Determines if we want to update the existing element of the
+            table (default to False)
+        """
+        SessionLocal = get_stock_session()
+        with SessionLocal() as session:
+
+            # Build the query
+            query = select(StockPrice).where(
+                StockPrice.stock_symbol == symbol.upper(),
+                StockPrice.date >= start_date.date(),
+                StockPrice.date <= end_date.date(),
+            )
+            result = session.execute(query)
+            existing_rows = result.scalars().all()
+
+            existing_map = {row.date: row for row in existing_rows}
+            self.logger.debug(f"[DB] Found {len(existing_map)} existing records")
+
+            new_entries = []
+
+            for _, row in df.iterrows():
+                date_only = row["Date"].date()
+                if date_only not in existing_map:
+                    new_entries.append(
+                        StockPrice(
+                            stock_symbol=symbol.upper(),
+                            stock_name=stock_name,
+                            date=date_only,
+                            open=row.get("Open"),
+                            high=row.get("High"),
+                            low=row.get("Low"),
+                            close=row.get("Close"),
+                            volume=(
+                                int(row.get("Volume", 0)) if row.get("Volume") else None
+                            ),
+                            dividends=row.get("Dividends"),
+                            stock_splits=row.get("Stock Splits"),
+                        )
+                    )
+                elif update_existing:
+                    existing = existing_map[date_only]
+                    existing.open = row.get("Open")
+                    existing.high = row.get("High")
+                    existing.low = row.get("Low")
+                    existing.close = row.get("Close")
+                    existing.volume = (
+                        int(row["Volume"]) if row.get("Volume", 0) else None
+                    )
+                    existing.dividends = row.get("Dividends")
+                    existing.stock_splits = row.get("Stock Splits")
+
+            self.logger.debug(f"[DB] Adding {len(new_entries)} new entries")
+            if new_entries:
+                session.add_all(new_entries)
+
+                self.logger.debug("[DB] Commit successful")
 
     async def _get_stock_data(
         self, symbol: str, start_date: datetime, end_date: datetime
@@ -842,8 +869,8 @@ class DataService(BaseService):
                 range.
         """
         try:
-            AsyncSessionLocal = get_stock_async_session()
-            async with AsyncSessionLocal() as session:
+            SessionLocal = get_stock_session()
+            with SessionLocal() as session:
 
                 try:
                     # Query the prices between the start and end date for the symbol
@@ -852,7 +879,7 @@ class DataService(BaseService):
                         StockPrice.date >= start_date.date(),
                         StockPrice.date <= end_date.date(),
                     )
-                    result = await session.execute(query)
+                    result = session.execute(query)
                     records = result.scalars().all()
 
                     if records:
