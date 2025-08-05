@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Numeric, Date
+from sqlalchemy import Column, String, Integer, Numeric, Date, Index
 from .base import Base
 
 
@@ -36,3 +36,12 @@ class StockPrice(Base):
     volume = Column(Integer)
     dividends = Column(Numeric(12, 4))
     stock_splits = Column(Numeric(12, 4))
+
+    # Performance indexes - critical for query performance
+    __table_args__ = (
+        Index("idx_stock_symbol", "stock_symbol"),  # Single symbol lookups
+        Index("idx_date", "date"),  # Date range queries
+        Index(
+            "idx_stock_symbol_date", "stock_symbol", "date"
+        ),  # Combined queries (most important)
+    )
