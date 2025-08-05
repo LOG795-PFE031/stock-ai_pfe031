@@ -73,6 +73,13 @@ class RabbitMQConfig(BaseModel):
     QUEUE_PREFIX: str = "stock_ai"
 
 
+class MLFlowConfig(BaseModel):
+    """MLflow server configuration."""
+
+    HOST: str = "mlflow-server"  # Use the Docker container's hostname
+    PORT: int = 5000
+
+
 class PostgresDatabaseConfig(BaseModel):
     """PostgreSQL configuration"""
 
@@ -85,7 +92,24 @@ class PostgresDatabaseConfig(BaseModel):
     def URL(self) -> str:
         return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/stocks"
 
+class MonitoringConfig(BaseModel):
+    """Monitoring service configuration."""
 
+    # Timeout settings
+    DATA_FETCH_TIMEOUT: int = 180  # 3 minutes
+    PREPROCESSING_TIMEOUT: int = 120  # 2 minutes
+    CONNECT_TIMEOUT: int = 15  # 15 seconds
+
+    # Retry settings
+    MAX_RETRIES: int = 5
+    MIN_RETRY_DELAY: int = 5
+    MAX_RETRY_DELAY: int = 30
+
+    # Monitoring intervals
+    PERFORMANCE_CHECK_INTERVAL: int = 24 * 60 * 60  # 24 hours
+    DATA_DRIFT_CHECK_INTERVAL: int = 7 * 24 * 60 * 60  # 7 days
+    
+    
 class Config:
     """Main configuration class."""
 
@@ -95,7 +119,9 @@ class Config:
         self.model = ModelConfig()
         self.api = APIConfig()
         self.rabbitmq = RabbitMQConfig()
+        self.mlflow_server = MLFlowConfig()
         self.postgres = PostgresDatabaseConfig()
+        self.monitoring = MonitoringConfig()
 
         # Create necessary directories
         self._create_directories()
