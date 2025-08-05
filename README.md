@@ -12,7 +12,7 @@ Tout d'abord, Stock-AI est une plateforme complète de prédiction du cours des 
 4. [Installation](#installation)
 5. [Rouler le système](#rouler-le-système)
 6. [Tester les services](#tester-les-services)
-7. [Troubleshooting](#troubleshooting)
+7. [Dépannage](#dépannage)
 8. [Fonctionnalités](#fonctionnalités)
 9. [Remerciements](#remerciements)
 
@@ -178,13 +178,73 @@ Exemples de requêtes pour le chatbot :
 - « Devrais-je investir dans Google en ce moment ?»
 - « Quel est le sentiment de l'actualité pour NVDA ? »
 
-## Troubleshooting
+## Dépannage
+
+### Stockage Docker plein
+
+Il peut arriver souvent que l'espace de votre pc soit remplit par Docker, même si vous supprimez les images ou volumes de Docker. 
+Suivez ces instructions pour réduire la taille de Docker sur votre disque.
+
+##### 1. Avec Docker d'ouvert, entrer cette commande dans le terminal du projet :
+```bash
+docker system prune -a --volumes -f
+```
+Cela efface :
+ * Tous les conteneurs arrêtés
+ * Toutes les images inutilisées (pas seulement celles qui traînent)
+ * Tous les réseaux inutilisés
+ * Tout le cache de build
+ * Tous les volumes inutilisés
+
+*Exécutez-le avec prudence. Assurez-vous que vos conteneurs ou volumes ne stockent rien d'important avant de l'exécuter.*
+
+##### 2. Arrêter le Docker
+Ouvrez le gestionnaire de tâches pour vous assurer que tous les processus Docker sont fermés
+
+##### 3. Ouvrir PowerShell en tant qu'administrateur
+```bash
+   wsl --shutdown
+```
+Cette commande arrête complètement le backend WSL2 et supprime les modifications du système de fichiers.
+
+##### 4. Optimiser le disque virtuel WSL 
+C'est ce qui réduit réellement le fichier `.vhdx` qui stocke les fichiers de Docker et qui prend autant de place.
+
+*Vous devez faire ces étapes une à la fois.*
+
+```bash
+   diskpart
+```
+
+```bash
+   # Remplacer `<YourUser>` par ton user :
+   select vdisk file="C:\Users\<YourUser>\AppData\Local\Docker\wsl\data\ext4.vhdx"
+```
+
+```bash
+   attach vdisk readonly
+```
+
+```bash
+   compact vdisk
+```
+
+```bash
+   detach vdisk
+```
+
+```bash
+   exit
+```
+
+**Redémarrez Docker Desktop.
+Votre disque devrait maintenant afficher l'espace disque récupéré. Sinon redémarrez votre ordinateur.**
 
 ### Problèmes de clé API du chatbot
 
 Si le chatbot ne parvient pas à se connecter à OpenAI :
 
-1. Vérifiez votre clé API dans le fichier « .env ».
+1. Vérifiez votre clé API dans le fichier `.env`.
 2. Vérifiez les limites de débit OpenAI ou les modifications de l'API.
 
 ## Fonctionnalités
