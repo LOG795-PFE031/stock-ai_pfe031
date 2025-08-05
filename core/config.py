@@ -156,6 +156,10 @@ class StocksDatabaseConfig(BaseModel):
     def URL(self) -> str:
         return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.DB_NAME}"
 
+    @property
+    def URL_sync(self) -> str:
+        return f"postgresql://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.DB_NAME}"
+
 
 class PredictionsDatabaseConfig(BaseModel):
     """PostgreSQL configuration for the dedicated predictions data database"""
