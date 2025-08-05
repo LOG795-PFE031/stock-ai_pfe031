@@ -4,6 +4,7 @@ Main application module for Stock AI.
 
 import asyncio
 import time
+import core.prometheus_metrics 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
