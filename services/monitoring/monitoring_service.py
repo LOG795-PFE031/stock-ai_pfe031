@@ -1,10 +1,14 @@
 import asyncio
+import time
 from collections import deque
 import contextlib
 from typing import Dict, Tuple
+from datetime import datetime
 
 import numpy as np
 from scipy.stats import ks_2samp
+from mlflow.tracking import MlflowClient
+from mlflow.entities import ViewType
 
 from core.logging import logger
 from core.config import config
@@ -41,6 +45,9 @@ class MonitoringService(BaseService):
         self._drift_history_length = data_drift_history_length
         self._drift_zscore = data_drift_zscore
         self._drift_history: Dict[Tuple[str, str], deque] = {}
+        
+        # MLflow client for fetching model tags
+        self.mlflow = MlflowClient(tracking_uri=f"http://{config.mlflow_server.HOST}:{config.mlflow_server.PORT}")
 
         # Background tasks for performance and data loops
         self._perf_task: asyncio.Task | None = None
@@ -165,23 +172,72 @@ class MonitoringService(BaseService):
 
     async def _check_data_drift(self, model_type: str, symbol: str) -> None:
         """
-        Fetch training and recent data, preprocess&filter both, then run KS-test on the 2 distributions.
-        Maintain a rolling history of KS stats to compute a dynamic threshold = mean + zscore * std.
-        Retrain only if the current KS stat exceeds dynamic threshold.
+        Check data drift with monitoring config settings.
         """
-        self.logger.debug(f"Starting data drift for {model_type}_{symbol}")
+        self.logger.debug(f"Starting data drift check for {model_type}_{symbol}")
+        start_time = time.time()
+
+        # Determine reference training window
+        days_back = config.data.LOOKBACK_PERIOD_DAYS
+        train_df = None
+
         try:
-            # Load data windows
-            days_back = config.data.LOOKBACK_PERIOD_DAYS
-            train_df, _ = await self.data_service.get_recent_data(
-                symbol, days_back=days_back
-            )
-            # Evaluation window must cover at least the model's sequence length
+            # 1) Registry tags
+            try:
+                versions = self.mlflow.get_latest_versions(f"{model_type}_{symbol}")
+                version = versions[0]
+                run_tags = self.mlflow.get_run(version.run_id).data.tags
+                sd = run_tags.get("training_data_start_date")
+                ed = run_tags.get("training_data_end_date")
+                if sd and ed:
+                    self.logger.info(f"Using registry‐tag window for {symbol}: {sd} → {ed}")
+                    start_date = datetime.strptime(sd, "%Y-%m-%d")
+                    end_date = datetime.strptime(ed, "%Y-%m-%d")
+                    train_df, _ = await self.data_service.get_historical_stock_prices(symbol, start_date, end_date)
+                else:
+                    raise KeyError("training_data_* tags missing on registry run")
+
+            except Exception as e:
+                self.logger.warning(f"Registry lookup failed ({e}), trying run‐level tags")
+
+                # 2) Fallback: grab the latest training run in "training_experiments"
+                try:
+                    exp = self.mlflow.get_experiment_by_name("training_experiments")
+                    runs = self.mlflow.search_runs(
+                        [exp.experiment_id],
+                        filter_string=(
+                            f"tags.stage = 'training' AND "
+                            f"tags.model_type = '{model_type}' AND "
+                            f"tags.symbol = '{symbol}'"
+                        ),
+                        run_view_type=ViewType.ACTIVE_ONLY,
+                        max_results=1,
+                        order_by=["start_time DESC"],
+                    )
+                    run = runs[0]
+                    tags = run.data.tags
+                    sd = tags.get("training_data_start_date")
+                    ed = tags.get("training_data_end_date")
+                    if sd and ed:
+                        self.logger.info(f"Using run‐tag window for {symbol}: {sd} → {ed}")
+                        start_date = datetime.strptime(sd, "%Y-%m-%d")
+                        end_date = datetime.strptime(ed, "%Y-%m-%d")
+                        train_df, _ = await self.data_service.get_historical_stock_prices(symbol, start_date, end_date)
+                    else:
+                        raise KeyError("training_data_* tags missing on run")
+
+                except Exception as ex2:
+                    self.logger.warning(f"Run‐tag lookup failed ({ex2}), falling back to last {days_back} days")
+                    train_df, _ = await self.data_service.get_recent_data(symbol, days_back)
+
+            # Evaluation window must cover at least the model's sequence length 
             seq_len = getattr(config.model, "SEQUENCE_LENGTH", 60)
             days_needed = max(seq_len, days_back)
-            recent_df, _ = await self.data_service.get_recent_data(
-                symbol, days_back=days_needed
-            )
+
+            # Fetch recent data
+            self.logger.info(f"Fetching recent data for {symbol}")
+            recent_df, _ = await self.data_service.get_recent_data(symbol, days_needed)
+
             # Skip if no full sequence available
             if len(recent_df) < seq_len:
                 self.logger.warning(
@@ -189,17 +245,12 @@ class MonitoringService(BaseService):
                 )
                 return
 
-            # Preprocess
-            # Perform training-phase preprocessing to get baseline features
-            train_res = await self.preprocessing_service.preprocess_data(
-                symbol, train_df, model_type, phase="training"
-            )
-            train_proc = train_res[0] if isinstance(train_res, tuple) else train_res
-            # Perform evaluation-phase preprocessing to get current features?
-            recent_res = await self.preprocessing_service.preprocess_data(
-                symbol, recent_df, model_type, phase="evaluation"
-            )
-            recent_proc = recent_res[0] if isinstance(recent_res, tuple) else recent_res
+            # Preprocess with monitoring config settings
+            self.logger.info(f"Preprocessing training data for {symbol}")
+            train_proc = await self.preprocessing_service.preprocess_data(symbol, train_df, model_type, "training")
+
+            self.logger.info(f"Preprocessing recent data for {symbol}")
+            recent_proc = await self.preprocessing_service.preprocess_data(symbol, recent_df, model_type, "evaluation")
 
             # Extract features
             t_arr = np.asarray(getattr(train_proc, "X", []))
@@ -253,12 +304,18 @@ class MonitoringService(BaseService):
                 self.logger.info(
                     f"Drift detected for {model_type}_{symbol}, retraining"
                 )
-                await self.orchestration_service.run_training_pipeline(
-                    model_type, symbol
-                )
+                await self.orchestration_service.run_training_pipeline(model_type, symbol)
             else:
                 self.logger.debug(f"No drift for {model_type}_{symbol}")
+
+            elapsed = time.time() - start_time
+            self.logger.info(
+                f"Completed data drift check for {model_type}_{symbol} in {elapsed:.2f} seconds"
+            )
+
         except Exception as e:
+            elapsed = time.time() - start_time
             self.logger.error(
-                f"Error in data drift for {model_type}_{symbol}: {e}", exc_info=True
+                f"Error in data drift for {model_type}_{symbol} after {elapsed:.2f} seconds: {e}",
+                exc_info=True,
             )
