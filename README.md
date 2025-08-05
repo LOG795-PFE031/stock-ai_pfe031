@@ -20,8 +20,10 @@ Tout d'abord, Stock-AI est une plateforme complète de prédiction du cours des 
 
 - 🔗 **Liens utiles :** Consultez les liens surlignés en bleu vers d'autres parties du projet, des documents externes ou des ressources pertinentes.
 - ⇽ **Retour vers le guide :** Pour retourner à ce guide.
+- ⇧ **Retour vers la table des matières :** Pour retourner à la table des matières rapidement.
 
 ## Aperçu 
+[⇧ Retour à la table des matières](#table-des-matières)
 
 Le système Stock-AI est une plateforme intégrée qui :
 
@@ -34,6 +36,7 @@ Le système Stock-AI est une plateforme intégrée qui :
 Le système combine plusieurs technologies, dont PyTorch, TensorFlow, Docker et autres, pour créer une plateforme complète d'analyse boursière.
 
 ## Architecture du système
+[⇧ Retour à la table des matières](#table-des-matières)
 
 Le système est organisé autour d'une architecture de microservices conteneurisés avec Docker. Chaque composant est dédié à une fonction précise dans le pipeline d'analyse et de prédiction des marchés boursiers.
 
@@ -75,6 +78,7 @@ Les services principaux sont :
 Tous les composants sont conteneurisés avec Docker pour un déploiement et une mise à l'échelle simple.
 
 ## Installation
+[⇧ Retour à la table des matières](#table-des-matières)
 
 ### Prérequis
 
@@ -108,6 +112,7 @@ OPENAI_API_KEY=your_api_key_here
    2. Suivez les étapes du ficher README de ce dépôt pour le mettre en service.
 
 ## Rouler le système
+[⇧ Retour à la table des matières](#table-des-matières)
 
 ### Créer et démarrer les services
 
@@ -148,6 +153,7 @@ python chatbot.py
 ```
 
 ## Tester les services
+[⇧ Retour à la table des matières](#table-des-matières)
 
 ### Service de prédiction boursière
 
@@ -179,6 +185,7 @@ Exemples de requêtes pour le chatbot :
 - « Quel est le sentiment de l'actualité pour NVDA ? »
 
 ## Dépannage
+[⇧ Retour à la table des matières](#table-des-matières)
 
 ### Stockage Docker plein
 
@@ -248,6 +255,7 @@ Si le chatbot ne parvient pas à se connecter à OpenAI :
 2. Vérifiez les limites de débit OpenAI ou les modifications de l'API.
 
 ## Fonctionnalités
+[⇧ Retour à la table des matières](#table-des-matières)
 
 * **Prévision boursière multi-modèles** : Modèles LSTM TensorFlow, PyTorch, Prophet et Xgboost.
 * **Chatbot optimisé par l'IA** : Interface en langage naturel utilisant OpenAI.
@@ -255,6 +263,7 @@ Si le chatbot ne parvient pas à se connecter à OpenAI :
 * **Architecture de microservices** : Services indépendants et faiblement couplés.
 
 ## Remerciements
+[⇧ Retour à la table des matières](#table-des-matières)
 
 - OpenAI pour les fonctionnalités du chatbot
 - yfinance et Stooq pour la fourniture de données boursières
