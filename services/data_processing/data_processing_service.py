@@ -1,3 +1,4 @@
+import asyncio
 from typing import Union, Any, List, Dict
 import pandas as pd
 import numpy as np
@@ -88,6 +89,35 @@ class DataProcessingService(BaseService):
             raise RuntimeError(error_msg) from e
 
     async def preprocess_data(
+        self,
+        symbol: str,
+        raw_data: List[Dict[str, Any]],
+        model_type: str,
+        phase: str,
+    ) -> Union[SingleProcessedData, SplitProcessedData]:
+        """
+        Asynchronously preprocess stock data for model input.
+        """
+        try:
+            self.logger.info(
+                f"Starting preprocessing for symbol={symbol} for model {model_type} during {phase} phase"
+            )
+
+            if phase not in self.phase_function_map:
+                raise ValueError(f"Unknown phase '{phase}'")
+
+            # Run blocking code in a thread
+            return await asyncio.to_thread(
+                self._sync_preprocess_data, symbol, raw_data, model_type, phase
+            )
+
+        except Exception as e:
+            self.logger.error(
+                f"Error preprocessing the stock data for model {model_type} for {symbol} during {phase} phase: {str(e)}"
+            )
+            raise
+
+    def _sync_preprocess_data(
         self,
         symbol: str,
         raw_data: List[Dict[str, Any]],
