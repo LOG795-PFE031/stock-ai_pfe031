@@ -163,15 +163,14 @@ async def get_current_stock_data(
     try:
         # Import services from main to avoid circular imports
         from main import data_service
- 
 
-        data= await data_service.get_current_price(symbol=symbol)
+        data = await data_service.get_current_price(symbol=symbol)
         return StockDataResponse(
-            symbol=data['symbol'],
-            name=data['stock_name'],
-            data=data['current_price'],
+            symbol=data["symbol"],
+            name=data["stock_name"],
+            data=data["current_price"],
             meta=MetaInfo(
-                message=data['message'],
+                message=data["message"],
                 version=config.api.API_VERSION,
                 documentation="https://api.example.com/docs",
                 endpoints=["/api/data/stock/current"],
@@ -366,7 +365,7 @@ async def get_historical_stock_prices_from_end_date(
         ) from e
 
 
-@router.get("/data/news/", response_model=NewsDataResponse, tags=["Data Services"])
+@router.get("/data/news", response_model=NewsDataResponse, tags=["Data Services"])
 async def get_news_data(
     symbol: str = Query(..., description="Stock symbol to retrieve news data for"),
     start_date: Optional[str] = None,
@@ -457,7 +456,9 @@ async def get_model_metadata(model_name: str):
 
 
 # Prediction endpoints
-@router.post("/predict", response_model=PredictionResponse, tags=["Prediction Services"])
+@router.post(
+    "/predict", response_model=PredictionResponse, tags=["Prediction Services"]
+)
 async def get_next_day_prediction(
     model_type: str = Query(..., description="Type of prediction model to use"),
     symbol: str = Query(
