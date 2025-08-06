@@ -485,6 +485,14 @@ async def get_next_day_prediction(
             return prediction
 
         error_msg = prediction.get("error", "Unknown error")
+
+        if "No live model available" in error_msg:
+            api_logger.warning(f"No model available for {symbol} using {model_type}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"No model available to make prediction with {model_type} for symbol '{symbol}'",
+            )
+
         api_logger.error(f"Prediction failed for {symbol}: {error_msg}")
         raise HTTPException(status_code=500, detail=f"Prediction failed: {error_msg}")
 
