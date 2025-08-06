@@ -189,13 +189,15 @@ class OrchestrationService(BaseService):
                 )
 
                 # Save prediction to db
-                await self.prediction_storage.save_prediction_to_db(
-                    model_type=model_type,
-                    symbol=symbol,
-                    date=next_trading_day,
-                    prediction=prediction,
-                    confidence=confidence,
-                    model_version=model_version,
+                asyncio.create_task(
+                    await self.prediction_storage.save_prediction_to_db(
+                        model_type=model_type,
+                        symbol=symbol,
+                        date=next_trading_day,
+                        prediction=prediction,
+                        confidence=confidence,
+                        model_version=model_version,
+                    )
                 )
 
                 return format_prediction_response(
