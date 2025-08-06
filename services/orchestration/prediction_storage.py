@@ -168,9 +168,10 @@ class PredictionStorage:
                     session.add(new_prediction)
 
                 self.logger.debug(
-                    "Saved prediction for %s on %s using model {model_type}",
+                    "Saved prediction for %s on %s using model %s",
                     symbol,
                     date.date(),
+                    model_type,
                 )
 
                 session.commit()
