@@ -28,7 +28,6 @@ from services import (
     TrainingService,
     DeploymentService,
     EvaluationService,
-    RabbitMQService,
     MonitoringService,
 )
 from services.orchestration import OrchestrationService
@@ -50,7 +49,6 @@ orchestation_service = OrchestrationService(
     deployment_service=deployment_service,
     evaluation_service=evaluation_service,
 )
-rabbitmq_service = RabbitMQService()
 monitoring_service = MonitoringService(
     deployment_service,
     orchestation_service,
@@ -102,7 +100,6 @@ async def lifespan(app: FastAPI):
             await training_service.cleanup()
             await news_service.cleanup()
             await data_service.cleanup()
-            rabbitmq_service.close()  # Close RabbitMQ connection
 
             logger["main"].info("All services cleaned up successfully")
 
