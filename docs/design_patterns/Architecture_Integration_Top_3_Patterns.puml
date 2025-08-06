@@ -1,0 +1,111 @@
+@startuml Architecture_Integration_Top_3_Patterns
+
+title Stock-AI: Architecture Integration - Top 3 Design Patterns
+
+skinparam component {
+  BackgroundColor LightGray
+  BorderColor DarkGray
+  ArrowColor Black
+}
+
+package "Strategy Pattern" {
+  component "FeatureSelector" as FS
+  component "InputFormatter" as IF
+  component "ConfidenceCalculator" as CC
+}
+
+package "Factory Pattern" {
+  component "ModelRegistry" as MR
+  component "ScalerFactory" as SF
+}
+
+package "Template Method Pattern" {
+  component "BaseDataProcessor" as BDP
+  component "BaseModel" as BM
+  component "DataProcessingPipeline" as DPP
+}
+
+package "ML Services" {
+  component "Data Processing Service" as DPS
+  component "Training Service" as TS
+  component "Deployment Service" as DS
+}
+
+package "Strategies" {
+  component "LSTM Strategy" as LSTM_S
+  component "Prophet Strategy" as PROPHET_S
+  component "XGBoost Strategy" as XGB_S
+}
+
+package "Factories" {
+  component "LSTM Factory" as LSTM_F
+  component "Prophet Factory" as PROPHET_F
+  component "XGBoost Factory" as XGB_F
+}
+
+package "Templates" {
+  component "LSTM Template" as LSTM_T
+  component "Prophet Template" as PROPHET_T
+  component "XGBoost Template" as XGB_T
+}
+
+' Strategy Pattern connections
+FS --> LSTM_S : uses
+FS --> PROPHET_S : uses
+FS --> XGB_S : uses
+
+IF --> LSTM_S : uses
+IF --> PROPHET_S : uses
+IF --> XGB_S : uses
+
+CC --> LSTM_S : uses
+CC --> PROPHET_S : uses
+CC --> XGB_S : uses
+
+' Factory Pattern connections
+MR --> LSTM_F : creates
+MR --> PROPHET_F : creates
+MR --> XGB_F : creates
+
+SF --> LSTM_F : creates scalers
+
+' Template Method connections
+BDP --> LSTM_T : defines template
+BDP --> PROPHET_T : defines template
+BDP --> XGB_T : defines template
+
+BM --> LSTM_T : defines template
+BM --> PROPHET_T : defines template
+BM --> XGB_T : defines template
+
+' Service connections
+DPS --> FS : uses
+DPS --> IF : uses
+DPS --> BDP : uses
+
+TS --> MR : uses
+TS --> BM : uses
+
+DS --> CC : uses
+DS --> MR : uses
+
+note right of FS
+  Strategy Pattern:
+  - AllFeatureSelector
+  - TechnicalAnalysisSelector
+  - ProphetFeatureSelector
+end note
+
+note right of MR
+  Factory Pattern:
+  - ModelRegistry
+  - ScalerFactory
+end note
+
+note right of BDP
+  Template Method Pattern:
+  - BaseDataProcessor
+  - BaseModel
+end note
+
+@enduml 

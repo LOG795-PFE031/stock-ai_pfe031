@@ -1,0 +1,116 @@
+@startuml Template_Method_Pattern_Data_Processing
+
+title Stock-AI: Template Method Pattern - Data Processing Pipeline
+
+skinparam class {
+  BackgroundColor LightYellow
+  BorderColor DarkOrange
+  ArrowColor Black
+}
+
+abstract class BaseDataProcessor {
+  + process(data: DataFrame): DataFrame
+  + validate_input(data: DataFrame): bool
+  {abstract} + process_implementation(data: DataFrame): DataFrame
+}
+
+abstract class BaseModel {
+  + model_type: str
+  + symbol: str
+  + saver: BaseSaver
+  + trainer: BaseTrainer
+  + predictor: PythonModel
+  + initialize(): None
+  + train(training_data): None
+  {abstract} + train_implementation(data): None
+  + save_model(): None
+  + load_model(): None
+}
+
+class DataCleaner {
+  + process_implementation(data: DataFrame): DataFrame
+  -- Removes missing values and outliers
+}
+
+class FeatureBuilder {
+  + process_implementation(data: DataFrame): DataFrame
+  -- Adds technical indicators
+}
+
+class FeatureSelector {
+  + process_implementation(data: DataFrame): DataFrame
+  -- Selects relevant features
+}
+
+class DataNormalizer {
+  + process_implementation(data: DataFrame): DataFrame
+  -- Scales and normalizes data
+}
+
+class LSTMModel {
+  + train_implementation(data): None
+  -- Trains LSTM neural network
+}
+
+class ProphetModel {
+  + train_implementation(data): None
+  -- Trains Prophet time series model
+}
+
+class XGBoostModel {
+  + train_implementation(data): None
+  -- Trains XGBoost regression model
+}
+
+class DataProcessingService {
+  - steps: List[BaseDataProcessor]
+  + process(data: DataFrame): ProcessedData
+  + add_step(step: BaseDataProcessor): None
+}
+
+' Relationships
+BaseDataProcessor <|-- DataCleaner
+BaseDataProcessor <|-- FeatureBuilder
+BaseDataProcessor <|-- FeatureSelector
+BaseDataProcessor <|-- DataNormalizer
+
+BaseModel <|-- LSTMModel
+BaseModel <|-- ProphetModel
+BaseModel <|-- XGBoostModel
+
+DataProcessingService --> BaseDataProcessor : uses
+
+note right of BaseDataProcessor
+  Template Method Pattern:
+  
+  def process(data):
+    if validate_input(data):
+      return process_implementation(data)
+    else:
+      raise ValueError("Invalid input")
+end note
+
+note right of BaseModel
+  Template Method Pattern:
+  
+  def train(training_data):
+    initialize()
+    train_implementation(training_data)
+    save_model()
+end note
+
+note right of DataProcessingService
+  Pipeline Builder Pattern:
+  
+  steps = [
+    DataCleaner(),
+    FeatureBuilder(),
+    FeatureSelector(),
+    DataNormalizer()
+  ]
+  
+  for step in steps:
+    data = step.process(data)
+end note
+
+@enduml 

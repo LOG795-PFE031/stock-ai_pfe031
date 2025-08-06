@@ -1,0 +1,125 @@
+
+@startuml Architecture_Monitoring_Data_Drift
+
+title Stock-AI: Architecture de Monitoring et Détection de Data Drift
+
+skinparam component {
+  BackgroundColor LightBlue
+  BorderColor DarkBlue
+  ArrowColor Black
+}
+
+skinparam database {
+  BackgroundColor LightGreen
+  BorderColor DarkGreen
+}
+
+' Composants principaux
+component "Monitoring Service" as MS
+component "MLflow Registry" as MLR
+component "Data Service" as DS
+component "Data Processing Service" as DPS
+component "Orchestration Service" as OS
+component "Training Service" as TS
+
+' Bases de données
+database "Stock Data DB" as SDB
+database "Prediction Data DB" as PDB
+
+' Services externes
+component "Prometheus" as PROM
+component "Grafana" as GRAF
+component "Prefect Server" as PREF
+
+' Flux de données
+MS -> MLR : fetch dates
+MLR --> MS : training_data_start_date
+MLR --> MS : training_data_end_date
+
+MS -> DS : récupération données historiques
+DS -> SDB : query historical data
+SDB --> DS : historical stock data
+DS --> MS : données d'entraînement
+
+MS -> DS : récupération données récentes
+DS -> SDB : query recent data
+SDB --> DS : recent stock data
+DS --> MS : données récentes
+
+MS -> DPS : prétraitement identique
+DPS -> DPS : preprocessing
+DPS --> MS : données prétraitées
+
+MS -> MS : Test de Kolmogorov-Smirnov
+note right of MS
+  KS-Test:
+  - Comparaison distributions
+  - Seuil dynamique basé sur l'historique
+  - Détection de drift statistique
+end note
+
+alt Drift détecté
+  MS -> OS : déclenchement retraining
+  OS -> PREF : orchestration workflow
+  PREF -> TS : lancement entraînement
+  TS -> MLR : sauvegarde nouveau modèle
+  MLR --> TS : confirmation
+  TS --> PREF : entraînement terminé
+  PREF --> OS : workflow terminé
+  OS --> MS : retraining terminé
+end
+
+MS -> PROM : métriques de monitoring
+PROM -> GRAF : données pour visualisation
+GRAF --> GRAF : dashboards de monitoring
+
+note top of MLR
+  Étape 1: Récupération des dates
+  - MLflow fetch dates d'entraînement
+  - Tags: training_data_start_date
+  - Tags: training_data_end_date
+end note
+
+note right of DS
+  Étape 2: Données historiques & récentes
+  - Données d'entraînement originales
+  - Données récentes pour comparaison
+end note
+
+note right of DPS
+  Étape 3: Prétraitement identique
+  - Même pipeline de traitement
+  - FeatureBuilder, Normalizer
+end note
+
+note right of OS
+  Étape 5: Alerte + retraining via Prefect
+  - Orchestration automatique
+  - Workflow de retraining
+end note
+
+note right of GRAF
+  Étape 6: Visualisation Prometheus + Grafana
+  - Métriques en temps réel
+  - Dashboards de monitoring
+end note
+
+note left of MS
+  Configuration Monitoring:
+  - PERFORMANCE_CHECK_INTERVAL: 24h
+  - DATA_DRIFT_CHECK_INTERVAL: 7 jours
+  - max_drift_samples: 500
+  - drift_stat_threshold: 0.1
+  - data_drift_zscore: 2.0
+end note
+
+note bottom of PROM
+  Prometheus Métriques:
+  - evaluation_mae
+  - prediction_confidence
+  - http_requests_total
+  - cpu_saturation_percentage
+  - memory_saturation_usage
+end note
+
+@enduml

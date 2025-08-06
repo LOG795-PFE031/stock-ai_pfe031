@@ -1,0 +1,81 @@
+@startuml Factory_Pattern_Model_Registry
+
+title Stock-AI: Factory Pattern - Model Registry
+
+skinparam class {
+  BackgroundColor LightGreen
+  BorderColor DarkGreen
+  ArrowColor Black
+}
+
+class ModelRegistry {
+  - _registry: Dict[str, Type]
+  + register(name: str): Callable
+  + create(name: str, **kwargs): BaseModel
+  + list_models(): List[str]
+  + get_registry(): Dict
+}
+
+abstract class BaseModel {
+  + model_type: str
+  + symbol: str
+  + train(training_data): None
+  + predict(data): Any
+}
+
+class LSTMModel {
+  + train(training_data): None
+  + predict(data): np.ndarray
+}
+
+class ProphetModel {
+  + train(training_data): None
+  + predict(data): pd.DataFrame
+}
+
+class XGBoostModel {
+  + train(training_data): None
+  + predict(data): np.ndarray
+}
+
+class ScalerFactory {
+  + create_scaler(model_type: str): Scaler
+}
+
+class MinMaxScaler {
+  + fit(data): None
+  + transform(data): np.ndarray
+}
+
+' Relationships
+BaseModel <|-- LSTMModel
+BaseModel <|-- ProphetModel
+BaseModel <|-- XGBoostModel
+
+ModelRegistry --> BaseModel : creates
+ScalerFactory --> MinMaxScaler : creates
+
+note right of ModelRegistry
+  Factory with Registry Pattern:
+  
+  @ModelRegistry.register("lstm")
+  class LSTMModel(BaseModel): pass
+  
+  @ModelRegistry.register("prophet")
+  class ProphetModel(BaseModel): pass
+  
+  @ModelRegistry.register("xgboost")
+  class XGBoostModel(BaseModel): pass
+end note
+
+note right of ScalerFactory
+  Simple Factory:
+  
+  def create_scaler(model_type):
+    if model_type == "lstm":
+      return MinMaxScaler()
+    else:
+      return None
+end note
+
+@enduml 

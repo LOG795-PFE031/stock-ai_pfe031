@@ -1,0 +1,64 @@
+@startuml Strategy_Pattern_Feature_Selection
+
+title Stock-AI: Strategy Pattern - Feature Selection
+
+skinparam class {
+  BackgroundColor LightBlue
+  BorderColor DarkBlue
+  ArrowColor Black
+}
+
+interface FeatureSelectionStrategy {
+  + select(data: DataFrame): DataFrame
+}
+
+class AllFeatureSelector {
+  + select(data: DataFrame): DataFrame
+  -- Selects all features except 'Date'
+}
+
+class OHLCVFeatureSelector {
+  + select(data: DataFrame): DataFrame
+  -- Selects only OHLCV features
+}
+
+class TechnicalAnalysisFeatureSelector {
+  + select(data: DataFrame): DataFrame
+  -- Selects technical indicators for LSTM
+}
+
+class ProphetFeatureSelector {
+  + select(data: DataFrame): DataFrame
+  -- Selects temporal features for Prophet
+}
+
+class SeasonalFeatureSelector {
+  + select(data: DataFrame): DataFrame
+  -- Selects seasonal features
+}
+
+class FeatureSelector {
+  - model_type: str
+  + process(data: DataFrame): DataFrame
+  - _get_feature_selector(): FeatureSelectionStrategy
+}
+
+' Relationships
+FeatureSelectionStrategy <|.. AllFeatureSelector
+FeatureSelectionStrategy <|.. OHLCVFeatureSelector
+FeatureSelectionStrategy <|.. TechnicalAnalysisFeatureSelector
+FeatureSelectionStrategy <|.. ProphetFeatureSelector
+FeatureSelectionStrategy <|.. SeasonalFeatureSelector
+
+FeatureSelector --> FeatureSelectionStrategy : uses
+
+note right of FeatureSelector
+  Context class that uses
+  different strategies based
+  on model_type:
+  - "lstm" → TechnicalAnalysis
+  - "prophet" → Prophet
+  - "xgboost" → AllFeatures
+end note
+
+@enduml 

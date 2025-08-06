@@ -1,0 +1,95 @@
+@startuml Data_Flow_With_Top_3_Patterns
+
+title Stock-AI: Data Flow with Top 3 Design Patterns
+
+actor "User" as U
+participant "Data Processing Service" as DPS
+participant "Training Service" as TS
+participant "Deployment Service" as DS
+
+participant "Strategy Pattern" as SP
+participant "Factory Pattern" as FP
+participant "Template Method Pattern" as TMP
+
+database "Stock Data" as SD
+database "MLflow Registry" as MLR
+
+' Initial data flow
+U -> DPS : Request preprocessing
+activate DPS
+
+DPS -> SP : Select feature strategy
+activate SP
+SP --> DPS : FeatureSelectionStrategy
+deactivate SP
+
+DPS -> TMP : Process with template
+activate TMP
+TMP -> TMP : validate_input()
+TMP -> TMP : process_implementation()
+TMP --> DPS : ProcessedData
+deactivate TMP
+
+DPS --> U : Preprocessed data
+deactivate DPS
+
+' Training flow
+U -> TS : Request model training
+activate TS
+
+TS -> FP : Create model factory
+activate FP
+FP -> FP : ModelRegistry.create()
+FP --> TS : Model instance
+deactivate FP
+
+TS -> TMP : Train with template
+activate TMP
+TMP -> TMP : initialize()
+TMP -> TMP : train_implementation()
+TMP -> TMP : save_model()
+TMP --> TS : Trained model
+deactivate TMP
+
+TS -> MLR : Register model
+TS --> U : Training results
+deactivate TS
+
+' Deployment flow
+U -> DS : Request prediction
+activate DS
+
+DS -> FP : Get model from registry
+activate FP
+FP -> MLR : Load model
+FP --> DS : Model instance
+deactivate FP
+
+DS -> SP : Calculate confidence
+activate SP
+SP --> DS : Confidence score
+deactivate SP
+
+DS --> U : Prediction with confidence
+deactivate DS
+
+note right of SP
+  Strategy Pattern Usage:
+  - FeatureSelectionStrategy
+  - InputFormatterStrategy
+  - ConfidenceCalculatorStrategy
+end note
+
+note right of FP
+  Factory Pattern Usage:
+  - ModelRegistry.create()
+  - ScalerFactory.create_scaler()
+end note
+
+note right of TMP
+  Template Method Usage:
+  - BaseDataProcessor.process()
+  - BaseModel.train()
+end note
+
+@enduml 
