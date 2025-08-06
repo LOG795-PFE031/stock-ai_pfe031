@@ -310,7 +310,7 @@ class DataService(BaseService):
             start_date = get_start_date_from_trading_days(end_date_formatted, days_back)
 
             # Retrieve stock data prices
-            df = pickle.loads(await self._get_stock_data(symbol, start_date, end_date))
+            df = pickle.loads(await self._get_stock_data(symbol, start_date, end_date_formatted))
 
             # Filter data for requested date range
             mask = (df["Date"].dt.date >= start_date.date()) & (
