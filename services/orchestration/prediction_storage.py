@@ -1,4 +1,5 @@
 from datetime import datetime
+from async_lru import alru_cache
 
 import pandas as pd
 from sqlalchemy import select
@@ -24,6 +25,7 @@ class PredictionStorage:
     def __init__(self, logger):
         self.logger = logger
 
+    @alru_cache(maxsize=128)
     async def load_prediction_from_db(
         self, model_type: str, symbol: str, date: datetime
     ):
@@ -170,6 +172,8 @@ class PredictionStorage:
                     symbol,
                     date.date(),
                 )
+
+                session.commit()
 
             except Exception as e:
                 self.logger.error("Error saving prediction for %s: %s", symbol, str(e))
