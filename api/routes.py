@@ -496,10 +496,13 @@ async def get_next_day_prediction(
         api_logger.error(f"Prediction failed for {symbol}: {error_msg}")
         raise HTTPException(status_code=500, detail=f"Prediction failed: {error_msg}")
 
+    except HTTPException as http_exc:
+        raise http_exc
+
     except Exception as e:
-        api_logger.error(f"Prediction failed: {str(e)}")
+        api_logger.error(f"Unexpected error during prediction: {str(e)}")
         raise HTTPException(
-            status_code=500, detail=f"Prediction failed: {str(e)}"
+            status_code=500, detail=f"Unexpected server error: {str(e)}"
         ) from e
 
 
