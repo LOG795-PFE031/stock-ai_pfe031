@@ -76,6 +76,8 @@ black>=21.7b0
 isort>=5.9.3
 flake8>=3.9.2
 mypy>=0.910
+async-lru==2.0.5
+aiocache==0.12.3
 
 # Additional dependencies
 python-multipart>=0.0.5
