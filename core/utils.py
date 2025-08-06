@@ -7,7 +7,7 @@ import pandas_market_calendars as mcal
 import pytz
 import numpy as np
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone, time
 import logging
 from core.config import config
 
@@ -95,7 +95,9 @@ def get_date_range(
         end = datetime.fromisoformat(end_date)
     else:
         # Use days parameter or default to config
-        end = datetime.now()
+        end = datetime.combine(
+            datetime.now(timezone.utc).date(), time.max, tzinfo=timezone.utc
+        )
         days = days or config.data.LOOKBACK_PERIOD_DAYS
         start = end - timedelta(days=days)
 
