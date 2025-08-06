@@ -3,6 +3,7 @@ Data service for fetching and processing stock data.
 """
 
 import asyncio
+from functools import lru_cache
 from async_lru import alru_cache
 import pickle
 from datetime import datetime, timezone, time
@@ -10,6 +11,7 @@ from typing import Dict, Any, List, Optional
 import pytz
 from time import perf_counter
 
+from aiocache import cached, SimpleMemoryCache
 import pandas as pd
 import pandas_market_calendars as mcal
 import requests
@@ -51,6 +53,7 @@ class DataService(BaseService):
         except Exception as e:
             self.logger.error("Error during data service cleanup: %s", str(e))
 
+    @lru_cache(maxsize=200)
     def get_stock_name(self, symbol: str) -> str:
         """
         Get the name of a stock given its symbol
@@ -144,6 +147,7 @@ class DataService(BaseService):
             self.logger.error("Error collecting NASDAQ 100 stocks data: %s", str(e))
             raise
 
+    @cached(ttl=300, cache=SimpleMemoryCache)
     async def get_current_price(self, symbol: str) -> Dict[str, Any]:
         """
         Retrieves the stock price for the given symbol on the latest trading day.
@@ -313,9 +317,6 @@ class DataService(BaseService):
                 df["Date"].dt.date <= end_date_formatted.date()
             )
             df = df[mask]
-
-            # Transform DataFrame to list of price objects
-            prices = self._transform_dataframe_to_prices(df)
 
             # Get the stock_name
             stock_name = self.get_stock_name(symbol)
@@ -630,14 +631,17 @@ class DataService(BaseService):
         except ValueError:
             raise ValueError("Invalid date format. Use YYYY-MM-DD")
 
-    def _fetch_from_db(self, symbol, start_date, end_date):
+    @lru_cache(maxsize=100)
+    def _fetch_from_db(
+        self, symbol, start_date: datetime.date, end_date: datetime.date
+    ):
         """
         Fetches stock price records from the database for a given symbol and date range.
 
         Args:
             symbol (str): The stock symbol (e.g., "AAPL", "GOOG").
-            start_date (datetime): The start date of the desired data range.
-            end_date (datetime): The end date of the desired data range.
+            start_date (datetime.date): The start date of the desired data range.
+            end_date (datetime.date): The end date of the desired data range.
 
         Returns:
             List[StockPrice]: A list of stock price records matching the query.
@@ -646,8 +650,8 @@ class DataService(BaseService):
         with SessionLocal() as session:
             query = select(StockPrice).where(
                 StockPrice.stock_symbol == symbol.upper(),
-                StockPrice.date >= start_date.date(),
-                StockPrice.date <= end_date.date(),
+                StockPrice.date >= start_date,
+                StockPrice.date <= end_date,
             )
             result = session.execute(query)
             return result.scalars().all()
@@ -673,7 +677,7 @@ class DataService(BaseService):
         """
         try:
             records = await asyncio.to_thread(
-                self._fetch_from_db, symbol, start_date, end_date
+                self._fetch_from_db, symbol, start_date.date(), end_date.date()
             )
 
             if records:
