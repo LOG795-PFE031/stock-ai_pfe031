@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 
 from api.schemas import (
@@ -82,19 +82,21 @@ async def health_check():
 @router.get(
     "/data/stocks", response_model=StocksListDataResponse, tags=["Data Services"]
 )
-async def get_stocks_list():
+async def get_stocks_list(request: Request):
     """
     Retrieve a list of NASDAQ-100 stocks, sorted by absolute percentage change in
     descending order (top movers first).
     """
     try:
+        client = request.app.state.httpx_client
+
         # Call the data ingestion service
         data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/stocks"
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(data_service_url)
-            response.raise_for_status()
-            stocks_response = response.json()
+        response = await client.get(data_service_url)
+        response.raise_for_status()
+        stocks_response = response.json()
+
         # The data ingestion service already returns a StocksListDataResponse structure
         # So we can return it directly, just updating the timestamp
         return StocksListDataResponse(
@@ -120,10 +122,16 @@ async def get_stocks_list():
     tags=["Data Services"],
 )
 async def get_current_stock_data(
-    symbol: str = Query(..., description="Stock symbol to retrieve data for")
+    request: Request,
+    symbol: str = Query(..., description="Stock symbol to retrieve data for"),
 ):
     """Get the current stock data for a symbol."""
     try:
+        # Get the httpx client
+        client = request.app.state.httpx_client
+
+        logger["main"].info(f"Fetching current stock data for {symbol}...")
+
         # Validate symbol
         if not validate_stock_symbol(symbol):
             raise HTTPException(
@@ -135,10 +143,13 @@ async def get_current_stock_data(
             f"http://{config.data.HOST}:{config.data.PORT}/data/stock/current"
         )
 
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.get(data_service_url, params={"symbol": symbol})
-            response.raise_for_status()
-            stock_data = response.json()
+        response = await client.get(data_service_url, params={"symbol": symbol})
+        response.raise_for_status()
+        stock_data = response.json()
+
+        logger["main"].info(
+            f"✅ Successfully retrieved stock data for symbol: {symbol}"
+        )
 
         # The data ingestion service returns a CurrentPriceResponse, extract the data
         # Ensure 'data' is a list of dicts as expected by StockDataResponse
@@ -177,6 +188,7 @@ async def get_current_stock_data(
     tags=["Data Services"],
 )
 async def get_historical_stock_data(
+    request: Request,
     symbol: str = Query(..., description="Stock symbol to retrieve data for"),
     start_date: Optional[datetime] = Query(
         None, description="Start date for historical data"
@@ -187,6 +199,9 @@ async def get_historical_stock_data(
 ):
     """Get historical stock data for a symbol."""
     try:
+        # Get the httpx client
+        client = request.app.state.httpx_client
+
         # Validate symbol
         if not validate_stock_symbol(symbol):
             raise HTTPException(
@@ -215,10 +230,9 @@ async def get_historical_stock_data(
             "end_date": end_date.strftime("%Y-%m-%d"),
         }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(data_service_url, params=params)
-            response.raise_for_status()
-            stock_data = response.json()
+        response = await client.get(data_service_url, params=params)
+        response.raise_for_status()
+        stock_data = response.json()
 
         # The data ingestion service returns a StockDataResponse structure
         return StockDataResponse(
@@ -252,6 +266,7 @@ async def get_historical_stock_data(
     tags=["Data Services"],
 )
 async def get_recent_stock_data(
+    request: Request,
     symbol: str = Query(..., description="Stock symbol to retrieve data for"),
     days_back: int = Query(
         config.data.LOOKBACK_PERIOD_DAYS,
@@ -262,6 +277,9 @@ async def get_recent_stock_data(
 ):
     """Get recent stock data for a symbol (based on a number of days back)."""
     try:
+        # Get the httpx client
+        client = request.app.state.httpx_client
+
         # Validate symbol
         if not validate_stock_symbol(symbol):
             raise HTTPException(
@@ -274,10 +292,9 @@ async def get_recent_stock_data(
         )
         params = {"symbol": symbol, "days_back": days_back}
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(data_service_url, params=params)
-            response.raise_for_status()
-            stock_data = response.json()
+        response = await client.get(data_service_url, params=params)
+        response.raise_for_status()
+        stock_data = response.json()
 
         # The data ingestion service returns a StockDataResponse structure
         return StockDataResponse(
@@ -311,6 +328,7 @@ async def get_recent_stock_data(
     tags=["Data Services"],
 )
 async def get_historical_stock_prices_from_end_date(
+    request: Request,
     symbol: str = Query(..., description="Stock symbol to retrieve data for"),
     end_date: datetime = Query(..., description="End date to retrieve the data from"),
     days_back: int = Query(
@@ -325,6 +343,9 @@ async def get_historical_stock_prices_from_end_date(
     of days.
     """
     try:
+        # Get the httpx client
+        client = request.app.state.httpx_client
+
         # Validate symbol
         if not validate_stock_symbol(symbol):
             raise HTTPException(
@@ -353,10 +374,9 @@ async def get_historical_stock_prices_from_end_date(
             "days_back": days_back,
         }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(data_service_url, params=params)
-            response.raise_for_status()
-            stock_data = response.json()
+        response = await client.get(data_service_url, params=params)
+        response.raise_for_status()
+        stock_data = response.json()
 
         # The data ingestion service returns a StockDataResponse structure
         return StockDataResponse(
@@ -386,12 +406,16 @@ async def get_historical_stock_prices_from_end_date(
 
 @router.get("/data/news", response_model=NewsDataResponse, tags=["News Services"])
 async def get_news_data(
+    request: Request,
     symbol: str = Query(..., description="Stock symbol to retrieve news data for"),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ):
     """Get news data for a symbol."""
     try:
+        # Get the httpx client
+        client = request.app.state.httpx_client
+
         # Import services from main to avoid circular imports
         url = f"http://{config.news_service.HOST}:{config.news_service.PORT}/data/news"
 
@@ -402,10 +426,9 @@ async def get_news_data(
         if end_date:
             params["end_date"] = end_date
 
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
 
         return NewsDataResponse(
             symbol=data["symbol"],
@@ -432,17 +455,19 @@ async def get_news_data(
 @router.get(
     "/models", response_model=ModelListMlflowResponse, tags=["Model Management"]
 )
-async def get_models():
+async def get_models(request: Request):
     """List all available ML models."""
     try:
+        # Get the httpx client
+        client = request.app.state.httpx_client
+
         url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models"
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            models_response = response.json()
+        response = await client.get(url)
+        response.raise_for_status()
+        models_response = response.json()
 
-            return ModelListMlflowResponse(**models_response)
+        return ModelListMlflowResponse(**models_response)
 
     except Exception as e:
         api_logger.error(f"Failed to get models: {str(e)}")
@@ -456,18 +481,20 @@ async def get_models():
     response_model=ModelMlflowInfo,
     tags=["Model Management"],
 )
-async def get_model_metadata(model_name: str):
+async def get_model_metadata(request: Request, model_name: str):
     """Get metadata for a specific model."""
     try:
+        # Get the httpx client
+        client = request.app.state.httpx_client
+
         url = f"http://{config.deployment_service.HOST}:{config.deployment_service.PORT}/deployment/models/{model_name}"
 
-        async with httpx.AsyncClient() as client:
-            r = await client.get(url)
-            r.raise_for_status()
-            metadata = r.json()
+        r = await client.get(url)
+        r.raise_for_status()
+        metadata = r.json()
 
-            print(f"Model metadata for {model_name}: {metadata}")
-            return metadata
+        print(f"Model metadata for {model_name}: {metadata}")
+        return metadata
     except Exception as e:
         api_logger.error(f"Failed to get model metadata: {str(e)}")
         raise HTTPException(
@@ -480,6 +507,7 @@ async def get_model_metadata(model_name: str):
     "/predict", response_model=PredictionResponse, tags=["Prediction Services"]
 )
 async def get_next_day_prediction(
+    request: Request,
     model_type: str = Query(..., description="Type of prediction model to use"),
     symbol: str = Query(
         ..., description="Ticker symbol of the stock (e.g., AAPL, MSFT)"
@@ -487,33 +515,43 @@ async def get_next_day_prediction(
 ):
     """Get stock price prediction for the next day."""
     try:
+        # Get the httpx client
+        client = request.app.state.httpx_client
+
         # URL to the endpoint fro prediction
         url = f"http://{config.orchestration_service.HOST}:{config.orchestration_service.PORT}/orchestration/predict"
 
-        async with httpx.AsyncClient(timeout=None) as client:
+        # Define the query parameters
+        params = {
+            "symbol": symbol,
+            "model_type": model_type,
+        }
 
-            # Define the query parameters
-            params = {
-                "symbol": symbol,
-                "model_type": model_type,
-            }
+        api_logger.info(
+            "Sending POST request to the orchestration service for prediction"
+        )
 
-            api_logger.info(
-                "Sending POST request to the orchestration service for prediction"
-            )
+        # Send POST request to FastAPI endpoint
+        response = await client.post(url, params=params)
 
-            # Send POST request to FastAPI endpoint
-            response = await client.post(url, params=params)
+        # Check if the response is successful
+        response.raise_for_status()
 
-            # Check if the response is successful
-            response.raise_for_status()
+        api_logger.info(
+            "Successfully received response from the orchestration service for prediction"
+        )
 
-            api_logger.info(
-                "Successfully received response from the orchestration service for prediction"
-            )
+        # Return the response as is
+        return response.json()
 
-            # Return the response as is
-            return response.json()
+    except httpx.HTTPStatusError as e:
+        # Server responded but with 4xx or 5xx status
+        api_logger.error(
+            f"HTTP error from orchestration service: {e.response.status_code} - {e.response.text}"
+        )
+        raise HTTPException(
+            status_code=e.response.status_code, detail=e.response.text
+        ) from e
 
     except Exception as e:
         api_logger.error(f"Prediction failed: {str(e)}")
@@ -528,6 +566,7 @@ async def get_next_day_prediction(
     tags=["Prediction Services"],
 )
 async def get_historical_predictions(
+    request: Request,
     model_type: str = Query(..., description="Type of prediction model to use"),
     symbol: str = Query(
         ..., description="Ticker symbol of the stock (e.g., AAPL, MSFT)"
@@ -541,36 +580,36 @@ async def get_historical_predictions(
 ):
     """Get historical predictions for a symbol."""
     try:
+        # Get the httpx client
+        client = request.app.state.httpx_client
 
         # URL to the endpoint fro prediction
         url = f"http://{config.orchestration_service.HOST}:{config.orchestration_service.PORT}/orchestration/predict/historical"
 
-        async with httpx.AsyncClient(timeout=None) as client:
+        # Define the query parameters
+        params = {
+            "symbol": symbol,
+            "model_type": model_type,
+            "start_date": start_date,
+            "end_date": end_date,
+        }
 
-            # Define the query parameters
-            params = {
-                "symbol": symbol,
-                "model_type": model_type,
-                "start_date": start_date,
-                "end_date": end_date,
-            }
+        api_logger.info(
+            "Sending POST request to the orchestration service for historical prediction"
+        )
 
-            api_logger.info(
-                "Sending POST request to the orchestration service for historical prediction"
-            )
+        # Send POST request to FastAPI endpoint
+        response = await client.post(url, params=params)
 
-            # Send POST request to FastAPI endpoint
-            response = await client.post(url, params=params)
+        # Check if the response is successful
+        response.raise_for_status()
 
-            # Check if the response is successful
-            response.raise_for_status()
+        api_logger.info(
+            "Successfully received response from the orchestration service for historical prediction"
+        )
 
-            api_logger.info(
-                "Successfully received response from the orchestration service for historical prediction"
-            )
-
-            # Return the response as is
-            return response.json()
+        # Return the response as is
+        return response.json()
 
     except Exception as e:
         api_logger.error(f"Historical predictions failed: {str(e)}")
@@ -585,38 +624,37 @@ async def get_historical_predictions(
     response_model=TrainingTrainersResponse,
     tags=["Training Services"],
 )
-async def get_trainers():
+async def get_trainers(request: Request):
     """
     Retrieve the list of available training trainers.
     """
     try:
+        # Get the httpx client
+        client = request.app.state.httpx_client
+
         # URL to the endpoint to fetch the list of available trainers
         url = f"http://{config.training_service.HOST}:{config.training_service.PORT}/training/trainers"
 
-        async with httpx.AsyncClient() as client:
+        # Get the trainers
+        response = await client.get(url)
 
-            # Get the trainers
-            response = await client.get(url)
+        # Check if the response is successful
+        response.raise_for_status()
 
-            # Check if the response is successful
-            response.raise_for_status()
-
-            trainers_response = response.json()
-            if trainers_response.get("status") == "success":
-                return TrainingTrainersResponse(
-                    status=trainers_response["status"],
-                    types=trainers_response["types"],
-                    count=trainers_response["count"],
-                    timestamp=datetime.now().isoformat(),
-                )
-
-            error_msg = trainers_response.get("error", "Unknown error")
-            api_logger.error(
-                f"Failed to retrieve the list of available trainers: {error_msg}"
+        trainers_response = response.json()
+        if trainers_response.get("status") == "success":
+            return TrainingTrainersResponse(
+                status=trainers_response["status"],
+                types=trainers_response["types"],
+                count=trainers_response["count"],
+                timestamp=datetime.now().isoformat(),
             )
-            raise HTTPException(
-                status_code=500, detail=f"Prediction failed: {error_msg}"
-            )
+
+        error_msg = trainers_response.get("error", "Unknown error")
+        api_logger.error(
+            f"Failed to retrieve the list of available trainers: {error_msg}"
+        )
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {error_msg}")
 
     except Exception as e:
         api_logger.error(f"Failed to retrieve the list of available trainers: {str(e)}")
@@ -627,39 +665,40 @@ async def get_trainers():
 
 @router.post("/train", response_model=TrainingResponse, tags=["Training Services"])
 async def train_model(
+    request: Request,
     symbol: str = Query(..., description="Stock symbol to retrieve data for"),
     model_type: str = Query(..., description="Type of model to train"),
 ):
     """Train a new model for a symbol."""
     try:
+        # Get the httpx client
+        client = request.app.state.httpx_client
 
         # URL to the endpoint to train the model
         url = f"http://{config.orchestration_service.HOST}:{config.orchestration_service.PORT}/orchestration/train"
 
-        async with httpx.AsyncClient(timeout=None) as client:
+        # Define the query parameters
+        params = {
+            "symbol": symbol,
+            "model_type": model_type,
+        }
 
-            # Define the query parameters
-            params = {
-                "symbol": symbol,
-                "model_type": model_type,
-            }
+        api_logger.info(
+            "Sending POST request to the orchestration service for training"
+        )
 
-            api_logger.info(
-                "Sending POST request to the orchestration service for training"
-            )
+        # Send POST request to FastAPI endpoint
+        response = await client.post(url, params=params)
 
-            # Send POST request to FastAPI endpoint
-            response = await client.post(url, params=params)
+        # Check if the response is successful
+        response.raise_for_status()
 
-            # Check if the response is successful
-            response.raise_for_status()
+        api_logger.info(
+            "Successfully received response from the orchestration service for training"
+        )
 
-            api_logger.info(
-                "Successfully received response from the orchestration service for training"
-            )
-
-            # Return the response as is
-            return response.json()
+        # Return the response as is
+        return response.json()
 
     except Exception as e:
         api_logger.error(f"Training failed: {str(e)}")
@@ -667,17 +706,20 @@ async def train_model(
 
 
 @router.post("/data/cleanup", response_model=Dict[str, Any], tags=["Data Services"])
-async def cleanup_stock_data(symbol: Optional[str] = None):
+async def cleanup_stock_data(request: Request, symbol: Optional[str] = None):
     """Clean up and maintain stock data files."""
+
     try:
+        # Get the httpx client
+        client = request.app.state.httpx_client
+
         # Call the data ingestion service
         data_service_url = f"http://{config.data.HOST}:{config.data.PORT}/data/cleanup"
         params = {"symbol": symbol} if symbol else {}
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(data_service_url, params=params)
-            response.raise_for_status()
-            cleanup_result = response.json()
+        response = await client.post(data_service_url, params=params)
+        response.raise_for_status()
+        cleanup_result = response.json()
 
         # The data ingestion service returns a CleanupResponse structure
         # Return it with updated timestamp

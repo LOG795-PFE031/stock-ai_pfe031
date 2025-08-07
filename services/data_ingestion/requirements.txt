@@ -10,6 +10,10 @@ Requests==2.32.4
 SQLAlchemy==2.0.25
 yfinance==0.2.61
 
+# Cache
+async-lru==2.0.5
+aiocache==0.12.3
+
 # Database
 psycopg2-binary==2.9.10
 asyncpg==0.29.0

@@ -12,6 +12,7 @@ from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from starlette.requests import Request
 from starlette.responses import Response
 import time
+import httpx
 
 from core.prometheus_metrics import (
     http_requests_total,
@@ -28,6 +29,20 @@ from core.monitor_utils import (
 # Create necessary directories
 os.makedirs("data/news", exist_ok=True)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        app.state.httpx_client = httpx.AsyncClient(timeout=None)
+        logger["main"].info("httpx.AsyncClient created")
+        yield
+    except Exception as e:
+        logger["main"].error(f"Error during lifespan: {str(e)}")
+    finally:
+        await app.state.httpx_client.aclose()
+        logger["main"].info("httpx.AsyncClient closed")
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Stock AI API",
@@ -41,6 +56,7 @@ app = FastAPI(
     - Model training and management
     """,
     version="1.0.0",
+    lifespan=lifespan,
     openapi_tags=[
         {"name": "System", "description": "System health and status endpoints"},
         {

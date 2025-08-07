@@ -7,10 +7,13 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from core.logging import logger
 from .models.base import Base
-from .session import STOCK_DATABASE_URL
 from .models.stock_price import StockPrice  # Needs to be imported
+from core.config import config
 
 logger = logger["data"]
+
+# Define the URL for the stock database connection (async)
+STOCK_DATABASE_URL = config.stocks_db.URL
 
 
 async def init_stock_db():
