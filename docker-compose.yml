@@ -1,5 +1,8 @@
 services:
-  postgres:
+  # ============================
+  # 🧠 Database
+  # ============================
+  postgres-stock-ai:
     image: postgres:14
     container_name: postgres-stock-ai
     ports:
@@ -19,6 +22,9 @@ services:
       timeout: 10s
       retries: 5
 
+  # ============================
+  # ⚙️ Prefect Server (for UI)
+  # ============================
   prefect-server:
     image: prefecthq/prefect:3-latest
     container_name: prefect-server
@@ -36,6 +42,9 @@ services:
         condition: service_healthy
     restart: always
 
+  # ============================
+  # 🧪 MLflow Server (for UI)
+  # ============================
   mlflow-server:
     build:
       context: .
@@ -55,6 +64,9 @@ services:
       timeout: 10s
       retries: 5
 
+  # ============================
+  #  Main application
+  # ============================
   stock-ai:
     build:
       context: .
@@ -63,7 +75,6 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - .:/app
       - ./data:/app/data
       - ./mlruns:/app/mlruns
     environment:
@@ -88,6 +99,10 @@ services:
         condition: service_started
       mlflow-server:
         condition: service_healthy
+
+  # ============================
+  # 📊 Monitoring Stack
+  # ============================
 
   prometheus:
     image: prom/prometheus
@@ -116,7 +131,61 @@ services:
     depends_on:
       - prometheus
 
+  # ============================
+  # 🔐 Authentification Service
+  # ============================
+
+  auth-service:
+    container_name: auth-service
+    hostname: auth-service
+    image: auth-service
+    ports:
+      - "55604:8081"
+    build:
+      context: ./auth
+      dockerfile: AuthService/Dockerfile
+    networks:
+      - microservices_auth
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+  postgres:
+    container_name: sql
+    image: postgres:latest
+    hostname: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    networks:
+      - microservices_auth
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  rabbitmq:
+    container_name: rabbitmq
+    hostname: rabbitmq
+    image: "rabbitmq:3.13.7-management"
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - microservices_auth
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
 networks:
   microservices_auth:
-    external: true
     name: microservices_auth
+    driver: bridge

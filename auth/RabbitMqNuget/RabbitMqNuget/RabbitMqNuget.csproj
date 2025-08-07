@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+	  <GenerateDocumentationFile>True</GenerateDocumentationFile>
+	  <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+	  <IncludeSymbols>True</IncludeSymbols>
+	  <PackageOutputPath>..\..\LocalNugetFeed\</PackageOutputPath>
+	  <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+	  <DocumentationFile>$(MSBuildProjectName).xml</DocumentationFile>
+	  <Version>0.1.1</Version>
+  </PropertyGroup>
+
+	<ItemGroup>
+		<None Include="$(MSBuildProjectName).xml" Pack="true" PackagePath="..\..\LocalNugetFeed\" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <PackageReference Include="MassTransit.RabbitMQ" Version="8.4.0" />
+	  <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
+	</ItemGroup>
+</Project>
