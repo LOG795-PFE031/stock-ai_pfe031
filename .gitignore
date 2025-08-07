@@ -81,7 +81,8 @@ mlruns/
 # Ignore Prefect files
 prefect_data/
 
-# Ignore PosgreSQL data
+# Ignore database data
+mysql_data/
 postgres_data/
 
 # Ignore Scaler data infos (registry)

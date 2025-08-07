@@ -1,18 +1,13 @@
 """
-Sets up the SQLAlchemy engine and session for PostgreSQL database interaction.
+Sets up the SQLAlchemy engine and session for MySQL database interaction.
 """
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from core.config import config
 
-from core.config import config
-
-# Define the URL for the database connection
-DATABASE_URL = config.postgres.URL
-
 # Define the URL for the stock database connection (sync)
-DATABASE_URL = config.postgres.URL_sync
+DATABASE_URL = config.mysql.URL_sync
 
 # Create the engine ONCE at module level (sync version)
 engine = create_engine(

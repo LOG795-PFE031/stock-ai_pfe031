@@ -2,6 +2,8 @@
 data/
 models/
 logs/
+mysql_data/
+postgres_data/
 
 # Exclude test files and directories
 tests/

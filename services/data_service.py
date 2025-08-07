@@ -663,7 +663,7 @@ class DataService(BaseService):
         """
         Retrieves stock data for a given symbol and date range.
 
-        If the data exists and contains valid data in the db (postgres) for the requested date
+        If the data exists and contains valid data in the db (MySQL) for the requested date
         range, it is returned. Otherwise, new data is fetched via `collect_stock_data()`.
 
         Args:

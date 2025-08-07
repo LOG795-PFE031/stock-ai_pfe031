@@ -80,23 +80,22 @@ class MLFlowConfig(BaseModel):
     PORT: int = 5000
 
 
-class PostgresDatabaseConfig(BaseModel):
-    """PostgreSQL configuration"""
+class MySQLDatabaseConfig(BaseModel):
+    """MySQL configuration"""
 
-    HOST: str = "postgres-stock-ai"
-    PORT: int = 5432
+    HOST: str = "mysql-stock-ai"
+    PORT: int = 3306
     USER: str = "admin"
     PASSWORD: str = "admin"
+    DATABASE: str = "stocks"
 
     @property
     def URL(self) -> str:
-        return f"postgresql+asyncpg://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/stocks"
+        return f"mysql+aiomysql://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.DATABASE}"
 
     @property
     def URL_sync(self) -> str:
-        return (
-            f"postgresql://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/stocks"
-        )
+        return f"mysql+pymysql://{self.USER}:{self.PASSWORD}@{self.HOST}:{self.PORT}/{self.DATABASE}"
 
 
 class MonitoringConfig(BaseModel):
@@ -127,7 +126,7 @@ class Config:
         self.api = APIConfig()
         self.rabbitmq = RabbitMQConfig()
         self.mlflow_server = MLFlowConfig()
-        self.postgres = PostgresDatabaseConfig()
+        self.mysql = MySQLDatabaseConfig()
         self.monitoring = MonitoringConfig()
 
         # Create necessary directories

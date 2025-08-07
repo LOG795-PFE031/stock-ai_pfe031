@@ -33,7 +33,8 @@ class ScalerManager:
     # Phases
     TRAINING_PHASE = "training"
     PREDICTION_PHASE = "prediction"
-    VALID_PHASES = [PREDICTION_PHASE, TRAINING_PHASE]
+    EVALUATION_PHASE = "evaluation"
+    VALID_PHASES = [PREDICTION_PHASE, TRAINING_PHASE, EVALUATION_PHASE]
 
     def __init__(self, model_type: str, symbol: str):
         self.model_type = model_type
@@ -119,8 +120,13 @@ class ScalerManager:
                     f"Invalid phase '{phase}'. Must be one of {self.VALID_PHASES}."
                 )
 
+            # Map evaluation phase to prediction phase for scaler loading
+            actual_phase = phase
+            if phase == self.EVALUATION_PHASE:
+                actual_phase = self.PREDICTION_PHASE
+
             scaler_path = self.registry[self.model_type][self.symbol][scaler_type][
-                phase
+                actual_phase
             ]
 
         else:

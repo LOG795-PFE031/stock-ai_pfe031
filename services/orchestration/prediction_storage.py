@@ -11,7 +11,7 @@ from db.models.prediction import Prediction
 class PredictionStorage:
     """
     Handles saving, loading, and retrieving stock prediction data
-    from a PostgreSQL database using SQLAlchemy.
+    from a MySQL database using SQLAlchemy.
 
     This class provides methods to:
     - Save predictions made by different models (e.g., LSTM, Prophet).
@@ -30,7 +30,7 @@ class PredictionStorage:
         self, model_type: str, symbol: str, date: datetime
     ):
         """
-        Load prediction results from the postgres db for a specified date.
+        Load prediction results from the MySQL db for a specified date.
 
         Args:
             model_type (str): The type of model used for prediction (e.g., LSTM, Prophet).
@@ -78,7 +78,7 @@ class PredictionStorage:
     ) -> list[str]:
         """
         Get a list of existing dates for which predictions have already been computed and stored
-        in the postgres db.
+        in the MySQL db.
 
         Args:
             model_type (str): Model type (e.g., "lstm", "prophet").
@@ -125,7 +125,7 @@ class PredictionStorage:
         model_version: str,
     ):
         """
-        Save the prediction results to the postgres db.
+        Save the prediction results to the MySQL db.
 
         Args:
             model_type (str): The type of model used for prediction (e.g., LSTM, Prophet).
