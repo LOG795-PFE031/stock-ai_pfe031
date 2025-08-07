@@ -3,11 +3,15 @@ Data service for fetching and processing stock data.
 """
 
 import asyncio
+from functools import lru_cache
+from async_lru import alru_cache
+import pickle
 from datetime import datetime, timezone, time
 from typing import Dict, Any, Optional, List
 import pytz
 from time import perf_counter
 
+from aiocache import cached, SimpleMemoryCache
 import pandas as pd
 import pandas_market_calendars as mcal
 import requests
@@ -87,6 +91,7 @@ class DataService(BaseService):
         except Exception as e:
             self.logger.error("Error during data service cleanup: %s", str(e))
 
+    @lru_cache(maxsize=200)
     def get_stock_name(self, symbol: str) -> str:
         """
         Get the name of a stock given its symbol
@@ -138,6 +143,7 @@ class DataService(BaseService):
             external_requests_total.labels(site="yahoo_finance", result="error").inc()
             raise
 
+    @cached(ttl=300, cache=SimpleMemoryCache)
     async def get_current_price(self, symbol: str) -> Dict[str, Any]:
         """
         Retrieves the stock price for the given symbol on the latest trading day.
@@ -324,7 +330,7 @@ class DataService(BaseService):
             start_date = get_start_date_from_trading_days(end_date, days_back)
 
             # Retrieve stock data prices
-            df = await self._get_stock_data(symbol, start_date, end_date)
+            df = pickle.loads(await self._get_stock_data(symbol, start_date, end_date))
 
             if df.empty:
                 self.logger.error(f"No data available for {symbol}")
@@ -416,7 +422,9 @@ class DataService(BaseService):
             start_date = get_start_date_from_trading_days(end_date_formatted, days_back)
 
             # Retrieve stock data prices
-            df = await self._get_stock_data(symbol, start_date, end_date_formatted)
+            df = pickle.loads(
+                await self._get_stock_data(symbol, start_date, end_date_formatted)
+            )
 
             # Filter data for requested date range
             mask = (df["Date"].dt.date >= start_date.date()) & (
@@ -479,7 +487,7 @@ class DataService(BaseService):
             end = self.validate_date_format(end_date)
 
             # Retrieve stock data prices
-            df = await self._get_stock_data(symbol, start, end)
+            df = pickle.loads(await self._get_stock_data(symbol, start, end))
 
             # Filter data for requested date range
             mask = (df["Date"].dt.date >= start.date()) & (
@@ -850,6 +858,32 @@ class DataService(BaseService):
 
                 self.logger.debug("[DB] Commit successful")
 
+    @lru_cache(maxsize=100)
+    def _fetch_from_db(
+        self, symbol, start_date: datetime.date, end_date: datetime.date
+    ):
+        """
+        Fetches stock price records from the database for a given symbol and date range.
+
+        Args:
+            symbol (str): The stock symbol (e.g., "AAPL", "GOOG").
+            start_date (datetime.date): The start date of the desired data range.
+            end_date (datetime.date): The end date of the desired data range.
+
+        Returns:
+            List[StockPrice]: A list of stock price records matching the query.
+        """
+        SessionLocal = get_stock_session()
+        with SessionLocal() as session:
+            query = select(StockPrice).where(
+                StockPrice.stock_symbol == symbol.upper(),
+                StockPrice.date >= start_date,
+                StockPrice.date <= end_date,
+            )
+            result = session.execute(query)
+            return result.scalars().all()
+
+    @alru_cache(maxsize=100)
     async def _get_stock_data(
         self, symbol: str, start_date: datetime, end_date: datetime
     ):
@@ -869,73 +903,49 @@ class DataService(BaseService):
                 range.
         """
         try:
-            SessionLocal = get_stock_session()
-            with SessionLocal() as session:
+            records = await asyncio.to_thread(
+                self._fetch_from_db, symbol, start_date.date(), end_date.date()
+            )
 
-                try:
-                    # Query the prices between the start and end date for the symbol
-                    query = select(StockPrice).where(
-                        StockPrice.stock_symbol == symbol.upper(),
-                        StockPrice.date >= start_date.date(),
-                        StockPrice.date <= end_date.date(),
-                    )
-                    result = session.execute(query)
-                    records = result.scalars().all()
+            if records:
 
-                    if records:
+                # Convert to DataFrame
+                df = pd.DataFrame(
+                    [
+                        {
+                            "Date": r.date,
+                            "Open": (float(r.open) if r.open is not None else None),
+                            "High": (float(r.high) if r.high is not None else None),
+                            "Low": float(r.low) if r.low is not None else None,
+                            "Close": (float(r.close) if r.close is not None else None),
+                            "Volume": r.volume,
+                            "Dividends": (
+                                float(r.dividends) if r.dividends is not None else None
+                            ),
+                            "Stock Splits": (
+                                float(r.stock_splits)
+                                if r.stock_splits is not None
+                                else None
+                            ),
+                        }
+                        for r in records
+                    ]
+                )
 
-                        # Convert to DataFrame
-                        df = pd.DataFrame(
-                            [
-                                {
-                                    "Date": r.date,
-                                    "Open": (
-                                        float(r.open) if r.open is not None else None
-                                    ),
-                                    "High": (
-                                        float(r.high) if r.high is not None else None
-                                    ),
-                                    "Low": float(r.low) if r.low is not None else None,
-                                    "Close": (
-                                        float(r.close) if r.close is not None else None
-                                    ),
-                                    "Volume": r.volume,
-                                    "Dividends": (
-                                        float(r.dividends)
-                                        if r.dividends is not None
-                                        else None
-                                    ),
-                                    "Stock Splits": (
-                                        float(r.stock_splits)
-                                        if r.stock_splits is not None
-                                        else None
-                                    ),
-                                }
-                                for r in records
-                            ]
-                        )
+                # Convert dates to timezone-aware UTC
+                df["Date"] = pd.to_datetime(df["Date"], format="mixed", utc=True)
 
-                        # Convert dates to timezone-aware UTC
-                        df["Date"] = pd.to_datetime(
-                            df["Date"], format="mixed", utc=True
-                        )
+                # Check if the cache needs to be reloaded
+                reload = self._is_cache_valid(df, start_date, end_date)
 
-                        # Check if the cache needs to be reloaded
-                        reload = self._is_cache_valid(df, start_date, end_date)
-
-                        if not reload:
-                            self.logger.info("Load data from cache for %s", symbol)
-                            # Return data from cache
-                            return df.sort_values("Date")
-                except Exception as db_error:
-                    self.logger.error(
-                        "Error during DB query for symbol %s: %s", symbol, str(db_error)
-                    )
-                    raise
+                if not reload:
+                    self.logger.info("Load data from cache for %s", symbol)
+                    # Return data from cache
+                    return pickle.dumps(df.sort_values("Date"))
 
             # No data exists or need reload, collect new data
             df = await self._collect_stock_data(symbol, start_date, end_date)
-            return df
+            return pickle.dumps(df)
 
         except Exception as e:
             self.logger.error("Error getting stock data for %s: %s", symbol, str(e))
@@ -1046,7 +1056,7 @@ class DataService(BaseService):
                 end_date = datetime.now(timezone.utc)
                 start_date = get_start_date_from_trading_days(end_date, days_back)
 
-                await self._get_stock_data(symbol, start_date, end_date)
+                pickle.loads(await self._get_stock_data(symbol, start_date, end_date))
                 results["successful"] += 1
                 self.logger.info(f"✅ Pre-populated data for {symbol}")
 
