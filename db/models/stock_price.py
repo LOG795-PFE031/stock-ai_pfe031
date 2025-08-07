@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Numeric, Date, Index
+from sqlalchemy import Column, String, Integer, DECIMAL, Date, Index
 from .base import Base
 
 
@@ -29,13 +29,13 @@ class StockPrice(Base):
     stock_symbol = Column(String(10), nullable=False)
     stock_name = Column(String(100))
     date = Column(Date, nullable=False)
-    open = Column(Numeric(12, 4))
-    high = Column(Numeric(12, 4))
-    low = Column(Numeric(12, 4))
-    close = Column(Numeric(12, 4))
+    open = Column(DECIMAL(12, 4))
+    high = Column(DECIMAL(12, 4))
+    low = Column(DECIMAL(12, 4))
+    close = Column(DECIMAL(12, 4))
     volume = Column(Integer)
-    dividends = Column(Numeric(12, 4))
-    stock_splits = Column(Numeric(12, 4))
+    dividends = Column(DECIMAL(12, 4))
+    stock_splits = Column(DECIMAL(12, 4))
 
     # Performance indexes - critical for query performance
     __table_args__ = (

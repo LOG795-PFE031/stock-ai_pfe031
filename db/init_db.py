@@ -9,14 +9,14 @@ def create_database():
     """
     Create database tables using SQLAlchemy models defined in the application.
 
-    Connects to the PostgreSQL database using the configured URL, and creates
+    Connects to the MySQL database using the configured URL, and creates
     all tables registered in the `Base` metadata (StockPrice and Prediction).
     """
 
-    database_url = config.postgres.URL
+    database_url = config.mysql.URL
 
     # Use sync engine for table creation
-    engine = create_engine(database_url.replace("postgresql+asyncpg", "postgresql"))
+    engine = create_engine(database_url.replace("mysql+aiomysql", "mysql+pymysql"))
     Base.metadata.create_all(engine)
     print("Stock price table and predictions table created successfully!")
 

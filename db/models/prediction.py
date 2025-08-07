@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Numeric, Date, String
+from sqlalchemy import Column, Integer, DECIMAL, Date, String
 from .base import Base
 
 
@@ -23,7 +23,7 @@ class Prediction(Base):
     id = Column(Integer, primary_key=True)
     date = Column(Date, nullable=False)
     stock_symbol = Column(String(10), nullable=False)
-    prediction = Column(Numeric(12, 6), nullable=False)
-    confidence = Column(Numeric(5, 3), nullable=False)
+    prediction = Column(DECIMAL(12, 6), nullable=False)
+    confidence = Column(DECIMAL(5, 3), nullable=False)
     model_type = Column(String(50), nullable=False)
     model_version = Column(Integer, nullable=False)

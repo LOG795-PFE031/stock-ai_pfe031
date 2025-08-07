@@ -2,22 +2,52 @@ services:
   # ============================
   # 🧠 Database
   # ============================
-  postgres-stock-ai:
+  postgres-prefect:
     image: postgres:14
-    container_name: postgres-stock-ai
+    container_name: postgres-prefect
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
-      POSTGRES_DB: postgres
+      POSTGRES_USER: prefect
+      POSTGRES_PASSWORD: prefect
+      POSTGRES_DB: prefect
     volumes:
       - ./data/postgres_data:/var/lib/postgresql/data
+    networks:
+      - microservices_auth
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prefect -d prefect"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-stock-ai
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin
+      MYSQL_DATABASE: stocks
+    volumes:
+      - ./data/mysql_data:/var/lib/mysql
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - microservices_auth
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d prefect"]
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "admin",
+          "-padmin",
+        ]
       interval: 10s
       timeout: 10s
       retries: 5
@@ -33,12 +63,12 @@ services:
     volumes:
       - ./data/prefect_data:/root/.prefect
     environment:
-      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://admin:admin@postgres-stock-ai:5432/prefect
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@postgres-prefect:5432/prefect
     command: prefect server start --host 0.0.0.0
     networks:
       - microservices_auth
     depends_on:
-      postgres:
+      postgres-prefect:
         condition: service_healthy
     restart: always
 

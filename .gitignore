@@ -81,8 +81,9 @@ mlruns/
 # Ignore Prefect files
 prefect_data/
 
-# Ignore PosgreSQL data
+# Ignore database data
 postgres_data/
+mysql_data/
 
 # Ignore Scaler data infos (registry)
 data/scalers/scaler_registry.json
