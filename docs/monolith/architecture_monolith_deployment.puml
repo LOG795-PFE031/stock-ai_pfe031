@@ -1,6 +1,6 @@
-@startuml Architecture Microservices Deployment - Cleaned
+@startuml Architecture Monolith Deployment
 
-title Architecture Microservices Deployment - PFE031
+title Architecture Monolith Deployment - PFE031
 
 !define DARKBLUE #052C65
 !define LIGHTBLUE #4682B4
@@ -47,11 +47,11 @@ skinparam Arrow {
 }
 
 legend left
-  <b><size:50>Legend</size></b>
-  <size:25><color:CONTAINER_COLOR>■</color> Docker Container
-  <size:25><color:LIGHTBLUE>■</color> Domain
-  <size:25><color:ORANGE>■</color> New Service/Database
-  <size:25><color:purple>■</color> UI-only Container (e.g. dashboards, visual interfaces)
+  <b><size:50>Légende</size></b>
+  <size:25><color:CONTAINER_COLOR>■</color> Conteneur Docker
+  <size:25><color:LIGHTBLUE>■</color> Domaine
+  <size:25><color:ORANGE>■</color> Nouveau service ou base de données
+  <size:25><color:purple>■</color> Conteneur interface uniquement (ex : dashboards, interfaces visuelles)
 endlegend
 
 ' ========== CLIENT ==========
