@@ -11,8 +11,8 @@ services:
       POSTGRES_USER: mlflow_user
       POSTGRES_PASSWORD: mlflow_password
       POSTGRES_DB: mlflow_db
-    ports:
-      - "5434:5432"
+    expose:
+      - "5432"
     volumes:
       - ./data/mlflow_postgres_data:/var/lib/postgresql/data
     networks:
@@ -97,8 +97,8 @@ services:
   prefect-postgres:
     image: postgres:14
     container_name: prefect-postgres
-    ports:
-      - "5435:5432"
+    expose:
+      - "5432"
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin
@@ -168,9 +168,8 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile
-    container_name: api-gateway
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     volumes:
       - ./api:/app/api
     environment:
@@ -191,6 +190,33 @@ services:
       mlflow-server:
         condition: service_healthy
 
+  # Additional instances for scaling
+  api-gateway_1:
+    extends:
+      service: api-gateway
+  api-gateway_2:
+    extends:
+      service: api-gateway
+  api-gateway_3:
+    extends:
+      service: api-gateway
+  api-gateway_4:
+    extends:
+      service: api-gateway
+
+  api-gateway-lb:
+    image: nginx
+    container_name: api-gateway-lb
+    ports:
+      - "8000:80" # Expose to the outside
+    volumes:
+      - ./nginx/api-gateway.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - api-gateway # Ensure the API Gateway is up
+      - data-service # Ensure the data service is up
+    networks:
+      - microservices_auth
+
   # ============================
   # 🧠 Data Service
   # ============================
@@ -199,8 +225,8 @@ services:
   postgres-stock-data:
     image: postgres:14
     container_name: postgres-stock-data
-    ports:
-      - "5436:5432"
+    expose:
+      - "5432"
     environment:
       POSTGRES_USER: stockuser
       POSTGRES_PASSWORD: stockpass
@@ -220,9 +246,8 @@ services:
     build:
       context: .
       dockerfile: services/data_ingestion/Dockerfile
-    container_name: data-service
-    ports:
-      - "8001:8000"
+    expose:
+      - "8000"
     environment:
       # Dedicated stock database config
       - STOCK_DB_HOST=postgres-stock-data
@@ -238,6 +263,8 @@ services:
       postgres-stock-data:
         condition: service_healthy
     restart: on-failure
+    deploy:
+      replicas: 3 # Multiple replicas of the data service
 
   # ============================
   # 📰 News Service
@@ -247,8 +274,8 @@ services:
       context: .
       dockerfile: services/news/Dockerfile
     container_name: news-service
-    ports:
-      - "8002:8000"
+    expose:
+      - "8000"
     networks:
       - microservices_auth
     restart: on-failure
@@ -261,8 +288,8 @@ services:
       context: .
       dockerfile: services/data_processing/Dockerfile
     container_name: data-processing-service
-    ports:
-      - "8003:8000"
+    expose:
+      - "8000"
     volumes:
       - ./data/scalers:/app/data/scalers
       - ./services/data_processing:/app/services/data_processing
@@ -274,8 +301,8 @@ services:
   postgres-prediction-data:
     image: postgres:14
     container_name: postgres-prediction-data
-    ports:
-      - "5433:5432"
+    expose:
+      - "5432"
     environment:
       POSTGRES_USER: predictionuser
       POSTGRES_PASSWORD: predictionpass
@@ -298,8 +325,8 @@ services:
       context: .
       dockerfile: services/training/Dockerfile
     container_name: training-service
-    ports:
-      - "8004:8000"
+    expose:
+      - "8000"
     volumes:
       - ./data/models:/app/data/models
     environment:
@@ -319,8 +346,8 @@ services:
       context: .
       dockerfile: services/deployment/Dockerfile
     container_name: deployment-service
-    ports:
-      - "8005:8000"
+    expose:
+      - "8000"
     volumes:
       - ./services/deployment:/app/services/deployment
     environment:
@@ -340,8 +367,8 @@ services:
       context: .
       dockerfile: services/evaluation/Dockerfile
     container_name: evaluation-service
-    ports:
-      - "8006:8000"
+    expose:
+      - "8000"
     environment:
       - MLFLOW_TRACKING_URI=http://mlflow-server:5000
     networks:
@@ -359,8 +386,8 @@ services:
       context: .
       dockerfile: services/monitoring/Dockerfile
     container_name: monitoring-service
-    ports:
-      - "8007:8000"
+    expose:
+      - "8000"
     volumes:
       - ./services/monitoring:/app/services/monitoring
     networks:
@@ -380,8 +407,8 @@ services:
       context: .
       dockerfile: services/orchestration/Dockerfile
     container_name: orchestration-service
-    ports:
-      - 8008:8000
+    expose:
+      - "8000"
     volumes:
       - ./services/orchestration:/app/services/orchestration
     environment:
