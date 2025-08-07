@@ -20,8 +20,8 @@ rectangle "Evaluation Service\n(evaluation-service:8006:8000)" as evaluation
 rectangle "System/Monitoring Service\n(monitoring-service:8007:8000)" as monitoring
 rectangle "Orchestration Service\n(orchestration-service:8008:8000)" as orchestration
 rectangle "Chatbot Service" as chatbot
-rectangle "Prometheus" as prometheus
-rectangle "Grafana" as grafana
+rectangle "Prometheus\n(stock-ai-prometheus:9090:9090)" as prometheus
+rectangle "Grafana\n(stock-ai-grafana:3000:3000)" as grafana
 
 user --> gateway : Uses Web/API
 
