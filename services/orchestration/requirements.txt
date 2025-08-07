@@ -6,6 +6,7 @@ pandas_market_calendars==5.1.1
 prefect==3.4.10
 pytz==2025.2
 SQLAlchemy==2.0.25
+async-lru==2.0.5
 
 # FastAPI and web framework
 fastapi==0.116.1
