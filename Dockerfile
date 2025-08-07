@@ -48,6 +48,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy application code
 COPY api/ ./api/
 COPY core/ ./core/
+COPY db/ ./db/
 COPY services/ ./services/
 COPY main.py .
 COPY monitoring/ ./monitoring/
