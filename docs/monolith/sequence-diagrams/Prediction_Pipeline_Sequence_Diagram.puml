@@ -5,7 +5,7 @@ title Prediction Pipeline - Sequence Diagram
 Actor "ML Developper" as User
 participant OrchestrationService
 participant DataService
-participant PreprocessingService
+participant DataProcessingService
 participant DeploymentService
 
 
@@ -34,14 +34,15 @@ DataService -> OrchestrationService : Return raw_stock_data
 deactivate DataService
 
 
-OrchestrationService -> PreprocessingService : preprocess(raw_stock_data)
-activate PreprocessingService
-PreprocessingService -> PreprocessingService : clean_stock_data = DataCleaner.process(raw_stock_data)
-PreprocessingService -> PreprocessingService : X = FeatureBuilder.process(clean_stock_data)
-PreprocessingService -> PreprocessingService : X = FeatureSelector.process(X)
-PreprocessingService -> PreprocessingService : X = Normalizer.process(X, fit=False)
-PreprocessingService -> OrchestrationService : Return X
-deactivate PreprocessingService
+OrchestrationService -> DataProcessingService : preprocess(raw_stock_data)
+activate DataProcessingService
+DataProcessingService -> DataProcessingService : clean_stock_data = DataCleaner.process(raw_stock_data)
+DataProcessingService -> DataProcessingService : X = FeatureBuilder.process(clean_stock_data)
+DataProcessingService -> DataProcessingService : X = FeatureSelector.process(X)
+DataProcessingService -> DataProcessingService : X = InputFormatter.process(X)
+DataProcessingService -> DataProcessingService : X = Normalizer.process(X, fit=False)
+DataProcessingService -> OrchestrationService : Return X
+deactivate DataProcessingService
 
 OrchestrationService -> DeploymentService : predict(model_name, X)
 activate DeploymentService
@@ -53,7 +54,21 @@ DeploymentService -> OrchestrationService : Return y_pred
 deactivate DeploymentService
 
 
-OrchestrationService -> User : 200 OK Response (y_pred)
+OrchestrationService -> DataProcessingService : postprocess(y_pred)
+
+activate DataProcessingService
+DataProcessingService -> DataProcessingService : y_pred = Normalizer.unprocess(y_pred)
+DataProcessingService -> DataProcessingService : y_pred = OutputFormatter.process(y_pred)
+DataProcessingService -> OrchestrationService : Return y_pred
+deactivate DataProcessingService
+
+OrchestrationService -> DeploymentService : calculate_prediction_confidence(model_name, X, y_pred)
+activate DeploymentService
+DeploymentService -> OrchestrationService : Return confidence
+deactivate DeploymentService
+
+
+OrchestrationService -> User : 200 OK Response (y_pred, confidence)
 deactivate OrchestrationService
 
 @enduml
