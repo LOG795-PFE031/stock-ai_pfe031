@@ -2,11 +2,15 @@
 
 title Stock-AI: Microservices Flowchart (with Monitoring & Visualization)
 
+
+
 skinparam rectangle {
   BackgroundColor LightSkyBlue
   BorderColor DarkBlue
   FontColor Black
 }
+skinparam DefaultFontSize 24
+skinparam TitleFontSize 22
 
 actor User as user
 
@@ -17,28 +21,41 @@ rectangle "Data Processing Service\n(data-processing-service:8003:8000)" as data
 rectangle "Training Service\n(training-service:8004:8000)" as training
 rectangle "Deployment Service\n(deployment-service:8005:8000)" as deployment
 rectangle "Evaluation Service\n(evaluation-service:8006:8000)" as evaluation
-rectangle "System/Monitoring Service\n(monitoring-service:8007:8000)" as monitoring
+rectangle "Model Monitoring Service\n(monitoring-service:8007:8000)" as monitoring
 rectangle "Orchestration Service\n(orchestration-service:8008:8000)" as orchestration
 rectangle "Chatbot Service" as chatbot
 rectangle "Prometheus\n(stock-ai-prometheus:9090:9090)" as prometheus
 rectangle "Grafana\n(stock-ai-grafana:3000:3000)" as grafana
+rectangle "MLFlow\n(mlflow-server:5000:5000)" as MLflow
 
 user --> gateway : Uses Web/API
 
 gateway --> data : GET /data/stocks\nGET /data/stock/current\nGET /data/stock/historical\nGET /data/stock/recent\nGET /data/stock/from-end-date\nPOST /data/cleanup
 gateway --> news : GET /news/
 orchestration --> dataProcessing : POST /data-processing/preprocess\nPOST /data-processing/postprocess\nPOST /data-processing/promote-scaler\nPOST /data-processing/cleanup
-gateway --> training : GET /train/trainers\nPOST /train\nGET /train/status/{task_id}\nGET /train/tasks
-gateway --> deployment : GET /models\nGET /models/{model_name}\nGET /predict\nGET /predict/historical
+gateway --> training : GET /train/trainers
+gateway --> deployment : GET /deployment/models\nGET /deployment/models/{model_name}
 orchestration --> evaluation : POST /evaluation/evaluate\nPOST /evaluation/is-ready-for-deployment\nPOST /evaluation/cleanup
 gateway --> orchestration : GET /orchestration/train\nGET /orchestration/predict\nGET /orchestration/evaluate\nGET /orchestration/predict/historical\nPOST /orchestration/cleanup
 gateway --> chatbot : POST /chat\n
 gateway --> prometheus : GET /health\nGET /metrics
-monitoring --> dataProcessing: : POST /data-processing/preprocess\n
+monitoring --> data: GET /data/stock/recent
+monitoring --> dataProcessing: POST /data-processing/preprocess\n
+monitoring --> orchestration: POST /orchestration/train
+
+orchestration --> deployment : POST /deployment/predict\nPOST /deployment/models/{model_identifier}/log_metrics\n POST /deployment/calculate_prediction_confidence\n POST /models/{prod_model_name}/promote
+orchestration --> training : POST /train
+orchestration --> data : GET /data/stock/historical\nGET /data/stock/recent
+
+training --> MLflow: log training models
+deployment --> MLflow: register/promote models
+monitoring --> MLflow: retrieve tags/metrics
 
 ' Monitoring flow
-monitoring --> prometheus : exposes metrics
 grafana --> prometheus : queries metrics (PromQL)
 user --> grafana : views dashboards
+
+' MLflow
+user --> MLflow : view Model Registry and Tracking Server
 
 @enduml
