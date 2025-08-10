@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<GenerateDocumentationFile>True</GenerateDocumentationFile>
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+		<IncludeSymbols>True</IncludeSymbols>
+		<PackageOutputPath>..\..\LocalNugetFeed\</PackageOutputPath>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<DocumentationFile>$(MSBuildProjectName).xml</DocumentationFile>
+		<Version>0.1.3</Version>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="$(MSBuildProjectName).xml" Pack="true" PackagePath="..\..\LocalNugetFeed\" />
+	</ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Testcontainers.RabbitMq" Version="4.3.0" />
+    <PackageReference Include="xunit.extensibility.core" Version="2.9.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RabbitMqNuget\RabbitMqNuget.csproj" />
+  </ItemGroup>
+
+</Project>
