@@ -373,20 +373,22 @@ def run_historical_predictions_flow(
 
     if prod_model_exist:
 
-        # Make predictions
-        prediction_futures = historical_prediction.map(
-            model_type=model_type,
-            symbol=symbol,
-            end_date=dates,
-            data_service=data_service,
-            processing_service=processing_service,
-            deployment_service=deployment_service,
-        )
+        predictions = []
+        for end_date in dates:
 
-        # Wait for predictions and collect results
-        prediction_results = [future.result() for future in prediction_futures]
+            # Make predictions
+            prediction_result = historical_prediction(
+                model_type=model_type,
+                symbol=symbol,
+                end_date=end_date,
+                data_service=data_service,
+                processing_service=processing_service,
+                deployment_service=deployment_service,
+            )
 
-        return prediction_results
+            predictions.append(prediction_result)
+
+        return predictions
 
     # There is no available production model
     return None
