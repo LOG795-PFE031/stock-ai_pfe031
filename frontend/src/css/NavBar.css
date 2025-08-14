@@ -1,0 +1,241 @@
+.navbar {
+    display: flex;
+    align-items: center;
+    background-color: #2d2d2d;
+    padding: 10px 20px;
+    color: #fff;
+  }
+  
+  /* Three sections: left, center, right */
+  .navbar__left {
+    flex: 0 0 auto; /* Logo doesn't grow */
+  }
+  
+  .navbar__center {
+    flex: 1 1 auto; /* Center can grow/shrink */
+    display: flex;
+    justify-content: center; /* Keep the search form centered */
+  }
+  
+  .navbar__right {
+    flex: 0 0 auto; /* Right items do not grow */
+    display: flex;
+    gap: 20px;      /* Space between links */
+    margin-left: 20px;
+  }
+  
+  /* LOGO */
+  .navbar__logo {
+    height: 40px;
+    width: auto;
+  }
+  
+  /* SEARCH FORM */
+  .search-form {
+    display: flex;
+    align-items: center;
+    /* Limit max width so it doesn't push the nav off the screen */
+    max-width: 400px;
+    width: 100%;
+  }
+  
+  .search-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 4px 0 0 4px;
+    font-size: 16px;
+  }
+  
+  .search-button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 0 4px 4px 0;
+    background-color: #0066cc;
+    color: #fff;
+    font-size: 16px;
+    cursor: pointer;
+  }
+  
+  /* NAV LINKS */
+  .nav-link {
+    color: #fff;
+    text-decoration: none;
+    font-size: 16px;
+  }
+  
+  /* Turn the Account link into a button that looks like a link */
+  .button-link {
+    background-color: #4caf50;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+  
+  .button-link:hover {
+    background-color: #45a049;
+  }
+  
+  /* MODAL STYLES */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 999;
+  }
+  
+  .modal-content {
+    background: #fff;
+    padding: 24px;
+    border-radius: 8px;
+    position: relative;
+    width: 100%;
+    max-width: 400px;
+  }
+  
+  .modal-content h2 {
+    margin-bottom: 16px;
+    color: #333;
+  }
+  
+  .form-row {
+    margin-bottom: 16px;
+  }
+  
+  .form-row label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  
+  .form-row input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+  
+  .error {
+    color: #f44336;
+    margin-bottom: 16px;
+    padding: 8px;
+    background-color: #ffebee;
+    border-radius: 4px;
+  }
+  
+  .user-profile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  .username {
+    font-weight: 500;
+    color: #333;
+  }
+  
+  .logout-button {
+    background-color: #f44336;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+  
+  .logout-button:hover {
+    background-color: #d32f2f;
+  }
+
+  /* Add these styles for the user profile modal */
+
+  .user-profile-modal {
+    max-width: 450px;
+  }
+
+  .user-info {
+    margin: 1.5rem 0;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    padding: 1rem;
+  }
+
+  .user-info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #eee;
+  }
+
+  .user-info-row:last-child {
+    border-bottom: none;
+  }
+
+  .info-label {
+    font-weight: 600;
+    color: #555;
+  }
+
+  .info-value {
+    color: #333;
+  }
+
+  .user-actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 1.5rem;
+  }
+
+  .user-action-button {
+    padding: 10px 16px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.3s;
+  }
+
+  .profile-button {
+    background-color: #4caf50;
+    color: white;
+  }
+
+  .profile-button:hover {
+    background-color: #45a049;
+  }
+
+  /* Existing styles for the modal */
+  .modal-close {
+    position: absolute;
+    top: 0.5rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #333;
+  }
+
+  /* Make username look interactive */
+  .username {
+    font-weight: 500;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 4px;
+    background-color: #4caf50;
+    transition: background-color 0.3s;
+  }
+
+  .username:hover {
+    background-color: #45a049;
+  }

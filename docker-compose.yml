@@ -185,6 +185,20 @@ services:
       timeout: 3s
       retries: 5
 
+  # ============================
+  # 💻 Front-end
+  # ============================
+  frontend:
+    container_name: frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    networks:
+      - microservices_auth
+    restart: always
+
 networks:
   microservices_auth:
     name: microservices_auth
