@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MongoDB Connection Tester</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f7f9fc;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 5px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        pre {
+            background-color: #f1f1f1;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>MongoDB Connection Tester</h1>
+    
+    <div class="input-group">
+        <label for="mongo-url">MongoDB Connection String:</label>
+        <input type="text" id="mongo-url" value="mongodb://mongo:mongo@localhost:27017" />
+    </div>
+    
+    <div class="input-group">
+        <label for="user-id">Test User ID:</label>
+        <input type="text" id="user-id" value="test-user" />
+    </div>
+    
+    <div class="input-group">
+        <label for="test-message">Test Message:</label>
+        <input type="text" id="test-message" value="This is a test message" />
+    </div>
+    
+    <h2>API Tests</h2>
+    <button onclick="testMongoDBConnection()">Test MongoDB Connection</button>
+    <button onclick="testSaveMessage()">Test Save Message</button>
+    <button onclick="testGetMessages()">Get User Messages</button>
+    <button onclick="testSaveSummary()">Test Save Summary</button>
+    <button onclick="testGetSummary()">Get Latest Summary</button>
+    
+    <div class="result">
+        <h3>Results:</h3>
+        <pre id="result">Results will appear here...</pre>
+    </div>
+    
+    <script>
+        // API base URL
+        const API_BASE_URL = 'http://localhost:3001';
+        
+        // Helper function to display results
+        function displayResult(data) {
+            const resultElement = document.getElementById('result');
+            resultElement.textContent = typeof data === 'object' 
+                ? JSON.stringify(data, null, 2) 
+                : data;
+        }
+        
+        // Test MongoDB connection
+        async function testMongoDBConnection() {
+            try {
+                const mongoUrl = document.getElementById('mongo-url').value;
+                
+                displayResult('Testing MongoDB connection...');
+                
+                const response = await fetch(`${API_BASE_URL}/api/test-mongodb`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ mongoUrl })
+                });
+                
+                const data = await response.json();
+                displayResult(data);
+            } catch (error) {
+                displayResult(`Error: ${error.message}`);
+            }
+        }
+        
+        // Test saving a message
+        async function testSaveMessage() {
+            try {
+                const mongoUrl = document.getElementById('mongo-url').value;
+                const userId = document.getElementById('user-id').value;
+                const message = document.getElementById('test-message').value;
+                
+                displayResult('Saving test message...');
+                
+                const response = await fetch(`${API_BASE_URL}/api/conversations`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        userId,
+                        message,
+                        sender: 'user',
+                        timestamp: new Date().toISOString(),
+                        mongoUrl
+                    })
+                });
+                
+                const data = await response.json();
+                displayResult(data);
+            } catch (error) {
+                displayResult(`Error: ${error.message}`);
+            }
+        }
+        
+        // Test getting user messages
+        async function testGetMessages() {
+            try {
+                const mongoUrl = document.getElementById('mongo-url').value;
+                const userId = document.getElementById('user-id').value;
+                
+                displayResult('Getting user messages...');
+                
+                const response = await fetch(
+                    `${API_BASE_URL}/api/conversations/${userId}?mongoUrl=${encodeURIComponent(mongoUrl)}`
+                );
+                
+                const data = await response.json();
+                displayResult(data);
+            } catch (error) {
+                displayResult(`Error: ${error.message}`);
+            }
+        }
+        
+        // Test saving a summary
+        async function testSaveSummary() {
+            try {
+                const mongoUrl = document.getElementById('mongo-url').value;
+                const userId = document.getElementById('user-id').value;
+                
+                displayResult('Saving test summary...');
+                
+                const response = await fetch(`${API_BASE_URL}/api/conversations/${userId}/summary`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        userId,
+                        summary: 'This is a test conversation summary created at ' + new Date().toISOString(),
+                        timestamp: new Date().toISOString(),
+                        mongoUrl
+                    })
+                });
+                
+                const data = await response.json();
+                displayResult(data);
+            } catch (error) {
+                displayResult(`Error: ${error.message}`);
+            }
+        }
+        
+        // Test getting the latest summary
+        async function testGetSummary() {
+            try {
+                const mongoUrl = document.getElementById('mongo-url').value;
+                const userId = document.getElementById('user-id').value;
+                
+                displayResult('Getting latest summary...');
+                
+                const response = await fetch(
+                    `${API_BASE_URL}/api/conversations/${userId}/summary?mongoUrl=${encodeURIComponent(mongoUrl)}`
+                );
+                
+                const data = await response.json();
+                displayResult(data);
+            } catch (error) {
+                displayResult(`Error: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html> 

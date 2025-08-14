@@ -1,0 +1,144 @@
+{
+    "openapi": "3.0.4",
+    "info": {
+      "title": "Portfolio",
+      "version": "1.0"
+    },
+    "paths": {
+      "/portfolio": {
+        "get": {
+          "tags": [
+            "Portfolio"
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "text/plain": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ShareVolumesViewModel"
+                  }
+                },
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ShareVolumesViewModel"
+                  }
+                },
+                "text/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ShareVolumesViewModel"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/portfolio/sell/{symbol}/{volume}": {
+        "patch": {
+          "tags": [
+            "Portfolio"
+          ],
+          "parameters": [
+            {
+              "name": "symbol",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "volume",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "format": "int32"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
+          }
+        }
+      },
+      "/portfolio/buy/{symbol}/{volume}": {
+        "patch": {
+          "tags": [
+            "Portfolio"
+          ],
+          "parameters": [
+            {
+              "name": "symbol",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "volume",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "format": "int32"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "ShareVolumeViewModel": {
+          "type": "object",
+          "properties": {
+            "symbol": {
+              "type": "string",
+              "nullable": true
+            },
+            "volume": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "additionalProperties": false
+        },
+        "ShareVolumesViewModel": {
+          "type": "object",
+          "properties": {
+            "shareVolumes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ShareVolumeViewModel"
+              },
+              "nullable": true
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "securitySchemes": {
+        "Bearer": {
+          "type": "http",
+          "description": "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token.",
+          "scheme": "bearer",
+          "bearerFormat": "JWT"
+        }
+      }
+    },
+    "security": [
+      {
+        "Bearer": [ ]
+      }
+    ]
+  }

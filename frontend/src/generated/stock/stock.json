@@ -1,0 +1,192 @@
+{
+    "openapi": "3.0.4",
+    "info": {
+      "title": "Stock",
+      "version": "1.0"
+    },
+    "paths": {
+      "/stocks/symbols": {
+        "get": {
+          "tags": [
+            "Stock"
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "text/plain": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StockSymbols"
+                  }
+                },
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StockSymbols"
+                  }
+                },
+                "text/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StockSymbols"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/stocks/quotes/{symbol}": {
+        "get": {
+          "tags": [
+            "Stock"
+          ],
+          "parameters": [
+            {
+              "name": "symbol",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "text/plain": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StockQuotes"
+                  }
+                },
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StockQuotes"
+                  }
+                },
+                "text/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StockQuotes"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/stocks/{symbol}/{date}": {
+        "get": {
+          "tags": [
+            "Stock"
+          ],
+          "parameters": [
+            {
+              "name": "symbol",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "date",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "text/plain": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StockPrice"
+                  }
+                },
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StockPrice"
+                  }
+                },
+                "text/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/StockPrice"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "Quote": {
+          "type": "object",
+          "properties": {
+            "day": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "price": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "additionalProperties": false
+        },
+        "StockPrice": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "additionalProperties": false
+        },
+        "StockQuotes": {
+          "type": "object",
+          "properties": {
+            "quotes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/Quote"
+              },
+              "nullable": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "StockSymbols": {
+          "type": "object",
+          "properties": {
+            "symbols": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "nullable": true
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "securitySchemes": {
+        "Bearer": {
+          "type": "http",
+          "description": "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token.",
+          "scheme": "bearer",
+          "bearerFormat": "JWT"
+        }
+      }
+    },
+    "security": [
+      {
+        "Bearer": [ ]
+      }
+    ]
+  }
