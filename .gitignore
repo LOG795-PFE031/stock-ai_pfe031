@@ -160,3 +160,4 @@ UpgradeLog*.htm
 *.sdf
 *.cache
 *.pdb
+frontend/.env
