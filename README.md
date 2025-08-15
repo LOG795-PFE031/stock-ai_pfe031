@@ -70,26 +70,26 @@ Les services principaux sont :
    Point d’entrée unique pour les utilisateurs. Expose toutes les fonctionnalités via une interface REST (FastAPI).
 
 10. **📊 Services de suivi (`mlflow-server`, `mlflow-postgres`, `mlflow-minio`)**  
-    Gèrent le suivi des expériences ML, le stockage des artefacts, et les métadonnées de modèles.
+   Gèrent le suivi des expériences ML, le stockage des artefacts, et les métadonnées de modèles.
 
 11. **⚙️ Services d’automatisation (`prefect-server`, `prefect-postgres`)**  
-    Utilisés pour exécuter et planifier les workflows à l’aide de Prefect.
-    Note : un job d’initialisation (`minio-create-bucket`) crée le bucket d’artefacts au démarrage.
+   Utilisés pour exécuter et planifier les workflows à l’aide de Prefect.
+   Note : un job d’initialisation (`minio-create-bucket`) crée le bucket d’artefacts au démarrage.
 
 12. **⚙️ Services d’orchestration de workflows (`prefect-server`, `prefect-postgres`)**  
-    Utilisés pour exécuter et planifier les workflows à l’aide de Prefect.
+   Utilisés pour exécuter et planifier les workflows à l’aide de Prefect.
 
-13. **📡 Service d'observabilité avec Prometheus & Grafana (`prometheus`, `grafana`)**
+13. **📡 Service d'observabilité avec Prometheus & Grafana (`prometheus`, `grafana`)**  
    Collecte de métriques d’infrastructure et d’application (Prometheus) et tableaux de bord (Grafana) pour la supervision en temps réel.
 
-14. **🔐 Authentification & stockage associé (`auth-service`, `postgres`)**
+14. **🔐 Authentification & stockage associé (`auth-service`, `postgres`)**  
    Service d’authentification en C# et base Postgres associée pour les utilisateurs/portfolio.
 
-15. **📨 Messagerie inter‑services (`rabbitmq`)**
-    Courtier de messages pour la communication asynchrone.
+15. **📨 Messagerie inter‑services (`rabbitmq`)**  
+   Courtier de messages pour la communication asynchrone.
 
-17. **💻 Frontend (`frontend`)**
-Interface utilisateur (Vite/React) exposant les fonctionnalités de la plateforme.
+17. **💻 Frontend (`frontend`)**  
+   Interface utilisateur (Vite/React) exposant les fonctionnalités de la plateforme.
 
 Tous les composants sont conteneurisés avec Docker pour un déploiement et une mise à l'échelle simple.
 
