@@ -41,7 +41,7 @@ Le système est organisé autour d'une architecture de monolithique conteneuris�
 
 Les services principaux sont :
 
-1. **📊 Stock-AI (`stock-ai`)**  
+1. **📈 Stock-AI (`stock-ai`)**  
     Contient les fonctionalités principaux de notre application.
 
 2. **📊 Services de suivi (`mlflow-server`, `mlflow-postgres`, `mlflow-minio`)**  
