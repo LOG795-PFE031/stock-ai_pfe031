@@ -76,9 +76,6 @@ Les services principaux sont :
    Utilisés pour exécuter et planifier les workflows à l’aide de Prefect.
    Note : un job d’initialisation (`minio-create-bucket`) crée le bucket d’artefacts au démarrage.
 
-12. **⚙️ Services d’orchestration de workflows (`prefect-server`, `prefect-postgres`)**  
-   Utilisés pour exécuter et planifier les workflows à l’aide de Prefect.
-
 13. **📡 Service d'observabilité avec Prometheus & Grafana (`prometheus`, `grafana`)**  
    Collecte de métriques d’infrastructure et d’application (Prometheus) et tableaux de bord (Grafana) pour la supervision en temps réel.
 
